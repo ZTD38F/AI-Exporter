@@ -720,6 +720,25 @@ export const sanitizeZipPath = (p?: string | null): string => {
                     const listTitle = resolvedRes.listTitle;
                     chat.title = listTitle;
 
+                    // A file reaching disk is not enough to call an export successful.
+                    // If detail pagination did not terminate cleanly, never silently
+                    // promote the partial conversation to status=ok.
+                    if (chat.pagination && chat.pagination.complete === false) {
+                        const paginationReason = chat.pagination.stopReason || 'unknown';
+                        const paginationError = `Incomplete conversation pagination (${paginationReason}) after ${chat.pagination.pagesFetched || 0} pages`;
+                        failedChats.push({
+                            id: chat.id || nid,
+                            title: listTitle,
+                            error: paginationError,
+                            partial: true,
+                            pagination: chat.pagination
+                        });
+                        onLog(`[${listTitle || chat.id}] export blocked: ${paginationError}`, 'error');
+                        completedCount++;
+                        updateProgress(completedCount, listTitle);
+                        continue;
+                    }
+
                     const ChatFormatter = (globalThis as any).ChatFormatter;
                     const formatted = typeof ChatFormatter !== 'undefined' && ChatFormatter.formatContent
                         ? ChatFormatter.formatContent(chat, format)
@@ -739,7 +758,36 @@ export const sanitizeZipPath = (p?: string | null): string => {
 
                     let queuedAssetsForThisChat = 0;
                     const chatAssetTasks: (() => Promise<void>)[] = [];
+                    const seenAssetKeys = new Set<string>();
+
+                    const getAssetIdentityKeys = (item: any, isImage: boolean): string[] => {
+                        const kind = isImage ? 'image' : 'file';
+                        const keys: string[] = [];
+                        const id = String(item?.id || item?.contentId || '').trim();
+                        const url = String(item?.resolvedUrl || item?.sourceUrl || item?.url || '').trim();
+                        const localName = String(item?.localName || '').trim();
+
+                        if (id) keys.push(`${kind}:id:${id}`);
+                        if (url) keys.push(`${kind}:url:${url}`);
+                        if (localName) keys.push(`${kind}:local:${localName}`);
+
+                        // Filename alone is weak evidence. Only use it when no stronger
+                        // identifier exists, otherwise unrelated uploads named
+                        // "image.png" could be collapsed incorrectly.
+                        if (keys.length === 0) {
+                            const fileName = String(item?.fileName || item?.name || '').trim();
+                            if (fileName) keys.push(`${kind}:name:${fileName}`);
+                        }
+                        return keys;
+                    };
+
                     const queueAsset = (item: any, isImage: boolean) => {
+                        const identityKeys = getAssetIdentityKeys(item, isImage);
+                        if (identityKeys.some(key => seenAssetKeys.has(key))) {
+                            return;
+                        }
+                        for (const key of identityKeys) seenAssetKeys.add(key);
+
                         totalAssets++;
                         queuedAssetsForThisChat++;
                         updateProgress();

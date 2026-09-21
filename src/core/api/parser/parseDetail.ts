@@ -16,6 +16,12 @@ export interface DetailParseResult {
     url: string;
     nextPageToken: string | null;
     attachmentCount: number;
+    pagination?: {
+        pagesFetched: number;
+        complete: boolean;
+        stopReason: "end_of_history" | "token_loop" | "safety_limit";
+        remainingToken: string | null;
+    };
     schemaDrift?: string[];
     _raw?: any;
     _debug?: any;

@@ -209,3 +209,101 @@ test('ExportOrchestrator - stops pipeline immediately on NotAllowedError (S-5)',
         'Logs should contain permission revocation warning'
     );
 });
+
+
+// ---------------------------------------------------------------------------
+// ExportOrchestrator: incomplete pagination must never be promoted to success
+// ---------------------------------------------------------------------------
+test('ExportOrchestrator - blocks partial conversation pagination from status=ok', async () => {
+    setupMockJSZip();
+    const orchestrator = new ExportOrchestrator();
+
+    const result = await orchestrator.run({
+        selected: [{ id: 'partial-chat', title: 'Partial Chat' }],
+        format: 'json',
+        useZip: true,
+        includeAssets: false,
+        worker: {
+            fetchChatDetail: async () => ({
+                success: true,
+                chat: {
+                    id: 'partial-chat',
+                    title: 'Partial Chat',
+                    messages: [{ id: 'm1', role: 'user', content: 'hello' }],
+                    pagination: {
+                        pagesFetched: 250,
+                        complete: false,
+                        stopReason: 'safety_limit',
+                        remainingToken: 'still-more'
+                    }
+                }
+            })
+        }
+    });
+
+    assert.strictEqual(result.landedChats, 0);
+    assert.strictEqual(result.failedChats.length, 1);
+    assert.strictEqual(result.failedChats[0].partial, true);
+    assert.strictEqual(result.failedChats[0].pagination.stopReason, 'safety_limit');
+});
+
+// ---------------------------------------------------------------------------
+// ExportOrchestrator: duplicate asset references are queued exactly once
+// ---------------------------------------------------------------------------
+test('ExportOrchestrator - deduplicates identical asset work per chat', async () => {
+    setupMockJSZip();
+    let processedAssets = 0;
+
+    const previousAssetPipeline = (global as any).AssetPipeline;
+    (global as any).AssetPipeline = class MockAssetPipeline {
+        async processAsset(item: any) {
+            processedAssets++;
+            return {
+                saved: true,
+                localName: item.localName || 'assets/shared.png',
+                failReason: ''
+            };
+        }
+    };
+
+    try {
+        const orchestrator = new ExportOrchestrator();
+        const duplicateImage = {
+            type: 'image',
+            url: 'https://lh3.googleusercontent.com/shared-asset',
+            localName: 'assets/shared.png',
+            fileName: 'shared.png'
+        };
+
+        const result = await orchestrator.run({
+            selected: [{ id: 'asset-chat', title: 'Asset Chat' }],
+            format: 'json',
+            useZip: true,
+            includeAssets: true,
+            worker: {
+                fetchChatDetail: async () => ({
+                    success: true,
+                    chat: {
+                        id: 'asset-chat',
+                        title: 'Asset Chat',
+                        messages: [
+                            { id: 'm1', role: 'user', content: 'one', images: [{ ...duplicateImage }] },
+                            { id: 'm2', role: 'model', content: 'two', images: [{ ...duplicateImage }] }
+                        ]
+                    }
+                })
+            }
+        });
+
+        assert.strictEqual(processedAssets, 1, 'same underlying asset must be processed once');
+        assert.strictEqual(result.totalAssets, 1);
+        assert.strictEqual(result.downloadedAssets, 1);
+        assert.strictEqual(result.failedAttachments.length, 0);
+    } finally {
+        if (previousAssetPipeline === undefined) {
+            delete (global as any).AssetPipeline;
+        } else {
+            (global as any).AssetPipeline = previousAssetPipeline;
+        }
+    }
+});

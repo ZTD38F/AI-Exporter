@@ -44,7 +44,7 @@ test.describe('Deep E2E: Real Export to ZIP & Markdown Content Verification', ()
     ];
     const mockDetailInner = JSON.stringify([
       turns,
-      "tC_sample_token",
+      null, // single-page fixture: no continuation token means complete pagination
       "深度学习反向传播算法详解"
     ]);
     const mockRpcResponse = `)]}'\n\n[["wrb.fr","hNvQHb",${JSON.stringify(mockDetailInner)}]]`;
