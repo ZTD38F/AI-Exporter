@@ -1,0 +1,69 @@
+name: Import AI Exporter upstream v1.5.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/import-upstream-v1.5.1.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout AI-Exporter
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch audited upstream source
+        run: |
+          git clone --depth 1 --branch v1.5.1 https://github.com/OTLFrostA/gemini-exporter.git /tmp/gemini-exporter
+
+      - name: Install exact dependencies and build
+        working-directory: /tmp/gemini-exporter
+        run: |
+          npm ci
+          npm run type-check
+          npm run build
+
+      - name: Import source and runnable extension
+        run: |
+          # Keep this repository's own .git and import workflow.
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='node_modules/' \
+            /tmp/gemini-exporter/ ./
+
+          cat > ORIGIN.md <<'EOF'
+          # Imported origin
+
+          This repository was initialized from the audited public source:
+
+          - Upstream: `OTLFrostA/gemini-exporter`
+          - Tag: `v1.5.1`
+          - Extension version: `1.5.1`
+          - Original license: MIT
+          - Imported for the `ZTD38F/AI-Exporter` project.
+
+          The original CRX audited before this import had SHA-256:
+
+          `bd3a9e7d38bc1496f5e08fdb5e04e023efa3cc8ffb02213df8df9b9c2fe8e900`
+
+          The repository contains source plus a freshly generated `dist/` from the pinned v1.5.1 source and lockfile.
+          EOF
+
+      - name: Commit imported project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing to import."
+            exit 0
+          fi
+          git commit -m "feat: import Gemini Exporter v1.5.1 source and build"
+          git push origin HEAD:main
