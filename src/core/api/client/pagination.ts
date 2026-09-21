@@ -212,21 +212,88 @@ declare global {
      * Traverses and aggregates all turns of a conversation detail with metadata-only retry
      */
     async function getConversationDetail(client: any, conversationId: string, targetSid?: string | null): Promise<DetailParseResult> {
-        let msgs: any[] = [];
-        let token: string | null = null;
-        let first: any = null;
-        let attempts = 0;
-        do {
-            let page: any = await client.fetchConversationPage(conversationId, token, targetSid);
-            if (!first) first = page;
-            msgs = [...page.messages, ...msgs];
-            token = page.nextPageToken || null;
-            attempts++;
-        } while (token && attempts < 20);
+        const MAX_DETAIL_PAGES = 250;
+
+        type PageCollection = {
+            first: any;
+            messages: any[];
+            remainingToken: string | null;
+            pagesFetched: number;
+            stopReason: "end_of_history" | "token_loop" | "safety_limit";
+        };
+
+        const collectPages = async (pageOptions?: any): Promise<PageCollection> => {
+            let msgs: any[] = [];
+            let token: string | null = null;
+            let first: any = null;
+            let pagesFetched = 0;
+            let stopReason: PageCollection["stopReason"] = "end_of_history";
+            const seenTokens = new Set<string>();
+            const seenMsgIds = new Set<string>();
+            const cleanConvId = String(conversationId).replace(/^c_/, "");
+
+            while (pagesFetched < MAX_DETAIL_PAGES) {
+                const page: any = await client.fetchConversationPage(
+                    conversationId,
+                    token,
+                    targetSid,
+                    pageOptions
+                );
+                if (!first) first = page;
+
+                const fresh = (Array.isArray(page?.messages) ? page.messages : []).filter((m: any) => {
+                    const mid = m?.id;
+                    if (mid === null || mid === undefined || mid === "") return true;
+                    const midStr = String(mid);
+                    // Some Gemini payloads use the conversation id as a synthetic
+                    // message id. Keep those entries rather than accidentally
+                    // deduplicating legitimate turns.
+                    if (midStr.replace(/^c_/, "") === cleanConvId) return true;
+                    if (seenMsgIds.has(midStr)) return false;
+                    seenMsgIds.add(midStr);
+                    return true;
+                });
+                msgs = [...fresh, ...msgs];
+                pagesFetched++;
+
+                const nextToken: string | null = page?.nextPageToken || null;
+                if (!nextToken) {
+                    token = null;
+                    stopReason = "end_of_history";
+                    break;
+                }
+
+                if (seenTokens.has(nextToken)) {
+                    token = nextToken;
+                    stopReason = "token_loop";
+                    break;
+                }
+
+                seenTokens.add(nextToken);
+                token = nextToken;
+            }
+
+            if (token && pagesFetched >= MAX_DETAIL_PAGES && stopReason !== "token_loop") {
+                stopReason = "safety_limit";
+            }
+
+            return {
+                first,
+                messages: msgs,
+                remainingToken: token,
+                pagesFetched,
+                stopReason
+            };
+        };
+
+        let collected = await collectPages();
+        let first = collected.first;
+        let msgs = collected.messages;
+
         if (!first) throw new Error("no data");
 
         // If the primary request returned metadata-only (no messages, but raw data present),
-        // do one retry with DETAIL-only RPC and alternative innerDetail params.
+        // retry the same complete pagination flow using DETAIL-only RPC and alternate params.
         if (!msgs.length && first._raw) {
             const inner = first._raw;
             const looksMetadataOnly = Array.isArray(inner) && inner[0] === null && inner[1] === null
@@ -234,13 +301,14 @@ declare global {
                 && typeof inner[2][0]?.[0] === "string" && inner[2][0][0].startsWith("c_");
             if (looksMetadataOnly) {
                 try {
-                    const retry = await client.fetchConversationPage(conversationId, null, targetSid, { detailOnly: true, altParams: true });
-                    if (retry && retry.messages && retry.messages.length > 0) {
-                        const primaryTitle = first.title;
-                        const primaryTitles = first.titles;
-                        const primarySource = first.titleSource;
-                        msgs = retry.messages;
-                        first = retry;
+                    const primaryTitle = first.title;
+                    const primaryTitles = first.titles;
+                    const primarySource = first.titleSource;
+                    const retryCollected = await collectPages({ detailOnly: true, altParams: true });
+                    if (retryCollected.first && retryCollected.messages.length > 0) {
+                        collected = retryCollected;
+                        first = retryCollected.first;
+                        msgs = retryCollected.messages;
                         if (primarySource === "rpc" && primaryTitle && primaryTitle !== "未命名对话" && first.titleSource !== "rpc") {
                             first.title = primaryTitle;
                             first.titles = { ...(first.titles || {}), ...(primaryTitles || {}) };
@@ -255,11 +323,13 @@ declare global {
             }
         }
 
+        const paginationComplete = collected.stopReason === "end_of_history" && !collected.remainingToken;
         let allTimestamps = msgs.map(m => m.timestamp).filter((x: any): x is number => typeof x === "number" && Number.isFinite(x) && x > 0);
         let minTs = allTimestamps.length ? Math.min(...allTimestamps) : (first.createdAt || null);
         let maxTs = allTimestamps.length ? Math.max(...allTimestamps) : (first.updatedAt || minTs || null);
         let attachmentCount = msgs.reduce((a: number, m: any) => a + (m.attachmentCount || 0), 0);
         let cleanId = String(conversationId).replace(/^c_/, "").trim();
+
         return {
             ...first,
             id: cleanId,
@@ -269,7 +339,16 @@ declare global {
             createdAt: minTs,
             chatTime: maxTs,
             updatedAt: maxTs,
-            attachmentCount
+            attachmentCount,
+            // Do not leak the first page's token into the aggregate result.
+            // A non-null token here now always means the aggregate is incomplete.
+            nextPageToken: paginationComplete ? null : collected.remainingToken,
+            pagination: {
+                pagesFetched: collected.pagesFetched,
+                complete: paginationComplete,
+                stopReason: collected.stopReason,
+                remainingToken: paginationComplete ? null : collected.remainingToken
+            }
         };
     }
 
