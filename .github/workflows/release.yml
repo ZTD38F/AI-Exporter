@@ -1,0 +1,72 @@
+name: Build Extension Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build verified extension ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Verify source
+        run: |
+          npm run type-check
+          npm run build
+          npm run test:unit
+
+      - name: Package runtime-only extension
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./manifest.json').version")"
+          ZIP_NAME="ai-exporter-v${VERSION}.zip"
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+
+          zip -r "${ZIP_NAME}" \
+            manifest.json \
+            _locales \
+            icons \
+            lib \
+            LICENSE \
+            THIRD_PARTY_NOTICES.md \
+            README.md \
+            README_zh.md
+
+          zip -r "${ZIP_NAME}" src -x 'src/*.ts' \
+                                   'src/*/*.ts' \
+                                   'src/*/*/*.ts' \
+                                   'src/*/*/*/*.ts' \
+                                   'src/README.md'
+
+          zip -r "${ZIP_NAME}" dist \
+            -i 'dist/background/background.js' \
+               'dist/content/content.js' \
+               'dist/content/hook.js' \
+               'dist/ui/options.js' \
+               'dist/ui/popup.js'
+
+          sha256sum "${ZIP_NAME}" | tee "${ZIP_NAME}.sha256"
+          unzip -l "${ZIP_NAME}"
+
+      - name: Upload verified package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-exporter-package
+          path: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.ZIP_NAME }}.sha256
+          if-no-files-found: error
+          retention-days: 14
