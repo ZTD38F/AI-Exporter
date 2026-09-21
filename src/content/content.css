@@ -1,0 +1,87 @@
+#geminiExportBadge {
+    position: fixed;
+    top: 68px;
+    right: 20px;
+    z-index: 2147483647;
+    background: #0f101a;
+    color: #f1f3fc;
+    border: 1px solid #282c44;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font: 12px/1.2 ui-sans-system, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    cursor: grab;
+    user-select: none;
+    white-space: nowrap;
+    min-width: 88px;
+    touch-action: none;
+    transition: background-color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+#geminiExportBadge:hover {
+    background: #181a29;
+    border-color: #4f46e5;
+}
+
+#geminiExportBadge.dragging {
+    cursor: grabbing !important;
+    user-select: none !important;
+    transition: none !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    opacity: 0.92;
+}
+
+#geminiExportBadge:active:not(.dragging) {
+    transform: scale(0.97);
+}
+
+#geminiExportBadgeText {
+    display: inline-block;
+}
+
+#geminiExportBadge .pulse {
+    width: 7px;
+    height: 7px;
+    background: #06b6d4;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 6px rgba(6, 182, 212, 0.4);
+    opacity: 0.85;
+}
+
+#geminiExportBadge.syncing .pulse {
+    animation: geminiExportPulse 1.4s infinite ease-in-out alternate;
+}
+
+@keyframes geminiExportPulse {
+    0% { opacity: 0.45; transform: scale(0.92); }
+    100% { opacity: 1; transform: scale(1.08); }
+}
+
+#geminiExportBadge.live-saved {
+    border-color: #10b981;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+#geminiExportBadge.live-saved .pulse {
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+#geminiExportBadge.live-save-warning {
+    border-color: #f59e0b;
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.45);
+    background: #1c150b;
+    color: #fde68a;
+}
+
+#geminiExportBadge.live-save-warning .pulse {
+    background: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+    animation: geminiExportPulse 1s infinite ease-in-out alternate;
+}
+

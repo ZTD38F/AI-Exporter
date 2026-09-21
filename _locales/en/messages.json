@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Gemini Exporter - Bulk Export All Chats",
+    "description": "The name of the extension."
+  },
+  "extDesc": {
+    "message": "Open-source & private: bulk export Google Gemini chats & Takeout archives to Markdown, JSON or ZIP with images. 100% client-side.",
+    "description": "The description of the extension."
+  }
+}

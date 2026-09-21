@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gemini Exporter</title>
+<link rel="stylesheet" href="/src/ui/tour/tourGuide.css">
+<style>
+  :root{
+    --bg:#090a10;
+    --card:#12131d;
+    --card-inner:#0e0f17;
+    --border:#222436;
+    --border-focus:#3b4066;
+    --text:#f1f3fc;
+    --muted:#8a92b2;
+    --accent:#4f46e5;
+    --accent2:#06b6d4;
+    --ok:#10b981;
+    --warn:#f59e0b;
+  }
+  *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;line-height:1.4;}
+  body{margin:0 auto;background:var(--bg);color:var(--text);padding:18px;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex:none;height:32px;}
+  h1{font-size:18px;margin:0;font-weight:700;display:flex;align-items:center;}
+  .sub{color:var(--muted);font-size:12px;margin-top:4px}
+  .row{display:flex;gap:14px;flex:1;overflow:hidden;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:0;display:flex;flex-direction:column;}
+  .card-left{flex:0 0 380px !important;width:380px !important;min-width:380px !important;max-width:380px !important;gap:12px;overflow:hidden;}
+  .card-right{flex:1 1 0 !important;min-width:0 !important;overflow:hidden;}
+  .label{font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:.02em}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  button{border:0;border-radius:10px;padding:9px 14px;font-weight:600;cursor:pointer;transition:all 0.15s ease;white-space:nowrap;box-sizing:border-box;font-size:13px;display:inline-flex;align-items:center;justify-content:center;}
+  .primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;box-shadow:0 2px 10px rgba(79,70,229,0.3)}
+  .primary:hover{opacity:.95;transform:translateY(-1px);box-shadow:0 4px 14px rgba(6,182,212,0.35)}
+  .primary:active{transform:translateY(0)}
+  .ghost{background:#171926;color:var(--text);border:1px solid var(--border)}
+  .ghost:hover{background:#1f2233;border-color:var(--border-focus)}
+  button.ok{background:var(--ok);color:#062419}
+  .small{padding:4px 10px;font-size:12px;height:28px;border-radius:6px;}
+  button:disabled{opacity:.45;pointer-events:none}
+  .feedback-card{margin-top:auto;padding:10px 12px;background:var(--card-inner);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;text-decoration:none;color:var(--muted);cursor:pointer;transition:all 0.15s ease;}
+  .feedback-card:hover{background:#171926;border-color:var(--border-focus);color:var(--text);}
+  .feedback-card:hover .feedback-arrow{opacity:1;transform:translate(1px,-1px);color:var(--accent2);}
+  .feedback-card:active{transform:scale(0.99);}
+  .feedback-arrow{font-size:12px;opacity:0.6;flex:none;transition:opacity 0.15s ease,transform 0.15s ease,color 0.15s ease;}
+  input[type=checkbox]{accent-color:var(--accent)}
+  input[type=checkbox].toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 32px;
+    height: 18px;
+    background: #1e2030;
+    border-radius: 18px;
+    position: relative;
+    cursor: pointer;
+    outline: none;
+    margin: 0;
+    flex: none;
+    transition: background 0.2s;
+  }
+  input[type=checkbox].toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  input[type=checkbox].toggle:checked {
+    background: linear-gradient(135deg,var(--accent),var(--accent2));
+  }
+  input[type=checkbox].toggle:checked::after {
+    transform: translateX(14px);
+    background: white;
+  }
+  /* Modern Sleek WebKit Scrollbars (No standard scrollbar-color/width to avoid Chrome disabling WebKit engine) */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #333857;
+    border-radius: 99px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    min-height: 48px;
+    transition: background-color 0.2s;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4f588c;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background: #6366f1;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .list{overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:8px;background:var(--card-inner)}
+  #list::-webkit-scrollbar,
+  .list::-webkit-scrollbar {
+    width: 10px !important;
+  }
+  #list::-webkit-scrollbar-track,
+  .list::-webkit-scrollbar-track {
+    background: rgba(14, 15, 23, 0.8) !important;
+    border-radius: 99px !important;
+    margin: 4px 0 !important;
+  }
+  #list::-webkit-scrollbar-thumb,
+  .list::-webkit-scrollbar-thumb {
+    background: #3b4266 !important;
+    border-radius: 99px !important;
+    border: 2px solid rgba(14, 15, 23, 0.8) !important;
+    background-clip: padding-box !important;
+    min-height: 48px !important;
+  }
+  #list::-webkit-scrollbar-thumb:hover,
+  .list::-webkit-scrollbar-thumb:hover {
+    background: #596499 !important;
+  }
+  #list::-webkit-scrollbar-thumb:active,
+  .list::-webkit-scrollbar-thumb:active {
+    background: #6366f1 !important;
+  }
+  .item{display:flex;gap:8px;padding:8px;border-radius:8px;align-items:flex-start;transition:background 0.15s;cursor:pointer;user-select:none}
+  .item:hover{background:#1a1c2b}
+  .item input{margin-top:4px}
+  .item .title{flex:1;font-size:13px;line-height:1.35}
+  .item .meta{font-size:11px;color:var(--muted)}
+  .progress{height:8px;background:#161824;border-radius:99px;overflow:hidden;margin:10px 0;display:none}
+  .bar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .25s}
+  .log{font-size:12px;color:var(--muted);white-space:pre-wrap;max-height:160px;overflow:auto;background:var(--card-inner);border:1px solid var(--border);border-radius:8px;padding:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+  .badge{display:inline-block;background:#171929;border:1px solid var(--border);color:#a5b4fc;padding:2px 8px;border-radius:99px;font-size:11px;margin-left:6px}
+  select{background:var(--card-inner);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px}
+  select:focus{border-color:var(--border-focus);outline:none}
+  .stat{font-size:12px;color:var(--muted)}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  body:not(.dev-mode) .dev-only { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <h1>Gemini Exporter <span id="ver" class="badge"></span> <span id="syncCount" class="badge"></span></h1>
+    <select id="accountSlotSelect" style="display:none; font-size:11px; padding:3px 6px; border-radius:6px; background:var(--card-inner); border:1px solid var(--border); color:var(--text); cursor:pointer;">
+      <option value="u0" data-i18n="defaultAccount">默认账号 (u0)</option>
+    </select>
+  </div>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <button id="btnTourGuide" class="ghost small" style="padding:2px 10px; font-size:11px; height:26px; border-radius:20px; gap:4px; display:inline-flex; align-items:center; cursor:pointer;" title="新手教程 / Onboarding Tour" data-i18n-title="tourBtnGuideTip">
+      <span>💡</span> <span data-i18n="tourBtnGuide">新手引导</span>
+    </button>
+    <div style="display:inline-flex; align-items:center; gap:6px; user-select:none; background:var(--card-inner); border:1px solid var(--border); padding:3px 8px; border-radius:20px;" title="开发者模式 (诊断) / Developer Mode">
+      <span id="labelDevMode" style="font-size:11px; font-weight:600; color:var(--muted); transition:color 0.2s; cursor:pointer;">Dev</span>
+      <input type="checkbox" id="devToggle" class="toggle">
+    </div>
+    <div style="display:inline-flex; align-items:center; gap:6px; user-select:none; background:var(--card-inner); border:1px solid var(--border); padding:3px 8px; border-radius:20px;" title="Switch Language / 切换语言">
+      <span id="labelLangZh" style="font-size:11px; font-weight:600; color:var(--text); transition:color 0.2s; cursor:pointer;">中</span>
+      <input type="checkbox" id="langToggle" class="toggle">
+      <span id="labelLangEn" style="font-size:11px; font-weight:600; color:var(--muted); transition:color 0.2s; cursor:pointer;">EN</span>
+    </div>
+  </div>
+</header>
+
+<div class="row">
+  <div class="card card-left">
+    <div class="label" style="flex:none; display:flex; align-items:center;">
+      <span data-i18n="exportSettings">导出设置</span>
+      <span id="liveSaveStatusTag" class="badge" style="font-size:10px; color:#10b981; border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.08); margin-left:auto;" data-i18n="liveSaveActive">已就绪</span>
+    </div>
+    
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; background:var(--card-inner); padding:12px; border-radius:10px; border:1px solid var(--border);">
+      <label style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; font-size:13px; height:32px;">
+        <span style="color:var(--muted); white-space:nowrap;" data-i18n="format">格式</span>
+        <select id="format" style="flex:1; height:32px; padding:4px 8px;">
+          <option value="markdown" selected data-i18n="fmtMarkdown">Markdown (.md)</option>
+          <option value="json_openai" data-i18n="fmtJsonOpenAI">JSON (OpenAI格式)</option>
+          <option value="json" data-i18n="fmtJsonStandard">JSON (插件标准)</option>
+          <option value="json_raw" id="optFormatRaw" class="dev-only" data-i18n="fmtJsonRaw">JSON (Gemini原始)</option>
+        </select>
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; font-size:12px; cursor:pointer; height:24px; white-space:nowrap; overflow:hidden;">
+        <input type="checkbox" id="skipExported" class="toggle" checked>
+        <span data-i18n="skipExported" style="overflow:hidden; text-overflow:ellipsis;">跳过已导出</span>
+        <button id="btnClearExported" class="ghost" style="padding:1px 6px; font-size:10px; height:20px; line-height:18px; margin-left:auto; border-radius:4px; flex:none;" data-i18n="btnClearExported" data-i18n-title="btnClearExportedTip" title="清除历史导出标记，允许重新导出全部">清除</button>
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; font-size:12px; cursor:pointer; height:24px; white-space:nowrap;" data-i18n-title="includeAssetsTip" title="下载对话中的图片与文件附件">
+        <input type="checkbox" id="includeAssets" class="toggle" checked>
+        <span data-i18n="includeAssets">下载附件</span>
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; font-size:12px; cursor:pointer; height:24px; white-space:nowrap;" data-i18n-title="includeZipTip" title="打包为 ZIP 文件下载">
+        <input type="checkbox" id="includeZip" class="toggle" checked>
+        <span data-i18n="includeZip">打包成 ZIP</span>
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; font-size:12px; cursor:pointer; height:24px; white-space:nowrap;" data-i18n-title="liveSaveDiskTip" title="每轮对话完成后自动调用本地文件写入器，将单篇 Markdown 直接同步写入指定文件夹">
+        <input type="checkbox" id="liveSaveDiskToggle" class="toggle">
+        <span data-i18n="liveSaveDisk">实时落盘本地</span>
+      </label>
+    </div>
+
+    <div id="dirBox" style="display:flex; align-items:center; gap:10px; background:var(--card-inner); padding:8px 12px; border-radius:10px; border:1px solid var(--border); height:46px; box-sizing:border-box; transition: opacity 0.25s, filter 0.25s;">
+      <button id="btnSetDir" class="ghost small" style="white-space:nowrap; flex:none;" data-i18n="btnSetDir">设置目录...</button>
+      <div id="dirLabel" class="stat" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="当前目录" data-i18n="dirNotSet">未设置目录</div>
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:4px; height:40px;">
+      <button id="btnExport" class="primary" style="flex:1; height:40px; padding:0;" data-i18n="btnExportZip">导出选中 → ZIP</button>
+      <button id="btnExportJson" class="ghost dev-only" style="flex:1; height:40px; padding:0;" data-i18n="btnOnlyJson">仅导列表 JSON</button>
+    </div>
+    
+    <div style="text-align:center; min-height:28px;">
+      <button id="btnCancel" class="ghost small" style="display:none; border-color:#5a2a2a; color:#f0a0a0; margin:0 auto;" data-i18n="btnCancel">终止导出</button>
+    </div>
+    
+    <div id="progWrap" class="progress"><div id="bar" class="bar"></div></div>
+    <div id="progText" class="stat" style="text-align:center; min-height:16px; line-height:16px;"></div>
+
+    <div id="exportFailureCard" style="display:none; margin-top:6px; padding:8px 10px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); border-radius:8px; font-size:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <span id="exportFailureTitle" style="color:var(--danger, #f87171); font-weight:600;" data-i18n="exportFailureBannerTitle">部分会话导出失败</span>
+        <div style="display:flex; gap:6px;">
+          <button id="btnRetryFailed" class="small ghost" style="padding:2px 8px; font-size:11px; border-color:rgba(239,68,68,0.4); color:var(--danger, #f87171);" data-i18n="btnRetryFailed">重试失败项</button>
+          <button id="btnDismissFailure" class="small ghost" style="padding:2px 6px; font-size:11px; color:var(--text-muted);" title="关闭">✕</button>
+        </div>
+      </div>
+      <div id="exportFailureList" style="max-height:80px; overflow-y:auto; color:var(--text-muted); font-size:11px; line-height:1.4;"></div>
+    </div>
+
+    <div id="logSection" class="dev-only" style="display:flex; flex-direction:column; gap:8px; flex:1; overflow:hidden; margin-top:4px;">
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; flex:none;">
+        <select id="logLevel" title="级别" style="font-size:11px; padding:4px 6px; border-radius:6px; background:var(--card-inner);">
+          <option value="all" data-i18n="logLevelAll">全部日志</option>
+          <option value="info" data-i18n="logLevelInfo">简要日志</option>
+          <option value="warn" data-i18n="logLevelWarn">警告及错误</option>
+          <option value="error" data-i18n="logLevelError">仅错误</option>
+        </select>
+        <input id="logFilter" type="text" placeholder="过滤关键字 (-排除)" data-i18n-placeholder="logFilterPlaceholder" style="flex:1; min-width:80px; background:var(--card-inner); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:4px 8px; font-size:11px">
+        <button id="btnCopyLog" class="ghost small" style="padding:3px 8px; font-size:11px;" data-i18n="btnCopyLog">复制</button>
+        <button id="btnClearLog" class="ghost small" style="padding:3px 8px; font-size:11px;" data-i18n="btnClearLog">清空</button>
+        <button id="btnExportDiag" class="ghost small dev-only" data-i18n="btnExportDiag" data-i18n-title="btnExportDiagTip" title="导出本次同步底层的详细诊断报告 (包含翻页游标、请求体与停滞原因)" style="color:#78a9ff; padding:3px 8px; font-size:11px;">导出诊断</button>
+      </div>
+      <div id="log" class="log" style="flex:1; overflow-y:auto;" data-i18n="logReady">就绪</div>
+    </div>
+
+    <a href="https://tally.so/r/Y56ZBB" target="_blank" rel="noopener noreferrer" id="feedbackBox" class="feedback-card" data-i18n-title="btnFeedbackTip" title="前往表单提交反馈或新功能建议">
+      <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:inherit; min-width:0;">
+        <span style="font-size:13px; flex:none;">💬</span>
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" data-i18n="feedbackPrompt">遇到问题或有新建议？</span>
+      </div>
+      <span class="feedback-arrow">↗</span>
+    </a>
+  </div>
+
+  <div class="card card-right">
+    <div class="label" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px; margin-top:2px; flex:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; height:28px; gap:8px;">
+        <span style="display:flex; align-items:center; white-space:nowrap;"><span data-i18n="filterAll">会话列表</span> <span class="stat" id="lastSync" style="margin-left:8px;"></span></span>
+        <div style="display:flex; gap:6px; align-items:center; flex:1; max-width:260px; margin:0 4px;">
+          <input id="chatSearchInput" type="text" placeholder="搜索标题 / ID..." data-i18n-placeholder="searchPlaceholder" style="width:100%; height:26px; background:var(--card-inner); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:2px 8px; font-size:11px; outline:none;">
+        </div>
+        <div style="display:flex; gap:6px; align-items:center; white-space:nowrap;">
+          <span id="selectedStat" class="stat" style="margin-right:4px; white-space:nowrap;">已选 0 条</span>
+          <button id="btnSelectAll" class="ghost small" style="padding:2px 8px; font-size:11px;" data-i18n="selectAll">全选</button>
+          <button id="btnSelectNone" class="ghost small" style="padding:2px 8px; font-size:11px;" data-i18n="selectNone">全不选</button>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; padding-bottom:4px; border-bottom:1px solid var(--border); height:34px; box-sizing:border-box;">
+        <button id="btnIncrementalScan" class="primary small" data-i18n="btnIncrementalScan" data-i18n-title="btnIncrementalScanTip" title="快速拉取最近更新的会话（日常推荐，通常仅需 1~2 秒）">同步最新会话</button>
+        <button id="btnDeepScan" class="ghost small" data-i18n="btnDeepScan" data-i18n-title="btnDeepScanTip" title="地毯式扫描并同步该账号下的所有历史会话（初次使用或换账号时推荐）">全量拉取历史</button>
+        <button id="btnImportTakeout" class="ghost small" data-i18n="btnImportTakeout" data-i18n-title="btnImportTakeoutTip" title="读取 Google Takeout 压缩包，自动补全历史无法扫描的远古对话，并加载离线附件兜底池">📥 导入 Takeout</button>
+        <input type="file" id="takeoutFileInput" accept=".zip" style="display:none;">
+        <button id="btnStopScan" class="ghost small" style="display:none; color:#ff8a8a; border-color:#5a2a2a;" data-i18n="btnStopScan" title="随时停止当前同步，已拉取的数据会完整保留">终止同步</button>
+        <div style="flex:1;"></div>
+        <button id="btnClearAll" class="ghost small" style="color:#ff8a8a" data-i18n="btnClearAll" title="清空本地所有会话数据">清空全部</button>
+      </div>
+    </div>
+    <!-- 导出状态与中断恢复横幅 (Export Session Recovery Banner) -->
+    <div id="exportSessionBanner" style="display:none; background:var(--card-inner); border:1px solid #3b4066; border-radius:10px; padding:10px 14px; margin-bottom:10px; align-items:center; justify-content:space-between; gap:12px; font-size:12px; flex:none;">
+      <div id="exportSessionText" style="color:var(--text); flex:1; overflow:hidden; text-overflow:ellipsis;"></div>
+      <div style="display:flex; gap:8px; align-items:center; flex:none;">
+        <button id="btnResumeExport" class="primary small" style="padding:3px 10px; font-size:11px;" data-i18n="btnResumeExport">▶️ 继续导出未完成项</button>
+        <button id="btnDismissExportBanner" class="ghost small" style="padding:3px 8px; font-size:11px;" data-i18n="btnDismissBanner">✕ 关闭</button>
+      </div>
+    </div>
+    <div id="list" class="list" style="flex:1; margin:0; overflow-y:auto; padding-right:4px;">暂无会话数据，请打开 gemini.google.com 页面同步。</div>
+  </div>
+</div>
+
+<!-- 大批量导出模式建议弹窗 (Direct Write Suggestion Modal) -->
+<div id="directWriteModal" style="display:none; position:fixed; inset:0; z-index:10000; align-items:center; justify-content:center; background:rgba(0,0,0,0.65); backdrop-filter:blur(3px);">
+  <div style="background:var(--card); border:1px solid var(--border-focus); border-radius:14px; width:450px; max-width:92vw; padding:20px; box-shadow:0 12px 36px rgba(0,0,0,0.5); color:var(--text); display:flex; flex-direction:column; gap:14px; position:relative; box-sizing:border-box;">
+    <button id="btnDirectWriteClose" style="position:absolute; top:12px; right:12px; background:transparent; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:4px 8px; border-radius:4px; line-height:1;" title="Close">✕</button>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:15px; font-weight:700;" data-i18n="directWritePromptTitle">💡 批量导出模式建议</span>
+    </div>
+    <div id="directWritePromptText" style="font-size:13px; line-height:1.6; color:var(--muted);" data-i18n="directWritePromptDesc">
+      检测到您当前勾选了较多会话。由于大批量导出包含大量附件图片，在浏览器内存中打包 ZIP 可能会消耗较多资源；推荐切换至【本地目录直写】模式：每个会话与图片抓取后即刻写入电脑本地硬盘，零内存堆积，更加稳定安全。
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
+      <button id="btnModalSwitchFolder" class="primary" style="height:36px; font-size:13px;" data-i18n="btnSwitchToFolder">📁 选择本地目录并开始导出</button>
+      <button id="btnModalContinueZip" class="ghost" style="height:36px; font-size:13px;" data-i18n="btnContinueZip">继续使用 ZIP 导出</button>
+    </div>
+  </div>
+</div>
+
+<!-- Google 600条上限提示与 Takeout 导入建议弹窗 (Takeout Suggestion Modal on Google Limit) -->
+<div id="takeoutLimitModal" style="display:none; position:fixed; inset:0; z-index:10000; align-items:center; justify-content:center; background:rgba(0,0,0,0.65); backdrop-filter:blur(3px);">
+  <div style="background:var(--card); border:1px solid var(--border-focus); border-radius:14px; width:480px; max-width:92vw; padding:20px; box-shadow:0 12px 36px rgba(0,0,0,0.5); color:var(--text); display:flex; flex-direction:column; gap:14px; position:relative; box-sizing:border-box;">
+    <button id="btnTakeoutLimitClose" style="position:absolute; top:12px; right:12px; background:transparent; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:4px 8px; border-radius:4px; line-height:1;" title="Close">✕</button>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span id="takeoutLimitPromptTitle" style="font-size:15px; font-weight:700;" data-i18n="takeoutLimitPromptTitle">⚠️ 达到 Google 云端拉取上限</span>
+    </div>
+    <div id="takeoutLimitPromptText" style="font-size:13px; line-height:1.6; color:var(--muted);">
+      检测到已拉取约 600 条历史会话并触发 Google 官方接口限制。Google 服务端游标链已达上限，无法通过网页在线加载更早历史。推荐使用 Google Takeout 导出完整官方归档包，并点击下方按钮一键导入全部历史数据与离线附件。
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
+      <button id="btnModalImportTakeout" class="primary" style="height:36px; font-size:13px;" data-i18n="btnModalImportTakeout">📥 选择 Takeout ZIP 导入全部历史</button>
+      <a id="btnModalOpenTakeoutWeb" href="https://takeout.google.com/settings/takeout/custom/gemini" target="_blank" class="ghost" style="height:36px; font-size:13px; display:inline-flex; align-items:center; justify-content:center; text-decoration:none; gap:6px;" data-i18n="btnModalOpenTakeoutWeb">🌐 前往 Google Takeout (已自动勾选 Gemini)</a>
+      <button id="btnModalDismissTakeout" class="ghost" style="height:36px; font-size:13px;" data-i18n="btnModalDismissTakeout">我知道了，不再提示</button>
+    </div>
+  </div>
+</div>
+
+<!-- PR5: JSZip stays external (UMD global), bundled workbench follows -->
+<script src="/lib/jszip.min.js"></script>
+<script src="/dist/ui/options.js"></script>
+</body>
+</html>

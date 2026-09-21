@@ -1,0 +1,192 @@
+[
+  {
+    "id": "cyberpunk_astro_shiba",
+    "title": "赛博朋克柴犬宇航员火星探险",
+    "domain": "ai_generative_art",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "description": "测试 Gemini 原生 AI 生图 (Imagen)、微调与离线媒体资产打包",
+    "turns": [
+      "请帮我生成一张图片：一只可爱的柴犬穿着未来高科技宇航服在火星地表漫步，头盔反射出星光，背景是巨大的红色陨石坑与火星基地。",
+      "请为这只火星探险柴犬构思一段 300 字的科幻微小说，描述它在火星土壤中发现一株发光神秘植物的经过。",
+      "请基于刚才的故事，再帮我生成一张图片：这只柴犬宇航员在温暖的火星基地居住舱内，脱下头盔在观测窗边喝着热饮看着火星日落。",
+      "为这本科幻绘本设计 5 个章节目录，并给出每个章节的插画构思与核心冲突。",
+      "请总结在极端深空辐射环境下，生物宇航服需要具备的 3 大被动防护材料与生命维持技术。"
+    ],
+    "consumed_at": "2026-09-10T11:58:39.082136"
+  },
+  {
+    "id": "quantum_bell_inequality",
+    "title": "贝尔不等式与量子纠缠理论推导",
+    "domain": "quantum_physics",
+    "features": [
+      "latex",
+      "tables",
+      "equations"
+    ],
+    "description": "测试复杂 LaTeX 数学公式矩阵、KaTeX 块渲染与多维对比表格",
+    "turns": [
+      "请详细推导 CHSH 形式的贝尔不等式 (Bell's inequality)，使用标准 LaTeX 公式展示纠缠态下的量子力学期望值计算，并解释如何违背局域实在论的界限 (2 vs 2√2)。",
+      "请使用 Markdown 表格，从纠缠自由度、传输介质、误码率阈值、当前世界纪录四个维度对比基于光纤与基于卫星的量子密钥分发 (QKD) 方案。",
+      "请写出利用两比特纠缠态实现量子隐形传态 (Quantum Teleportation) 的完整测量基与态演化矩阵推导。",
+      "阐述退相干时间 (T1 与 T2) 对超导量子比特门保真度的影响，并列出主流表面码 (Surface Code) 的纠错阈值公式。",
+      "为经典物理学家写一段关于‘量子非定域性并不违背狭义相对论因果律’的严谨逻辑辩护。"
+    ],
+    "consumed_at": "2026-09-10T11:58:39.082136"
+  },
+  {
+    "id": "clockwork_greenhouse_art",
+    "title": "维多利亚机械发条温室与黄铜植物插画",
+    "domain": "ai_generative_art",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "description": "测试细腻艺术风格生图 (Imagen)、机械设计与长叙事",
+    "turns": [
+      "请帮我生成一张图片：一座充满 19 世纪维多利亚风格的宏伟全玻璃机械温室内部，无数精致的黄铜齿轮与发条机构正在驱动发光的机械植物花朵缓缓绽放，阳光透过拱形玻璃洒下斑驳光影，超高清写实细节。",
+      "请描写这座温室背后的守护者——一位发明家老植物学家的日常工坊日志，记录他调校‘发条兰花’共振频率的笔记。",
+      "请再帮我生成一张图片：这位白发苍苍的老植物学家戴着黄铜单片放大镜，在布满草稿与铜质零件的实木工作台上用精细镊子组装机械花蕊的特写画面。",
+      "为这座奇迹温室设计 3 种不同功能的机械仿生植物（如吸附晨露的齿轮叶、净化空气的发条仙人掌），详细说明其传动原理。",
+      "如果将这个场景改编为一部独立冒险解谜游戏，请设计第一章的核心谜题机制。"
+    ],
+    "consumed_at": "2026-09-10T12:13:31.770041"
+  },
+  {
+    "id": "high_freq_orderbook_engine",
+    "title": "高频量化交易订单簿与撮合引擎架构",
+    "domain": "quantitative_finance",
+    "features": [
+      "tables",
+      "code",
+      "benchmarks"
+    ],
+    "description": "测试高密度结构化表格、低延迟算法代码与内存对齐分析",
+    "turns": [
+      "请详细解析高频量化交易中 Level 2 与 Level 3 订单簿 (Order Book) 的底层数据结构设计，为什么通常选用双向环形链表 + 价格跳表 (SkipList) 或 Flat Array？",
+      "请用一个结构化的 Markdown 表格，对比 FIFO 价格时间优先撮合与 Pro-Rata 比例分配撮合在流动性激励与撤单延迟惩罚上的机制异同。",
+      "请使用 C++17 或 Rust 编写一个无锁无堆分配 (Zero-Allocation) 的撮合引擎环形缓冲区 (Disruptor Ring Buffer) 核心框架代码片段。",
+      "如何针对 CPU L1/L2 缓存行 (Cache Line 64B) 对订单结构体进行内存对齐和伪共享 (False Sharing) 消除？给出具体代码注解。",
+      "在高频做市策略 (Market Making) 中，Avellaneda-Stoikov 存货风险模型的报价公式是如何推导的？"
+    ],
+    "consumed_at": "2026-09-10T12:13:31.770041"
+  },
+  {
+    "id": "bioluminescent_abyss_expedition",
+    "title": "马里亚纳深渊超深渊带发光生物科考",
+    "domain": "marine_biology",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "description": "测试深海超高压生态描述、深海摄影级 AI 生图与环境适应性分析",
+    "turns": [
+      "请帮我生成一张图片：在马里亚纳海沟 10000 米深渊的黑暗深海中，科考深潜器的探照灯光柱照亮了一只身躯半透明、周身发出璀璨梦幻蓝绿色荧光的超现实深海巨型水母，背景是沉积物海底与深海热泉喷口。",
+      "以深潜科学家的第一人称口吻，撰写一段 300 字的下潜日志，记录在舷窗外目睹这只发光生物时的震撼与实时传感器数据（压强、水温、盐度）。",
+      "请基于刚才的发现，再帮我生成一张图片：深潜器的机械臂小心翼翼地使用无损吸入式采样器，在幽暗海水中提取该发光生物组织样本的高清科研微距特写画面。",
+      "从生物物理学角度，详细解释深海生物如何依靠三甲胺氧化物 (TMAO) 和高比例不饱和脂肪酸抵御超过 1000 个大气压的分子构象崩塌。",
+      "设计一套模拟万米深渊高压超低温环境下维持深海微生物活性的实验室培养舱工程架构。"
+    ],
+    "consumed_at": "2026-09-10T12:28:46.956765"
+  },
+  {
+    "id": "compiler_ast_typechecker",
+    "title": "现代编译原理：Mini-Lisp 语法树与双向类型推导",
+    "domain": "compiler_architecture",
+    "features": [
+      "code",
+      "recursive_descent",
+      "algorithms"
+    ],
+    "description": "测试多语言编译器前端架构、递归下降语法解析与类型检查代码",
+    "turns": [
+      "请为包含基础算术、Lambda 匿名函数与 let 绑定的 Mini-Lisp 语言定义完整的 BNF 语法文法范式。",
+      "使用 TypeScript 编写一个纯函数式的 AST 节点接口定义，并实现一个手写递归下降词法与语法解析器 (Tokenizer + Parser)。",
+      "在刚才的 AST 之上实现一个双向类型推导 (Bidirectional Type Checking) 检查器，支持推断类型 (Synthesize) 与检查类型 (Check) 的相互转换。",
+      "展示当用户代码出现类型不匹配（例如将函数传递给加法操作）时，编译器如何打印带行号、列号与波浪线高亮的友好诊断信息。",
+      "对比解释基于栈的虚拟机字节码 (如 JVM/Wasm) 与基于寄存器的虚拟机字节码 (如 LuaJIT) 在解释循环吞吐上的根本差异。"
+    ],
+    "consumed_at": "2026-09-10T12:28:46.956765"
+  },
+  {
+    "id": "gothic_steampunk_library",
+    "title": "哥特蒸汽朋克机械环形图书馆",
+    "domain": "ai_generative_art",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "description": "测试复杂建筑透视、蒸汽机械构件与宏大空间 AI 生图",
+    "turns": [
+      "请帮我生成一张图片：一座拥有千米穹顶的哥特式蒸汽朋克环形大图书馆，书架沿螺旋墙壁直插云霄，黄铜气动轨道胶囊在书架间穿梭运送古籍，柔和的蒸汽与金黄色烛光交织，超逼真建筑空间透视。",
+      "描写一次在午夜突发的‘重力倒转书籍漂移事件’，图书管理员如何操作蒸汽升降索挽救一本上古星图羊皮纸手卷。",
+      "请再帮我生成一张图片：年轻的见习女学者戴着带有精密齿轮目镜的皮质护目镜，正坐在一张悬空黄铜机械吊椅上翻阅一本散发幽微金光的古籍特写镜头。",
+      "为这个藏书机构设计一套由差分机 (Difference Engine) 驱动的图书索书号分类法体系，说明其穿孔卡片编码逻辑。",
+      "针对这种纵向千米级藏书建筑，设计一套符合流体力学的自然通风排湿与防火惰性气体注入系统方案。"
+    ],
+    "consumed_at": "2026-09-10T12:42:28.012103"
+  },
+  {
+    "id": "crispr_bioinformatics_pipeline",
+    "title": "CRISPR-Cas9 靶向切割与脱靶预测生物信息学管道",
+    "domain": "bioinformatics",
+    "features": [
+      "sequence_data",
+      "plain_text",
+      "unbroken_strings"
+    ],
+    "description": "测试超长无空格核酸序列、生物学专有名词与表格排版",
+    "turns": [
+      "请详细阐述化脓性链球菌 Cas9 (SpCas9) 识别 PAM 序列 (5'-NGG-3') 的分子生物学机制及其构象变化过程。",
+      "给出一段 60bp 的人类假想靶基因外显子 DNA 序列，指出所有潜在的 SpCas9 原间隔区邻近基序 (PAM) 位置，并设计 2 条特异性 gRNA (20nt)。",
+      "列出利用 CFD (Cutting Frequency Determination) 矩阵算法计算脱靶评分 (Off-target Score) 的数学公式与计算步骤。",
+      "使用 Markdown 表格横向对比 CRISPR-Cas9、Cas12a (Cpf1) 以及新型 Prime Editing (PE) 在编辑精度、插入限制与双链断裂 (DSB) 风险上的核心指标。",
+      "为高通量生信实验室设计一个自动化脱靶分析 Python 脚本管线流程描述（含 BWA 比对、samtools 处理与变异注释）。"
+    ],
+    "consumed_at": "2026-09-10T12:42:28.012103"
+  },
+  {
+    "id": "solarpunk_cloud_oasis",
+    "title": "太阳朋克空中生态温室与浮空水培绿洲",
+    "domain": "solarpunk_architecture",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "description": "测试太阳朋克概念艺术生图 (Imagen)、闭环生态工程与抗风暴容错长推演",
+    "turns": [
+      "请帮我生成一张图片：一座悬浮在万米高空的太阳朋克（Solarpunk）巨型生态球温室。透明的仿生六边形光伏穹顶下，垂直悬挂着茂密的热带雨林植物与水培瀑布，阳光穿透薄雾形成丁达尔效应，远处云海中有微型仿生飞艇穿梭，8k超高清细节。",
+      "请基于上述空中生态绿洲，详细设计其闭环生命维持系统（CELSS）的物质循环架构，用 Markdown 列表清晰阐述水分循环、氧碳平衡与营养盐再生的工程实现方案。",
+      "请再帮我生成一张图片：在生态温室的核心控制室内，一位年轻的生态工程师正透过曲面全息操作台观察发光浮游生物的生理指标，窗外是落日余晖下的壮丽云霞。",
+      "请设计 3 种专门适应该高空低气压、强紫外线环境的基因工程改良作物，用表格对比它们的耐受性机制、营养产出与光合作用效率。",
+      "如果遭遇百年一遇的极端平流层风暴导致外层光伏穹顶局部受损，请为该生态站构思一套具备自主容错与柔性自愈特性的应急响应协议。"
+    ],
+    "consumed_at": "2026-09-10T12:48:06.591981"
+  },
+  {
+    "id": "raft_distributed_consensus",
+    "title": "分布式系统 Raft 共识算法与网络分区脑裂恢复",
+    "domain": "distributed_systems",
+    "features": [
+      "ascii_diagram",
+      "state_machine",
+      "fault_tolerance"
+    ],
+    "description": "测试 ASCII 状态转换图、分布式共识时序与节点日志对齐",
+    "turns": [
+      "请绘制一个清晰的 ASCII 字符状态机转移图，说明 Raft 共识协议中 Follower、Candidate 与 Leader 之间的三种状态转换触发条件与超时机制。",
+      "在 5 个节点的集群中（Node A, B, C, D, E），假设发生网络分区成为 {A, B} 与 {C, D, E} 两组，详细追踪客户端分别向两边写入数据时的日志复制与任期 (Term) 变化。",
+      "网络分区愈合后，原本位于少数派分区的旧 Leader 如何通过 AppendEntries RPC 发现自身落后并发生日志回退与截断？",
+      "对比 Raft 与 Multi-Paxos 在 Leader 选举开销、日志空洞处理 (Log Hole) 以及实现复杂度上的本质差异。",
+      "针对线性一致性读 (Linearizable Read)，分析 Lease Read 与 Read Index 两种优化机制的优缺点及对物理时钟漂移的容忍度。"
+    ],
+    "consumed_at": "2026-09-10T12:48:06.591981"
+  }
+]

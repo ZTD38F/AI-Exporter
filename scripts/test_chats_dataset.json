@@ -1,0 +1,38 @@
+[
+  {
+    "id": "multi_turn_coding",
+    "title": "Python高性能LRU缓存与线程安全重构",
+    "description": "测试多轮深度编程、代码块高亮与重构解析",
+    "turns": [
+      "请用 Python 实现一个高性能的双向链表+哈希表 LRU 缓存类，要求包含 get 和 put 方法，不要使用 collections.OrderedDict。",
+      "现在为刚才的 LRU 缓存加上线程安全锁 (threading.Lock)，并编写一个基准性能测试函数，输出多线程并发测试结果表格。"
+    ]
+  },
+  {
+    "id": "multi_turn_image_gen",
+    "title": "赛博朋克柴犬宇航员火星探险",
+    "description": "测试 Gemini 原生 AI 生图、多轮图片微调与离线媒体资源打包",
+    "turns": [
+      "请帮我生成一张图片：一只可爱的柴犬穿着未来科技感宇航服在火星表面漫步，背景可以看到巨大的红色地表与远处的星空。",
+      "为刚才的探险设计一段科幻微小说，并生成一张这只柴犬宇航员在火星舱内喝热咖啡休息的画面。"
+    ]
+  },
+  {
+    "id": "math_and_tables",
+    "title": "量子纠缠理论推导与经典对比",
+    "description": "测试 LaTeX 公式渲染、Markdown 表格与复杂符号导出",
+    "turns": [
+      "请详细推导贝尔不等式 (Bell's inequality) 并解释量子纠缠违反该不等式的物理意义，使用标准的 LaTeX 格式展示数学公式。",
+      "请用一个结构清晰的 Markdown 对比表格，从叠加态、并行度、纠错难度、应用场景四个维度对比经典比特与量子比特 (Qubit)。"
+    ]
+  },
+  {
+    "id": "deep_tech_analysis",
+    "title": "现代前端响应式系统设计哲学",
+    "description": "测试多级标题、长文本小节与架构比较",
+    "turns": [
+      "请对比 React 虚拟 DOM、Vue 3 Proxy 响应式系统以及 Svelte 编译时响应式的核心架构差异与优缺点。",
+      "为这三种框架各提供一段状态自增更新的最小示例代码，并总结选型建议。"
+    ]
+  }
+]

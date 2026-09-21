@@ -1,0 +1,41 @@
+{
+  "name": "gemini-exporter",
+  "version": "1.5.1",
+  "description": "An open-source, privacy-first Chrome extension to batch export and archive your Google Gemini conversations.",
+  "main": "background.js",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "build": "node build.js",
+    "test:unit": "python3 tests/run_tests.py",
+    "test:e2e": "node build.js && playwright test",
+    "test": "npm run type-check && python3 tests/run_tests.py && node build.js && playwright test",
+    "test:manual": "./scripts/open_test_chrome.sh",
+    "test:manual:win": "powershell -ExecutionPolicy Bypass -File ./scripts/open_test_chrome.ps1",
+    "test:generate-chats": "python3 scripts/generate_scenario_chats.py",
+    "test:live": "python3 scripts/test_live_chat_and_export.py",
+    "test:live:pool": "python3 scripts/test_live_chat_and_export.py --pool",
+    "test:live:local": "python3 scripts/test_live_chat_and_export.py --allow-stale-dataset",
+    "pool:status": "python3 scripts/manage_scenario_pool.py status",
+    "pool:validate": "python3 scripts/manage_scenario_pool.py validate",
+    "test:visual": "python3 scripts/test_visual_agent.py",
+    "test:visual:full": "python3 scripts/test_visual_agent.py --full",
+    "release": "gh workflow run release.yml --ref main"
+  },
+  "keywords": [
+    "gemini",
+    "google-gemini",
+    "exporter",
+    "markdown",
+    "chrome-extension",
+    "open-source"
+  ],
+  "author": "Wenbo Cui",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/chrome": "^0.2.9",
+    "@types/node": "^26.5.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

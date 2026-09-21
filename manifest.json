@@ -1,0 +1,73 @@
+{
+  "manifest_version": 3,
+  "default_locale": "en",
+  "name": "__MSG_extName__",
+  "version": "1.5.1",
+  "description": "__MSG_extDesc__",
+  "permissions": [
+    "storage",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*",
+    "https://*.googleusercontent.com/*",
+    "https://*.usercontent.google.com/*",
+    "https://drive.google.com/*",
+    "https://lh3.google.com/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "src/ui/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16_gray.png",
+      "48": "icons/icon48_gray.png",
+      "128": "icons/icon128_gray.png"
+    }
+  },
+  "options_page": "src/ui/options/options.html",
+  "background": {
+    "service_worker": "dist/background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "css": [
+        "src/content/content.css"
+      ],
+      "js": [
+        "dist/content/content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "dist/content/hook.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "dist/content/hook.js",
+        "icons/*",
+        "lib/*"
+      ],
+      "matches": [
+        "https://gemini.google.com/*"
+      ]
+    }
+  ]
+}

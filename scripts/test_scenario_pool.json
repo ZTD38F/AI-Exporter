@@ -1,0 +1,361 @@
+[
+  {
+    "id": "ship_of_theseus_philosophy",
+    "title": "忒修斯之船与意识上传同一性哲学思辨",
+    "domain": "philosophy_and_logic",
+    "features": [
+      "blockquotes",
+      "dialectic",
+      "deep_argumentation"
+    ],
+    "description": "测试多层嵌套引用块、递进逻辑推演与哲学反驳",
+    "turns": [
+      "请详细阐述‘忒修斯之船 (Ship of Theseus)’悖论的起源与核心哲学命题，以及托马斯·霍布斯在此基础上增加的‘收集旧木板重建之船’对质料同一性与形式同一性的冲击。",
+      "将忒修斯之船引入现代神经科学思想实验：假设人类大脑神经元被功能完全相同的纳电子仿生芯片以每天 0.01% 的速度逐步替换，主观意识同一性在何时何地发生转移或维持？",
+      "分别用德里克·帕菲特 (Derek Parfit) 的非还原论人格同一性理论 (Relation R) 与四维主义 (Four-Dimensionalism / Worm Theory) 对上述神经元替换实验进行评述。",
+      "针对经典科幻‘星际迷航式量子传送机’（原子分解后在异地完美重组），构建一个支持‘传送等于自杀与复印’的严密演绎推理三段论，并给出反方强有力的反驳。",
+      "总结不同形而上学流派对‘灵魂/自我的本质’给出的终极解释范式。"
+    ]
+  },
+  {
+    "id": "raymarching_sdf_graphics",
+    "title": "计算机图形学：实时光线步进 (Ray Marching) 与有向距离场 (SDF)",
+    "domain": "computer_graphics",
+    "features": [
+      "shaders",
+      "math",
+      "glsl"
+    ],
+    "description": "测试 GLSL 着色器语法高亮、向量微积分数学推导与光照模型",
+    "turns": [
+      "请推导球体 (Sphere) 与圆角立方体 (Rounded Box) 的精确有向距离场 (Signed Distance Function, SDF) 数学定义，并解释为什么负值代表物体内部。",
+      "使用标准 GLSL 编写一个包含球体追踪循环 (Sphere Tracing loop)、表面法线估算 (梯度差分) 以及基础漫反射光照的完整片段着色器核心函数。",
+      "展示如何使用光滑极小值函数 (Smooth Minimum / smin) 在 SDF 中实现两个有机几何形体之间的自然融合熔接 (Metaball 效果)。",
+      "分析带有步长放松 (Over-relaxation) 的增强型 Ray Marching 算法如何将平均迭代步数减少 30% 以上，并指出其在拐角处的伪影陷阱。",
+      "给出利用 SDF 计算软阴影 (Soft Shadows) 的经典 Penumbra 估算算法，并用数学公式说明光源尺寸对半影平滑度的影响。"
+    ]
+  },
+  {
+    "id": "smart_contract_reentrancy_audit",
+    "title": "智能合约安全审计：重入攻击漏洞攻防与形式化验证",
+    "domain": "cybersecurity_web3",
+    "features": [
+      "code",
+      "callouts",
+      "security_audit"
+    ],
+    "description": "测试 Solidity 安全漏洞复现代码、审计告警提示块与安全开发规约",
+    "turns": [
+      "请详细剖析臭名昭著的 The DAO 重入攻击 (Reentrancy Attack) 底层 EVM 执行时序，重点解释 fallback/receive 函数与调用栈深度展开的过程。",
+      "请编写一段存在经典单函数重入漏洞的 Solidity 资金库合约示例代码，并附带黑客利用合约的恶意攻击实现。",
+      "给出售后重构代码，严格遵循检查-生效-交互模式 (Checks-Effects-Interactions Pattern)，并展示如何引入 OpenZeppelin 的 ReentrancyGuard 防护修饰器。",
+      "解释只读重入 (Read-Only Reentrancy) 漏洞是如何在跨合约 DeFi 价格预言机 (Oracle) 交互中产生的，传统的防重入锁为何对此失效？",
+      "列出针对智能合约状态不变量 (Invariants) 编写 Certora 或 Foundry 形式化模糊测试 (Fuzz Testing) 规则的最佳实践。"
+    ]
+  },
+  {
+    "id": "silk_road_numismatics",
+    "title": "丝绸之路钱币学与跨欧亚贸易网络考证",
+    "domain": "historical_archaeology",
+    "features": [
+      "tables",
+      "multilingual",
+      "historical_data"
+    ],
+    "description": "测试古代历史年代谱系表、跨语种历史专有名词与长文论证",
+    "turns": [
+      "请考证公元 5 至 8 世纪在塔里木盆地沿线广泛流通的萨珊波斯银币 (Drachm) 与拜占庭金币 (Solidus) 的成色、铭文特点及流入中原的商贸路线。",
+      "制作一个 Markdown 表格，横向对比贵霜王朝钱币、粟特开元通宝仿铸币以及于阗汉佉二体钱的币文语言、材质、度量衡制与出土遗址。",
+      "分析粟特商人 (Sogdian merchants) 在六胡州与敦煌商贸网络中扮演的金融信用中介角色，其借贷契约文本通常包含哪些法律要件？",
+      "结合吐鲁番阿斯塔那古墓出土文书，解读‘高昌度量衡与中原官度’在实物交易折算中的换算博弈。",
+      "总结丝路沿线‘硬通货金银’与‘实物绢帛货币’并行的双轨制金融体系兴衰动因。"
+    ]
+  },
+  {
+    "id": "ebpf_xdp_packet_filter",
+    "title": "Linux 内核 eBPF/XDP 高性能网络旁路与包过滤",
+    "domain": "systems_networking",
+    "features": [
+      "code",
+      "kernel",
+      "benchmarks"
+    ],
+    "description": "测试 C 语言内核 eBPF 代码、XDP 动作驱动与硬件卸载性能分析",
+    "turns": [
+      "请详细阐述 Linux 网络协议栈中 XDP (eXpress Data Path) 的执行点，以及其与传统 TC (Traffic Control) 和 netfilter 在数据包进入 sk_buff 前后的性能分水岭。",
+      "编写一段完整的 C 语言 eBPF/XDP 程序代码，能够解析 Ethernet/IPv4/UDP 头部，对特定端口的目标流量进行高速丢弃 (XDP_DROP)，其余流量正常放行 (XDP_PASS)。",
+      "展示如何使用 bpf_map_lookup_elem 借助 BPF_MAP_TYPE_HASH 存储黑名单 IP，并说明验证器 (Verifier) 对指针越界检查的要求。",
+      "使用 Markdown 表格对比通用模式 (Generic XDP)、原生驱动模式 (Native XDP) 以及硬件网卡卸载模式 (Offloaded XDP) 在吞吐量与驱动兼容性上的差异。",
+      "分析内核 eBPF 尾调用 (Tail Call) 与 BPF 到 BPF 函数调用的栈空间限制及性能开销。"
+    ]
+  },
+  {
+    "id": "multilingual_poetry_translation",
+    "title": "跨语际多语言诗歌意象重构与音律转译",
+    "domain": "linguistics_and_translation",
+    "features": [
+      "multilingual",
+      "poetry",
+      "cjk_western"
+    ],
+    "description": "测试 CJK 汉字、西文音律、阿拉伯语/波斯语排版及特殊标点兼容性",
+    "turns": [
+      "请选取中国唐代李白《静夜思》与杜甫《登高》，分析其平仄律绝在字形声调上的空间对仗美感。",
+      "请将《登高》中的‘无边落木萧萧下，不尽长江滚滚来’转译为三个不同维度的版本：(1) 押韵的抑扬格五音步英文诗；(2) 带有存在主义哲思的现代法语散文诗；(3) 典雅的德语长句。",
+      "请用波斯语 (Farsi) 或阿拉伯语写一段赞美夜空与星辰的短诗，附带国际音标 (IPA) 标注与逐字直译对照。",
+      "使用表格对比机器翻译在处理‘多义双关语 (Pun)’与‘文化负载词 (Culture-bound terms)’时的经典偏误案例与现代大模型上下文对齐解决方案。",
+      "探讨自然语言中‘不可翻译性 (Untranslatability)’在维特根斯坦语言游戏哲学框架下的理论边界。"
+    ]
+  },
+  {
+    "id": "spiking_neural_networks_lif",
+    "title": "类脑计算：脉冲神经网络 (SNN) 与 LIF 动力学神经元",
+    "domain": "neuroscience_ai",
+    "features": [
+      "math",
+      "differential_equations",
+      "code"
+    ],
+    "description": "测试微分方程连续时间推导、代理梯度算法与 PyTorch 类脑实现",
+    "turns": [
+      "请给出漏电积分放电 (Leaky Integrate-and-Fire, LIF) 神经元膜电位变化的连续时间常微分方程，并推导在恒定输入电流下的稳态发放频率公式。",
+      "由于生物脉冲阶跃函数 (Heaviside step function) 在阈值处不可导，解释代理梯度 (Surrogate Gradient) 方法如何打破反向传播 (Backpropagation) 训练 SNN 的数学僵局。",
+      "使用 Python + PyTorch 实现一个带有自适应阈值 (Adaptive Threshold) 的单层 LIF 循环神经元模块，包含向前传播与突触电导重置逻辑。",
+      "对比传统人工神经网络 (ANN) 中的乘加累积 (MAC) 操作与类脑 SNN 中仅基于事件驱动的稀疏加法 (AC) 操作在能耗 (Joule/Op) 上的数量级优势。",
+      "综述当前主流类脑神经形态芯片（如 Intel Loihi 2 与清华天机芯）在片上学习与异步路由架构上的设计特色。"
+    ]
+  },
+  {
+    "id": "gravitational_waves_kerr_blackhole",
+    "title": "广义相对论：克尔旋转黑洞引力波啁啾与准正规模",
+    "domain": "astrophysics_relativity",
+    "features": [
+      "latex",
+      "tensors",
+      "physics"
+    ],
+    "description": "测试张量微积分符号、四维时空线元与引力波天文学物理推导",
+    "turns": [
+      "请在 Boyer-Lindquist 坐标下写出描述旋转带自旋黑洞的克尔度规 (Kerr Metric) 线元表达式，并明确定义其中的 Δ 与 Σ 参数。",
+      "推导克尔黑洞能层 (Ergosphere) 的外边界表面方程，并详述通过彭罗斯过程 (Penrose Process) 从黑洞自旋能中提取能量的理论上限效率 (29%)。",
+      "写出双黑洞合并旋近 (Inspiral) 阶段引力波频率随时间演化的‘啁啾 (Chirp)’质量公式：\\mathcal{M} = (m_1 m_2)^{3/5} / (m_1 + m_2)^{1/5}，并解释如何通过引力波应变反推光度距离。",
+      "用 Markdown 表格对比 LIGO、Virgo 与未来空间引力波天文台 LISA 在目标探测频段 (Hz)、臂长以及主要波源（恒星级双黑洞 vs 超大质量黑洞并合）上的核心参数。",
+      "阐述黑洞合并后形成的单一扭曲黑洞在铃落 (Ringdown) 阶段发射的准正规模 (Quasi-normal modes, QNMs) 是如何检验‘无毛定理 (No-hair theorem)’的。"
+    ]
+  },
+  {
+    "id": "bplus_tree_vs_lsm_tree",
+    "title": "数据库底层存储引擎：B+树分裂与 LSM-Tree 空间写放大推导",
+    "domain": "database_internals",
+    "features": [
+      "math",
+      "tables",
+      "storage_engine"
+    ],
+    "description": "测试磁盘 I/O 复杂度推导、内存 Compaction 机制与存储引擎对比",
+    "turns": [
+      "请从磁盘寻道时间、旋转延迟与顺序 I/O 吞吐角度，深刻论证传统关系型数据库（如 InnoDB）采用 B+ 树而非普通平衡二叉树的根本原因。",
+      "详细推导 LSM-Tree (Log-Structured Merge-tree) 在 Leveled Compaction 与 Size-Tiered Compaction 模式下的写放大 (Write Amplification, WA) 与空间放大 (Space Amplification, SA) 理论公式。",
+      "使用结构化 Markdown 表格，从点查延迟 (Point Lookup)、范围扫描 (Range Scan)、高频随机写入吞吐、内存开销四个维度全方位对比 RocksDB (LSM) 与 SQLite/PostgreSQL (B+ Tree)。",
+      "解释布隆过滤器 (Bloom Filter) 在 LSM-Tree 读路径中如何通过位数组与双重哈希避免不必要的 SSTable 磁盘 I/O，并给出最优哈希函数个数与误判率的数学关系式。",
+      "在现代 NVMe SSD 高并发并行通道 (Channel/Die) 硬件架构下，分析 ZNS (Zoned Namespaces) 固态硬盘如何重构 LSM-Tree 的垃圾回收机制。"
+    ]
+  },
+  {
+    "id": "audio_chroma_pitch_dsp",
+    "title": "音频信号处理：离散傅里叶变换与色度特征 (Chroma) 提取",
+    "domain": "audio_dsp",
+    "features": [
+      "math",
+      "signal_processing",
+      "python"
+    ],
+    "description": "测试时域频域傅里叶变换公式、音频窗函数与音乐信息检索算法",
+    "turns": [
+      "写出短时傅里叶变换 (STFT) 的数学积分定义，并从海森堡测不准原理角度阐述时间分辨率与频率分辨率之间的不可兼得关系。",
+      "解释音乐信息检索 (MIR) 中 12 半音色度向量 (Chroma Feature / Pitch Class Profile) 的物理与听觉意义，如何消除八度音高 (Octave) 对和弦识别的干扰？",
+      "使用 Python (借助 NumPy) 编写一个从音频功率谱矩阵中映射加权生成 12 维 Chroma 特征矩阵的核心函数代码。",
+      "使用 Markdown 表格横向对比梅尔倒谱系数 (MFCC)、恒定 Q 变换 (CQT) 以及 Chroma 特征在语音识别、和弦识别与旋律检索三种应用场景中的适用性与优劣。",
+      "简述动态时间规整 (Dynamic Time Warping, DTW) 算法如何利用色度距离矩阵实现两首演奏速度不同的同名交响乐乐段的精准时间对齐。"
+    ]
+  },
+  {
+    "id": "cloud_native_chaos_circuit_breaker",
+    "title": "云原生微服务：自适应熔断降级与混沌工程演练",
+    "domain": "cloud_native_reliability",
+    "features": [
+      "diagrams",
+      "tables",
+      "resilience"
+    ],
+    "description": "测试微服务高可用熔断器状态机、自适应并发限制与混沌实验设计",
+    "turns": [
+      "请画出经典熔断器 (Circuit Breaker) 在 Closed、Open 与 Half-Open 三种状态之间的转换时序图，并说明基于滑动时间窗口的失败率统计算法。",
+      "阐述 Netflix Hystrix 的固定线程池隔离与 Envoy 基于梯度下降算法的自适应并发限制 (Adaptive Concurrency Limit) 在长尾延迟突增时的表现差异。",
+      "为一套包含 API Gateway、订单服务、支付微服务与库存系统的电商核心链路，设计一份混沌工程 (Chaos Engineering) 故障注入演练剧本，使用 Markdown 表格明确实验假设、稳态指标 (Steady State)、注入手段与回滚预案。",
+      "如何防范微服务级联雪崩 (Cascading Failure) 中的‘重试风暴 (Retry Storm)’？详细解析指数退避加抖动 (Exponential Backoff with Full Jitter) 的算法原理。",
+      "结合分布式链路追踪 (OpenTelemetry Trace/Span)，说明如何在百万级 RPS 规模下实现基于错误与长延迟的自适应尾部采样 (Tail-based Sampling)。"
+    ]
+  },
+  {
+    "id": "robotics_impedance_control_dynamics",
+    "title": "机器人动力学：六自由度机械臂阻抗控制与李代数姿态插值",
+    "domain": "robotics_and_control",
+    "features": [
+      "math",
+      "code",
+      "differential_equations",
+      "algorithms"
+    ],
+    "description": "测试刚体动力学微分方程、李群 SE(3) 旋量理论与实时阻抗控制代码",
+    "turns": [
+      "请从拉格朗日力学（Lagrangian Mechanics）出发，详细推导含重力项、离心力与科氏力矩阵的标准刚体机械臂动力学方程 M(q)q'' + C(q,q')q' + g(q) = tau，并证明其质量矩阵 M(q) 的对称正定性及 M'(q) - 2C(q,q') 的斜对称性。",
+      "在机械臂与未知刚度环境接触装配任务中，位置控制往往会导致接触力过大甚至失稳。请详细推导基于力矩的笛卡尔空间阻抗控制（Cartesian Impedance Control）律，并写出包含虚拟质量、阻尼与刚度的二阶期望阻抗动态微分方程。",
+      "请使用 Python (NumPy) 编写一个六自由度末端位姿在李群 SE(3) 上的流形轨迹插值算法（使用李代数 se(3) 的对数与指数映射，避免欧拉角奇异性与万向节死锁），并附带详细注释。",
+      "请用一个 Markdown 表格，对比导纳控制（Admittance Control）、阻抗控制（Impedance Control）以及力/位混合控制（Hybrid Position/Force Control）在适用传感器硬件、控制内环类型与接触环境刚度适应性上的核心区别。",
+      "针对机械臂末端有效载荷（Payload）未知变化带来的模型失配，如何引入基于李雅普诺夫（Lyapunov）稳定性的自适应控制或扩张状态观测器（ESO）实现扰动补偿？给出收敛性证明思路。"
+    ]
+  },
+  {
+    "id": "underwater_bioluminescent_coral_atoll",
+    "title": "发光深海珊瑚环礁与仿生潜水钟水下探险",
+    "domain": "marine_exploration_art",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "description": "测试生物发光水下概念艺术生图 (Imagen)、深海海洋学与流体静力学长推演",
+    "turns": [
+      "请帮我生成一张图片：一座位于水下 2000 米的宏伟生物发光珊瑚环礁探险基地。中央悬浮着带有弧形发光观察窗的黄铜镀层仿生潜水钟，周围环绕着发出幽蓝与翠绿荧光的深海珊瑚树与半透明水母群，超清 8k 写实水下光影。",
+      "请为这座深海潜水基地设计一套基于浮力调控与海水温差能发电（OTEC）的能量自给自足方案，使用 Markdown 列表条理清晰地列出核心工程模块。",
+      "请再帮我生成一张图片：在潜水钟内部，一位年轻的海洋生物学家正透过巨大弧形玻璃，近距离观察一只身体发出金色脉冲光芒的未知深海巨型章鱼游过的震撼瞬间。",
+      "请设计一个 Markdown 表格，对比该深海基地在耐压壳体材料选择上的优劣（钛合金 TC4 vs 硼硅酸盐高压玻璃 vs 碳纤维缠绕复合材料），包含抗压屈服强度、密度、透光性与制造成本。",
+      "如果基地的外部海水淡化与应急制氧管路因海底热液喷口地震发生震裂，请构思一套基于化学储氧与微生物电解的 72 小时应急闭环维生预案。"
+    ]
+  },
+  {
+    "id": "zk_snark_groth16_elliptic_curves",
+    "title": "零知识证明密码学：Groth16 协议推导与配对群运算",
+    "domain": "cryptography_zkp",
+    "features": [
+      "math",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "description": "测试椭圆曲线双线性配对 (Bilinear Pairing)、R1CS 约束系统与 Rust arkworks 验证代码",
+    "turns": [
+      "请详细推导零知识证明中基于 QAP (Quadratic Arithmetic Program) 的 Groth16 协议核心数学原理，包括如何将 R1CS 约束矩阵转换为多项式整除问题 A(x)B(x) - C(x) = H(x)t(x)。",
+      "请解释在 BN254 或 BLS12-381 椭圆曲线上的双线性对映射（Bilinear Pairing）性质 e: G1 x G2 -> GT，并证明为什么验证者只需一次多标量配对等式校验即可验证计算正确性。",
+      "请使用 Rust 结合 arkworks 密码学库编写一个简化的 Groth16 证明结构体定义与配对验证函数骨架代码片段，附带详细的类型与数学对应注释。",
+      "请用一个结构化的 Markdown 表格，从可信设置（Trusted Setup）、证明尺寸（Proof Size）、验证延迟（Verification Time）与量子抗性四个维度，横向对比 Groth16、PLONK、Halo2 与 STARK 四大主流 ZKP 方案。",
+      "为什么 Groth16 的通用可信设置（Powers of Tau）必须保证至少有一个参与方诚实销毁随机数（Toxic Waste）？若随机数泄露会导致怎样的伪造证明安全灾难？"
+    ]
+  },
+  {
+    "id": "cybernetic_zen_monastery",
+    "domain": "cybernetic_futurism_art",
+    "title": "赛博禅宗枯山水庭院与数字冥想空间",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "turns": [
+      "请帮我生成一张图片：一座悬浮在赛博朋克近未来高空穹顶下的禅宗枯山水庭院。发光的荧光苔藓、流动的全息水纹砂石庭园、钛合金构建的静虑回廊，背景可见微雨朦胧的霓虹都市夜景，电影质感，虚幻引擎5渲染风格。",
+      "请以建筑哲学家的视角，解析赛博朋克高科技冰冷机械感与东方枯山水虚静审美融合的设计语汇与空间叙事。",
+      "请再生成一张图片：在庭院中央，一位身披光导纤维织造袈裟的仿生人禅师正面对全息枯木盘膝冥想，身边漂浮着散发柔和微光的数字香炉，特写镜头，丁达尔光效。",
+      "探讨在意识数字化与脑机接口普及的时代，人类\"冥想\"行为的神经生物学机制与数字信号干预的伦理边界。",
+      "设计一个用于在脑机交互界面呈现的\"数字枯山水\"交互算法状态机，用伪代码或状态图描述脑电波专注度（Alpha/Theta波）与全息砂纹流速的动态反馈模型。"
+    ]
+  },
+  {
+    "id": "vlsi_riscv_pipeline_hazards",
+    "domain": "vlsi_computer_architecture",
+    "title": "超标量微处理器：RISC-V 五级流水线与冒险处理实战",
+    "features": [
+      "code",
+      "tables",
+      "architecture",
+      "hardware"
+    ],
+    "turns": [
+      "请详细拆解标准 RISC-V 32I 五级流水线（IF、ID、EX、MEM、WB）的结构，并解释结构冒险 (Structural Hazard)、数据冒险 (Data Hazard) 与控制冒险 (Control Hazard) 的产生机理。",
+      "请绘制一张详细的 Markdown 状态对比表格，对比针对 RAW (Read-After-Write) 数据冒险的三种解决策略：插入气泡 (Pipeline Stalling/Bubbling)、前向转发 (Operand Forwarding) 与编译器重排指令在性能 CPI、硬件开销与复杂度上的权衡。",
+      "请使用 Verilog HDL 或伪代码编写一个用于 RISC-V 3-way 转发单元 (Forwarding Unit) 的控制逻辑，要求准确处理 EX 阶段与 MEM 阶段对 ID/EX 源操作数的前向旁路匹配。",
+      "在引入动态分支预测器（如 2-bit 饱和计数器与二阶自适应分支预测器）后，当发生预测失误 (Misprediction) 时，流水线冲刷 (Pipeline Flush) 的硬件时钟周期代价与恢复机制是什么？",
+      "分析超标量 (Superscalar) 双发射架构中重排序缓冲区 (ROB, Reorder Buffer) 与寄存器重命名 (Register Renaming) 如何协同解决 WAR (Write-After-Read) 与 WAW (Write-After-Write) 假相关问题。"
+    ]
+  },
+  {
+    "id": "paleontology_fossil_ct_reconstruction",
+    "domain": "paleontology_digital_reconstruction",
+    "title": "寒武纪澄江生物群古生物化石 3D 重建与演化辐射",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "turns": [
+      "请帮我生成一张图片：在古生代寒武纪早期透彻的浅海中，奇虾 (Anomalocaris) 伸展扇状桨叶与前附肢捕食三叶虫的特写生态复原图。水下光斑粼粼，微小浮游生物散射丁达尔光，科学复原级写实风格。",
+      "请结合澄江生物群 (Chengjiang Biota) 的化石软躯体保存特异性，解析寒武纪生命大爆发中的节肢动物头部附肢同源演化争议。",
+      "请再帮我生成一张图片：现代高精度同步辐射微计算机断层扫描 (Synchrotron micro-CT) 实验室中，古生物学家屏幕上呈现出透明发光的奇虾脑神经节与复眼三维体渲染模型的全息透视图。",
+      "从流体力学角度，建立一个简化的二元流体阻力模型，估算奇虾身体侧叶波浪状摆动时在低雷诺数/中等雷诺数流场中的推进效率与游动速度范围。",
+      "使用 Markdown 表格横向对比寒武纪奇虾、奥陶纪板足鲎与现代栉水母在捕食机制、感觉系统及生态位级上的演化异同。"
+    ]
+  },
+  {
+    "id": "cavity_qed_jaynes_cummings",
+    "domain": "quantum_optics_cavity_qed",
+    "title": "量子光学：腔量子电动力学 (Cavity QED) 与拉比振荡",
+    "features": [
+      "math",
+      "latex",
+      "differential_equations",
+      "code"
+    ],
+    "turns": [
+      "请写出 Jaynes-Cummings 模型的全量子哈密顿量，详细解释自由原子项、单模辐射场项与偶极相互作用项，并在旋转波近似 (RWA) 下推导其缀饰态 (Dressed States) 的本征能谱。",
+      "在零失谐 (Resonant) 条件下，若原子初始处于激发态且腔场处于真空态，请严格推导光子数在两能级原子与腔场之间周期性交换的真空拉比振荡 (Vacuum Rabi Oscillation) 概率公式。",
+      "使用 Python (NumPy/SciPy) 编写一个求解开放量子系统林德布拉德主方程 (Lindblad Master Equation) 的动力学演化脚本，模拟包含光子腔漏率 kappa 与原子自发辐射自衰减 gamma 时的退相干拉比振荡曲线。",
+      "详细阐述强耦合极限 (Strong Coupling Regime, g >> kappa, gamma) 在超导回路量子电动力学 (Circuit QED) 中的实验实现条件与 Purcell 效应的抑制机制。",
+      "对比解释光子阻塞效应 (Photon Blockade) 的能级非谐性机理，为什么非谐梯度的存在使得单光子透射后阻断了第二个同频率光子的注入？"
+    ]
+  },
+  {
+    "id": "biomimetic_airship_expedition",
+    "domain": "biomimetic_steampunk_aeronautics",
+    "title": "仿生飞艇极地气象科考与平流层浮空观测",
+    "features": [
+      "imagen",
+      "multimodal",
+      "attachments"
+    ],
+    "turns": [
+      "请帮我生成一张图片：一艘受座头鲸流线型启发的巨型仿生半硬式气态飞艇，正在南极极夜极光绚烂的天空下穿行。飞艇两侧带有半透明太阳能薄膜鳍翼，吊舱透出温暖金黄色灯火，背景是壮阔的冰架裂隙与绿色极光幕，电影宽银幕质感。",
+      "结合低雷诺数与平流层低温低压环境，分析这种仿生座头鲸鳍翼结节 (Tubercle) 结构在抑制气流分离与延缓失速方面的气动弹性机制。",
+      "请再帮我生成一张图片：飞艇内部的加压全景科研观测舱，科学家们正围绕着散发微光的球形三维极地极涡全息沙盘记录大气重力波数据，冷色调高科技科考氛围。",
+      "设计一套用于监测极地中层顶大气重力波的激光雷达 (LIDAR) 探测载荷工作时序与多波长反演数据流程。",
+      "使用 Markdown 表格对比平流层长航时飞艇、极轨气象卫星与高空长航时无人机 (HALE UAV) 在极地气象长期连续观测中的空间分辨率、重访周期与运营成本劣势与优势。"
+    ]
+  },
+  {
+    "id": "metamaterials_photonic_crystal_waveguide",
+    "domain": "materials_science_metamaterials",
+    "title": "拓扑光子学：谷霍尔光子晶体波导与拓扑保护传输",
+    "features": [
+      "math",
+      "latex",
+      "physics",
+      "code"
+    ],
+    "turns": [
+      "请详细阐述蜂窝晶格光子晶体中狄拉克点 (Dirac Point) 的形成机制，并解释如何通过打破空间反演对称性 (Inversion Symmetry) 打开带隙，实现谷霍尔拓扑相变 (Valley Hall Topological Phase Transition)。",
+      "给出谷陈数 (Valley Chern Number) 的严格数学积分定义，并从贝里曲率 (Berry Curvature) 局域积聚的角度证明体-边对应关系 (Bulk-Boundary Correspondence)。",
+      "使用 Python (NumPy) 编写一个简化的平面波展开法 (PWE, Plane Wave Expansion) 脚本框架，计算一维周期性布拉格光栅的色散关系并绘制第一布里渊区内的禁带结构图。",
+      "详细推演在 60度 或 120度 尖锐拐角 (Sharp Bend) 传输时，谷拓扑边界态如何凭借赝自旋-谷锁定 (Pseudospin-Valley Locking) 抑制背向散射 (Backscattering) 实现无耗损拐弯传播。",
+      "分析片上拓扑光子集成芯片在面向量子光源单光子路由与超低功耗光互连时的关键制造公差容忍度与挑战。"
+    ]
+  }
+]
