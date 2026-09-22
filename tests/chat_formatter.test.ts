@@ -182,3 +182,102 @@ test('engine - SessionRecovery.updateSessionStatus updates chrome.storage.local 
 });
 
 
+
+
+test('chat_formatter - legacy chats without provider keep Gemini presentation exactly', () => {
+    const chat = {
+        id: 'c_legacy123',
+        title: 'Legacy Gemini',
+        timestamp: 1700000000000,
+        messages: [
+            { role: 'user', content: 'Hello' },
+            { role: 'model', content: 'Hi' }
+        ]
+    };
+
+    const md = ChatFormatter.toMarkdown(chat, { lang: 'en' });
+    assert.ok(md.includes('url: "https://gemini.google.com/app/legacy123"'));
+    assert.ok(md.includes('  - gemini-export'));
+    assert.ok(md.includes('## 🤖 Gemini'));
+    assert.ok(!md.includes('## 🤖 ChatGPT'));
+});
+
+test('chat_formatter - ChatGPT presentation uses ChatGPT URL, tag and assistant heading', () => {
+    const chat = {
+        providerId: 'chatgpt',
+        id: 'chatgpt-uuid-123',
+        title: 'ChatGPT Example',
+        timestamp: 1700000000000,
+        messages: [
+            { role: 'user', content: 'Question' },
+            { role: 'model', content: 'Answer' }
+        ]
+    };
+
+    const md = ChatFormatter.toMarkdown(chat, { lang: 'en' });
+    assert.ok(md.includes('url: "https://chatgpt.com/c/chatgpt-uuid-123"'));
+    assert.ok(md.includes('  - chatgpt-export'));
+    assert.ok(md.includes('## 🤖 ChatGPT'));
+    assert.ok(!md.includes('## 🤖 Gemini'));
+    assert.ok(!md.includes('https://gemini.google.com/'));
+});
+
+test('chat_formatter - explicit URL wins over provider fallback URL', () => {
+    const chat = {
+        providerId: 'chatgpt',
+        id: 'chatgpt-uuid-123',
+        url: 'https://chatgpt.com/share/custom-link',
+        title: 'Explicit URL',
+        timestamp: 1700000000000,
+        messages: [{ role: 'user', content: 'Question' }]
+    };
+
+    const md = ChatFormatter.toMarkdown(chat, { lang: 'en' });
+    assert.ok(md.includes('url: "https://chatgpt.com/share/custom-link"'));
+    assert.ok(!md.includes('https://chatgpt.com/c/chatgpt-uuid-123'));
+});
+
+test('chat_formatter - array thoughts render without .trim crash', () => {
+    const chat = {
+        providerId: 'chatgpt',
+        id: 'reasoning-1',
+        title: 'Reasoning',
+        timestamp: 1700000000000,
+        messages: [
+            {
+                role: 'model',
+                content: 'Final answer',
+                thoughts: ['First thought', 'Second thought']
+            }
+        ]
+    };
+
+    const md = ChatFormatter.toMarkdown(chat, { lang: 'en' });
+    assert.ok(md.includes('First thought'));
+    assert.ok(md.includes('Second thought'));
+
+    const json = JSON.parse(ChatFormatter.toOpenAIJson(chat));
+    assert.strictEqual(json.messages[0].reasoning_content, 'First thought\n\nSecond thought');
+});
+
+test('chat_formatter - OpenAI JSON preserves system role instead of rewriting it as user', () => {
+    const chat = {
+        providerId: 'chatgpt',
+        id: 'system-1',
+        title: 'System',
+        messages: [
+            { role: 'system', providerRole: 'tool', content: 'Tool output' },
+            { role: 'user', content: 'Question' },
+            { role: 'model', content: 'Answer' }
+        ]
+    };
+
+    const json = JSON.parse(ChatFormatter.toOpenAIJson(chat));
+    assert.deepStrictEqual(json.messages.map((m: any) => m.role), ['system', 'user', 'assistant']);
+    assert.strictEqual(json.url, 'https://chatgpt.com/c/system-1');
+
+    const md = ChatFormatter.toMarkdown(chat, { lang: 'en' });
+    assert.ok(md.includes('## ⚙️ System'));
+    assert.ok(md.includes('Provider role: `tool`'));
+    assert.ok(md.includes('## 🤖 ChatGPT'));
+});

@@ -1,6 +1,6 @@
 /**
  * chatFormatter.ts
- * Unified export formatter for Gemini conversations.
+ * Provider-aware export formatter for AI Exporter conversations.
  * Supports Markdown (Obsidian / Notion / Logseq optimized), OpenAI JSON, Standard JSON, and Raw JSON.
  */
 import type { Conversation, ChatMessage, Attachment } from "../../types/conversation.js";
@@ -201,6 +201,86 @@ declare global {
         return cleaned;
     }
 
+    interface ProviderPresentation {
+        id: string;
+        assistantLabel: string;
+        exportTag: string;
+        fallbackUrl: (id: string) => string;
+    }
+
+    function getProviderPresentation(chat: any): ProviderPresentation {
+        const explicit = typeof chat?.providerId === 'string'
+            ? chat.providerId.toLowerCase()
+            : typeof chat?.provider === 'string'
+                ? chat.provider.toLowerCase()
+                : '';
+
+        let providerId = explicit;
+        if (!providerId && typeof chat?.url === 'string') {
+            try {
+                const hostname = new URL(chat.url).hostname;
+                if (hostname === 'chatgpt.com' || hostname === 'chat.openai.com') providerId = 'chatgpt';
+                else if (hostname === 'gemini.google.com') providerId = 'gemini';
+            } catch {
+                // Backward compatibility below deliberately defaults to Gemini.
+            }
+        }
+        if (!providerId) providerId = 'gemini';
+
+        if (providerId === 'chatgpt') {
+            return {
+                id: 'chatgpt',
+                assistantLabel: 'ChatGPT',
+                exportTag: 'chatgpt-export',
+                fallbackUrl: (id: string) => `https://chatgpt.com/c/${id}`
+            };
+        }
+
+        if (providerId === 'gemini') {
+            return {
+                id: 'gemini',
+                assistantLabel: 'Gemini',
+                exportTag: 'gemini-export',
+                fallbackUrl: (id: string) => `https://gemini.google.com/app/${id.replace(/^c_/, '')}`
+            };
+        }
+
+        const safeProviderId = providerId.replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'ai';
+        const displayName = typeof chat?.providerName === 'string' && chat.providerName.trim()
+            ? chat.providerName.trim()
+            : safeProviderId;
+        return {
+            id: safeProviderId,
+            assistantLabel: displayName,
+            exportTag: `${safeProviderId}-export`,
+            fallbackUrl: () => ''
+        };
+    }
+
+    function normalizeThoughtText(message: any): string {
+        const raw = message?.thoughts ?? message?.thinking ?? '';
+        if (typeof raw === 'string') return raw.trim();
+        if (Array.isArray(raw)) {
+            return raw
+                .map((entry: any) => {
+                    if (typeof entry === 'string') return entry.trim();
+                    if (entry && typeof entry.text === 'string') return entry.text.trim();
+                    return '';
+                })
+                .filter(Boolean)
+                .join('\n\n')
+                .trim();
+        }
+        if (raw && typeof raw.text === 'string') return raw.text.trim();
+        return '';
+    }
+
+    function normalizedOpenAIRole(message: any): 'user' | 'assistant' | 'system' {
+        if (message?.role === 'model' || message?.role === 'assistant') return 'assistant';
+        if (message?.role === 'system') return 'system';
+        return 'user';
+    }
+
     /**
      * Convert conversation object to standardized Markdown.
      * Compatible with Obsidian, Notion, Logseq, Typora, and GitHub Markdown.
@@ -214,11 +294,12 @@ declare global {
             return `# ${chat.title || 'Untitled'}\n\n> ${failTitle}: ${chat.error}\n\n> ID: ${chat.id} | URL: ${chat.url || ''}\n`;
         }
 
+        const provider = getProviderPresentation(chat);
         const safeTitleClean = String(chat.title || 'Untitled').replace(/[\r\n]+/g, ' ').trim();
         const safeYamlTitle = safeTitleClean.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         const createdIso = (chat.createdAt || chat.timestamp || chat.updatedAt) ? new Date(chat.createdAt || chat.timestamp || chat.updatedAt).toISOString() : new Date().toISOString();
         const updatedIso = (chat.updatedAt || chat.timestamp || chat.createdAt) ? new Date(chat.updatedAt || chat.timestamp || chat.createdAt).toISOString() : createdIso;
-        const convUrl = chat.url || (chat.id ? `https://gemini.google.com/app/${String(chat.id).replace(/^c_/, '')}` : '');
+        const convUrl = chat.url || (chat.id ? provider.fallbackUrl(String(chat.id)) : '');
 
         // 1. YAML Frontmatter (Obsidian Properties / Notion Database / Logseq)
         let md = `---\n`;
@@ -228,7 +309,7 @@ declare global {
         if (createdIso) md += `date: "${createdIso}"\n`;
         if (updatedIso) md += `updated: "${updatedIso}"\n`;
         md += `exported: "${new Date().toISOString()}"\n`;
-        md += `tags:\n  - gemini-export\n`;
+        md += `tags:\n  - ${provider.exportTag}\n`;
         md += `---\n\n`;
 
         // 2. Document Title & Metadata Badges
@@ -253,7 +334,7 @@ declare global {
         // 3. Conversation Messages
         for (const m of messages) {
             const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString() : '';
-            const role = m.role === 'user' ? 'user' : 'model';
+            const role = m.role === 'user' ? 'user' : (m.role === 'system' ? 'system' : 'model');
 
             if (role === 'user') {
                 md += isEn ? `## 👤 You\n\n` : `## 👤 你\n\n`;
@@ -292,12 +373,24 @@ declare global {
                 if (userBody) {
                     md += `${userBody}\n\n`;
                 }
+            } else if (role === 'system') {
+                md += `## ⚙️ System\n\n`;
+                if (timeStr) md += `> ⏱️ ${timeStr}\n\n`;
+                const providerRole = typeof (m as any).providerRole === 'string' ? (m as any).providerRole : '';
+                if (providerRole && providerRole !== 'system') {
+                    md += `> Provider role: \`${providerRole.replace(/\`/g, '')}\`\n\n`;
+                }
+                const systemBody = cleanMessageBody(m.content);
+                if (systemBody) md += `${adjustHeadingHierarchy(systemBody, 2)}\n\n`;
+                const systemAtts = [...(m.attachments || [])];
+                if (systemAtts.length) md += renderAttachments(systemAtts, isEn);
+                md += `---\n\n`;
             } else {
-                md += `## 🤖 Gemini\n\n`;
+                md += `## 🤖 ${provider.assistantLabel}\n\n`;
                 if (timeStr) md += `> ⏱️ ${timeStr}\n\n`;
 
                 // Thinking Process (Isolated with double blank lines for strict Markdown parsers)
-                const thoughts = ((m as any).thoughts || (m as any).thinking || '').trim();
+                const thoughts = normalizeThoughtText(m);
                 if (thoughts) {
                     const thoughtSummary = isEn ? '🧠 Thinking Process' : '🧠 思考过程';
                     md += `<details>\n<summary>${thoughtSummary}</summary>\n\n${thoughts}\n\n</details>\n\n`;
@@ -350,7 +443,7 @@ declare global {
      */
     function toOpenAIJson(chat: any): string {
         const messages = (chat.messages || []).map((m: any) => {
-            const role = m.role === 'model' ? 'assistant' : 'user';
+            const role = normalizedOpenAIRole(m);
             const text = m.content || '';
             const imgs = (m.attachments || []).filter((a: any) => a.type === 'image');
             const item: any = {};
@@ -373,7 +466,7 @@ declare global {
                 item.content = text;
             }
 
-            const thoughts = (m.thoughts || m.thinking || '').trim();
+            const thoughts = normalizeThoughtText(m);
             if (thoughts) {
                 item.reasoning_content = thoughts;
             }
@@ -381,7 +474,8 @@ declare global {
             return item;
         });
 
-        const convUrl = chat.url || (chat.id ? `https://gemini.google.com/app/${String(chat.id).replace(/^c_/, '')}` : '');
+        const provider = getProviderPresentation(chat);
+        const convUrl = chat.url || (chat.id ? provider.fallbackUrl(String(chat.id)) : '');
         return JSON.stringify({
             id: chat.id,
             title: chat.title,
