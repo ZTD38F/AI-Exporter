@@ -5,11 +5,14 @@ import type { TabServiceModule, TabStatusResult } from '../../types/utils.js';
 export type AITabProviderId = 'gemini' | string;
 
 const AI_TAB_PATTERNS: Record<string, string[]> = {
-    gemini: ['https://gemini.google.com/*']
+    gemini: ['https://gemini.google.com/*'],
+    chatgpt: ['https://chatgpt.com/*']
 };
 
 function providerLabel(providerId: AITabProviderId): string {
-    return providerId === 'gemini' ? 'Gemini' : providerId;
+    if (providerId === 'gemini') return 'Gemini';
+    if (providerId === 'chatgpt') return 'ChatGPT';
+    return providerId;
 }
 
 function selectGeminiTabs(tabs: chrome.tabs.Tab[], slot?: string): chrome.tabs.Tab[] {
