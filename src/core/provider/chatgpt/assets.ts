@@ -52,7 +52,11 @@ function addRef(
         if (existingGeneric && !candidateGeneric) {
             existing.preferredName = preferredName;
         }
-        if (!existing.mimeType && typeof mimeType === "string") existing.mimeType = mimeType;
+        const existingIsMime = typeof existing.mimeType === "string" && /^[^/\s]+\/[^/\s]+$/.test(existing.mimeType);
+        const candidateIsMime = typeof mimeType === "string" && /^[^/\s]+\/[^/\s]+$/.test(mimeType);
+        if ((!existing.mimeType || (!existingIsMime && candidateIsMime)) && typeof mimeType === "string") {
+            existing.mimeType = mimeType;
+        }
         return;
     }
     refs.set(fileId, {
