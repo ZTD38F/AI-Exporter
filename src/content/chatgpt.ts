@@ -66,7 +66,11 @@ function safeError(error: any): { ok: false; code: string; error: string; status
     };
 }
 
-if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+const BRIDGE_SENTINEL = "__AI_EXPORTER_CHATGPT_BRIDGE_V1__";
+const bridgeGlobal = globalThis as any;
+
+if (!bridgeGlobal[BRIDGE_SENTINEL] && typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+    bridgeGlobal[BRIDGE_SENTINEL] = true;
     chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
         if (sender.id && sender.id !== chrome.runtime.id) return false;
 
