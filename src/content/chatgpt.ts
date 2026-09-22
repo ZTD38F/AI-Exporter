@@ -12,10 +12,30 @@ import { parseChatGPTWorkspaces, publicWorkspace } from "../core/provider/chatgp
 import ChatGPTClient from "../core/provider/chatgpt/client.js";
 import { captureChatGPTInventory } from "../core/provider/chatgpt/inventory.js";
 import { captureChatGPTAccountInventory } from "../core/provider/chatgpt/accountInventory.js";
+import { normalizeChatGPTConversation } from "../core/provider/chatgpt/graph.js";
 
 let session: ChatGPTSession | null = null;
 let transport: ChatGPTTransport | null = null;
 const workspaceIds = new Map<string, string>();
+const MAX_DETAIL_MESSAGE_BYTES = 16 * 1024 * 1024;
+
+function assertDetailMessageSize(raw: any): void {
+    let encodedBytes = 0;
+    try {
+        encodedBytes = new TextEncoder().encode(JSON.stringify(raw)).byteLength;
+    } catch {
+        const error: any = new Error("ChatGPT conversation detail could not be serialized safely");
+        error.code = "DETAIL_SERIALIZATION_FAILED";
+        throw error;
+    }
+    if (encodedBytes > MAX_DETAIL_MESSAGE_BYTES) {
+        const error: any = new Error(
+            `ChatGPT conversation detail is too large for the current extension message bridge (${encodedBytes} bytes > ${MAX_DETAIL_MESSAGE_BYTES})`
+        );
+        error.code = "DETAIL_TOO_LARGE_FOR_MESSAGE";
+        throw error;
+    }
+}
 
 async function ensureTransport(forceRefresh = false): Promise<ChatGPTTransport> {
     if (!transport || !session || forceRefresh) {
@@ -80,6 +100,7 @@ if (!bridgeGlobal[BRIDGE_SENTINEL] && typeof chrome !== "undefined" && chrome.ru
             "chatgptReadiness",
             "chatgptDiscoverWorkspaces",
             "chatgptConversationInventory",
+            "chatgptConversationDetail",
             "chatgptAccountInventory",
             "chatgptResetSession"
         ].includes(action)) {
@@ -142,6 +163,44 @@ if (!bridgeGlobal[BRIDGE_SENTINEL] && typeof chrome !== "undefined" && chrome.ru
                                 ok: true,
                                 provider: "chatgpt",
                                 inventory
+                            };
+                        }
+                        throw error;
+                    }
+                }
+                if (action === "chatgptConversationDetail") {
+                    const workspaceKey = typeof message?.workspaceKey === "string" ? message.workspaceKey : "";
+                    const conversationId = typeof message?.conversationId === "string" ? message.conversationId : "";
+                    if (!workspaceKey) {
+                        return { ok: false, code: "WORKSPACE_REQUIRED", error: "ChatGPT workspace key is required" };
+                    }
+                    if (!conversationId) {
+                        return { ok: false, code: "CONVERSATION_REQUIRED", error: "ChatGPT conversation id is required" };
+                    }
+
+                    const fetchAndNormalize = async (forceRefresh = false) => {
+                        if (forceRefresh) await ensureTransport(true);
+                        const workspaceId = await resolveWorkspaceAccountId(workspaceKey);
+                        const client = new ChatGPTClient(await ensureTransport());
+                        const raw = await client.conversationDetail(conversationId, workspaceId);
+                        assertDetailMessageSize(raw);
+                        return normalizeChatGPTConversation(raw, conversationId, workspaceKey);
+                    };
+
+                    try {
+                        const detail = await fetchAndNormalize(false);
+                        return {
+                            ok: true,
+                            provider: "chatgpt",
+                            detail
+                        };
+                    } catch (error: any) {
+                        if (error instanceof ChatGPTTransportError && error.code === "AUTH_REQUIRED") {
+                            const detail = await fetchAndNormalize(true);
+                            return {
+                                ok: true,
+                                provider: "chatgpt",
+                                detail
                             };
                         }
                         throw error;
