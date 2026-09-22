@@ -1,92 +1,137 @@
-// src/core/utils/tabService.ts - Unified Gemini Tab Discovery & Communication Service
+// src/core/utils/tabService.ts - Provider-neutral AI Tab Discovery & Communication Service
 
 import type { TabServiceModule, TabStatusResult } from '../../types/utils.js';
 
+export type AITabProviderId = 'gemini' | string;
 
+const AI_TAB_PATTERNS: Record<string, string[]> = {
+    gemini: ['https://gemini.google.com/*']
+};
 
-    async function getGeminiTab(slot?: string): Promise<chrome.tabs.Tab | null> {
-        if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.query) return null;
-        const tabs = await chrome.tabs.query({ url: 'https://gemini.google.com/*' });
-        if (!tabs || !tabs.length) return null;
-        if (slot && slot !== 'u0') {
-            const slotNum = slot.replace('u', '');
-            const match = tabs.find(t => t.url && t.url.includes(`/u/${slotNum}/`));
-            return match || null;
-        } else if (slot === 'u0') {
-            const defMatch = tabs.find(t => t.url && (!t.url.match(/\/u\/\d+\//) || t.url.includes('/u/0/')));
-            return defMatch || tabs.find(t => t.active) || tabs[0];
-        }
-        return tabs.find(t => t.active) || tabs[0];
+function providerLabel(providerId: AITabProviderId): string {
+    return providerId === 'gemini' ? 'Gemini' : providerId;
+}
+
+function selectGeminiTabs(tabs: chrome.tabs.Tab[], slot?: string): chrome.tabs.Tab[] {
+    if (slot && slot !== 'u0') {
+        const slotNum = slot.replace('u', '');
+        return tabs.filter(t => t.url && t.url.includes(`/u/${slotNum}/`));
+    }
+    if (slot === 'u0') {
+        const scoped = tabs.filter(t => t.url && (!t.url.match(/\/u\/\d+\//) || t.url.includes('/u/0/')));
+        return scoped.length ? scoped : tabs;
+    }
+    return tabs;
+}
+
+export async function getAITab(providerId: AITabProviderId, scope?: string): Promise<chrome.tabs.Tab | null> {
+    if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.query) return null;
+    const patterns = AI_TAB_PATTERNS[providerId];
+    if (!patterns?.length) return null;
+
+    const batches = await Promise.all(patterns.map(url => chrome.tabs.query({ url })));
+    let tabs = batches.flat();
+    if (!tabs.length) return null;
+
+    if (providerId === 'gemini') tabs = selectGeminiTabs(tabs, scope);
+    if (!tabs.length) return null;
+
+    return tabs.find(t => t.active) || tabs[0];
+}
+
+export async function sendToAITab(
+    providerId: AITabProviderId,
+    msg: any,
+    scope?: string,
+    timeoutMs?: number
+): Promise<any> {
+    if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.query) {
+        throw new Error('chrome.tabs API 不可用');
     }
 
-    async function sendToGeminiTab(msg: any, slot?: string, timeoutMs?: number): Promise<any> {
-        if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.query) {
-            throw new Error('chrome.tabs API 不可用');
-        }
-        if (!timeoutMs || typeof timeoutMs !== 'number') {
-            timeoutMs = (msg && msg.action === 'deepScan') ? 300000 : 25000;
-        }
-        const tabs = await chrome.tabs.query({ url: 'https://gemini.google.com/*' });
-        if (!tabs || !tabs.length) throw new Error('未找到 Gemini 标签页，请先打开 gemini.google.com');
+    const patterns = AI_TAB_PATTERNS[providerId];
+    if (!patterns?.length) {
+        throw new Error(`Provider "${providerId}" has no registered browser tab patterns`);
+    }
 
-        let candidates: chrome.tabs.Tab[] = [];
-        if (slot && slot !== 'u0') {
-            const slotNum = slot.replace('u', '');
-            candidates = tabs.filter(t => t.url && t.url.includes(`/u/${slotNum}/`));
-            if (!candidates.length) {
-                throw new Error(`未找到多账号 slot ${slot} 对应的 Gemini 标签页，请在浏览器中打开该账号标签页`);
-            }
-        } else if (slot === 'u0') {
-            candidates = tabs.filter(t => t.url && (!t.url.match(/\/u\/\d+\//) || t.url.includes('/u/0/')));
-            if (!candidates.length) candidates = tabs;
-        } else {
-            candidates = tabs;
-        }
-        candidates.sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
+    if (!timeoutMs || typeof timeoutMs !== 'number') {
+        timeoutMs = (msg && msg.action === 'deepScan') ? 300000 : 25000;
+    }
 
-        let lastError: any = null;
-        for (const tab of candidates) {
-            if (tab.id == null) continue;
-            try {
-                const res = await new Promise((resolve, reject) => {
-                    let settled = false;
-                    const timer = setTimeout(() => {
-                        if (!settled) {
-                            settled = true;
-                            reject(new Error(`与 Gemini 页面通信超时 (${timeoutMs}ms)`));
-                        }
-                    }, timeoutMs);
-                    chrome.tabs.sendMessage(tab.id!, msg, (r) => {
-                        if (!settled) {
-                            settled = true;
-                            clearTimeout(timer);
-                            if (chrome.runtime.lastError) {
-                                reject(new Error(chrome.runtime.lastError.message || ''));
-                            } else {
-                                resolve(r);
-                            }
-                        }
-                    });
+    const batches = await Promise.all(patterns.map(url => chrome.tabs.query({ url })));
+    let candidates = batches.flat();
+    if (!candidates.length) {
+        if (providerId === 'gemini') {
+            throw new Error('未找到 Gemini 标签页，请先打开 gemini.google.com');
+        }
+        throw new Error(`No ${providerLabel(providerId)} tab found`);
+    }
+
+    if (providerId === 'gemini') {
+        candidates = selectGeminiTabs(candidates, scope);
+        if (!candidates.length && scope && scope !== 'u0') {
+            throw new Error(`未找到多账号 slot ${scope} 对应的 Gemini 标签页，请在浏览器中打开该账号标签页`);
+        }
+    }
+
+    candidates.sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
+
+    let lastError: any = null;
+    for (const candidate of candidates) {
+        if (candidate.id == null) continue;
+        try {
+            return await new Promise((resolve, reject) => {
+                let settled = false;
+                const timer = setTimeout(() => {
+                    if (!settled) {
+                        settled = true;
+                        reject(new Error(`与 ${providerLabel(providerId)} 页面通信超时 (${timeoutMs}ms)`));
+                    }
+                }, timeoutMs);
+
+                chrome.tabs.sendMessage(candidate.id!, msg, (response) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message || ''));
+                    } else {
+                        resolve(response);
+                    }
                 });
-                return res;
-            } catch (e: any) {
-                lastError = e;
-                const errStr = String(e?.message || '');
-                if (errStr.includes('Receiving end does not exist') || errStr.includes('Could not establish connection')) {
-                    continue;
-                }
-                throw e;
+            });
+        } catch (error: any) {
+            lastError = error;
+            const message = String(error?.message || '');
+            if (message.includes('Receiving end does not exist') || message.includes('Could not establish connection')) {
+                continue;
             }
+            throw error;
         }
+    }
+
+    if (providerId === 'gemini') {
         if (lastError) {
-            const errStr = String(lastError?.message || '');
-            if (errStr.includes('Receiving end does not exist') || errStr.includes('Could not establish connection')) {
+            const message = String(lastError?.message || '');
+            if (message.includes('Receiving end does not exist') || message.includes('Could not establish connection')) {
                 throw new Error('未能与 Gemini 建立连接，请刷新 gemini.google.com 页面后重试: Receiving end does not exist');
             }
             throw lastError;
         }
         throw new Error('未能与任何 Gemini 标签页成功建立通信，请先打开或刷新 gemini.google.com 页面');
     }
+
+    if (lastError) throw lastError;
+    throw new Error(`Could not communicate with any ${providerLabel(providerId)} tab`);
+}
+
+async function getGeminiTab(slot?: string): Promise<chrome.tabs.Tab | null> {
+    return getAITab('gemini', slot);
+}
+
+async function sendToGeminiTab(msg: any, slot?: string, timeoutMs?: number): Promise<any> {
+    return sendToAITab('gemini', msg, slot, timeoutMs);
+}
 
     async function checkGeminiStatus(slot?: string): Promise<TabStatusResult> {
         if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.query) {
@@ -166,6 +211,8 @@ export {
 };
 
 export const TabService: TabServiceModule = {
+    getAITab,
+    sendToAITab,
     getGeminiTab,
     sendToGeminiTab,
     checkGeminiStatus,
