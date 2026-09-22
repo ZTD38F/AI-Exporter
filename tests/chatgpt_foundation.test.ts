@@ -81,7 +81,7 @@ test('ChatGPT transport - rejects arbitrary origins, traversal and non-allowlist
         (error: any) => error instanceof ChatGPTTransportError && error.code === 'PATH_REJECTED'
     );
     assert.throws(
-        () => validateChatGPTReadPath('/backend-api/conversation/delete-all'),
+        () => validateChatGPTReadPath('/backend-api/conversation/delete-all/action'),
         (error: any) => error instanceof ChatGPTTransportError && error.code === 'PATH_NOT_ALLOWLISTED'
     );
     assert.strictEqual(
