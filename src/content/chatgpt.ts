@@ -9,6 +9,8 @@
 import { acquireChatGPTSession, safeSessionSummary, type ChatGPTSession } from "../core/provider/chatgpt/auth.js";
 import { ChatGPTTransport, ChatGPTTransportError } from "../core/provider/chatgpt/transport.js";
 import { parseChatGPTWorkspaces, publicWorkspace } from "../core/provider/chatgpt/workspaces.js";
+import ChatGPTClient from "../core/provider/chatgpt/client.js";
+import { captureChatGPTInventory } from "../core/provider/chatgpt/inventory.js";
 
 let session: ChatGPTSession | null = null;
 let transport: ChatGPTTransport | null = null;
@@ -21,6 +23,37 @@ async function ensureTransport(forceRefresh = false): Promise<ChatGPTTransport> 
         workspaceIds.clear();
     }
     return transport;
+}
+
+async function discoverWorkspaces(): Promise<ReturnType<typeof parseChatGPTWorkspaces> extends Promise<infer T> ? T : never> {
+    const client = await ensureTransport();
+    let raw: any;
+    try {
+        raw = await client.requestJson("/backend-api/accounts/check/v4-2023-04-27");
+    } catch (error: any) {
+        if (error instanceof ChatGPTTransportError && error.code === "AUTH_REQUIRED") {
+            const refreshed = await ensureTransport(true);
+            raw = await refreshed.requestJson("/backend-api/accounts/check/v4-2023-04-27");
+        } else {
+            throw error;
+        }
+    }
+    const workspaces = await parseChatGPTWorkspaces(raw);
+    workspaceIds.clear();
+    for (const workspace of workspaces) workspaceIds.set(workspace.key, workspace.accountId);
+    return workspaces;
+}
+
+async function resolveWorkspaceAccountId(workspaceKey: string): Promise<string> {
+    let accountId = workspaceIds.get(workspaceKey);
+    if (!accountId) {
+        await discoverWorkspaces();
+        accountId = workspaceIds.get(workspaceKey);
+    }
+    if (!accountId) {
+        throw new Error("Unknown ChatGPT workspace key");
+    }
+    return accountId;
 }
 
 function safeError(error: any): { ok: false; code: string; error: string; status?: number } {
@@ -41,6 +74,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
             "chatgptPing",
             "chatgptReadiness",
             "chatgptDiscoverWorkspaces",
+            "chatgptConversationInventory",
             "chatgptResetSession"
         ].includes(action)) {
             return false;
@@ -66,26 +100,46 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
                     };
                 }
                 if (action === "chatgptDiscoverWorkspaces") {
-                    const client = await ensureTransport();
-                    let raw: any;
-                    try {
-                        raw = await client.requestJson("/backend-api/accounts/check/v4-2023-04-27");
-                    } catch (error: any) {
-                        if (error instanceof ChatGPTTransportError && error.code === "AUTH_REQUIRED") {
-                            const refreshed = await ensureTransport(true);
-                            raw = await refreshed.requestJson("/backend-api/accounts/check/v4-2023-04-27");
-                        } else {
-                            throw error;
-                        }
-                    }
-                    const workspaces = await parseChatGPTWorkspaces(raw);
-                    workspaceIds.clear();
-                    for (const workspace of workspaces) workspaceIds.set(workspace.key, workspace.accountId);
+                    const workspaces = await discoverWorkspaces();
                     return {
                         ok: true,
                         provider: "chatgpt",
                         workspaces: workspaces.map(publicWorkspace)
                     };
+                }
+                if (action === "chatgptConversationInventory") {
+                    const workspaceKey = typeof message?.workspaceKey === "string" ? message.workspaceKey : "";
+                    if (!workspaceKey) {
+                        return { ok: false, code: "WORKSPACE_REQUIRED", error: "ChatGPT workspace key is required" };
+                    }
+                    const workspaceId = await resolveWorkspaceAccountId(workspaceKey);
+                    let client = new ChatGPTClient(await ensureTransport());
+                    try {
+                        const inventory = await captureChatGPTInventory(client, workspaceId, workspaceKey, {
+                            pageSize: 100,
+                            maxPages: 10_000
+                        });
+                        return {
+                            ok: true,
+                            provider: "chatgpt",
+                            inventory
+                        };
+                    } catch (error: any) {
+                        if (error instanceof ChatGPTTransportError && error.code === "AUTH_REQUIRED") {
+                            client = new ChatGPTClient(await ensureTransport(true));
+                            const refreshedWorkspaceId = await resolveWorkspaceAccountId(workspaceKey);
+                            const inventory = await captureChatGPTInventory(client, refreshedWorkspaceId, workspaceKey, {
+                                pageSize: 100,
+                                maxPages: 10_000
+                            });
+                            return {
+                                ok: true,
+                                provider: "chatgpt",
+                                inventory
+                            };
+                        }
+                        throw error;
+                    }
                 }
                 return { ok: false, code: "UNKNOWN_ACTION", error: "Unknown ChatGPT bridge action" };
             } catch (error: any) {
