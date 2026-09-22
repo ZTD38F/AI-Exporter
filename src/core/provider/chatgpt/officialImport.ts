@@ -87,7 +87,9 @@ function remoteUpdateMarker(value: any): string | null {
 function timestampValue(marker: string | null): number | null {
     if (!marker) return null;
     const numeric = Number(marker);
-    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    if (Number.isFinite(numeric) && numeric > 0) {
+        return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
     const parsed = Date.parse(marker);
     return Number.isFinite(parsed) ? parsed : null;
 }
