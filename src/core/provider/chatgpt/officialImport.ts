@@ -142,7 +142,10 @@ export async function parseChatGPTOfficialExportZip(
 
     const safeEntries: Array<{ path: string; entry: any }> = [];
     for (const [rawPath, entry] of Object.entries<any>(zip.files || {})) {
-        const path = safeEntryPath(rawPath);
+        const originalPath = typeof entry?.unsafeOriginalName === "string"
+            ? entry.unsafeOriginalName
+            : rawPath;
+        const path = safeEntryPath(originalPath);
         if (entry?.dir) continue;
         safeEntries.push({ path, entry });
     }
