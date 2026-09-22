@@ -76,6 +76,45 @@ export class ChatGPTClient {
         return this.transport.requestJson(`/backend-api/share/${sid}`, workspaceId);
     }
 
+    async resolveFile(
+        fileId: string,
+        workspaceId: string,
+        context: { conversationId?: string; projectId?: string }
+    ): Promise<any> {
+        const fid = requireIdentifier(fileId, "file id");
+        const hasConversation = typeof context?.conversationId === "string" && !!context.conversationId;
+        const hasProject = typeof context?.projectId === "string" && !!context.projectId;
+        if (hasConversation === hasProject) {
+            throw new Error("Exactly one conversationId or projectId is required");
+        }
+
+        if (hasConversation) {
+            const cid = requireIdentifier(context.conversationId!, "conversation id");
+            return this.transport.requestJson(
+                `/backend-api/files/download/${fid}?${query({
+                    conversation_id: cid,
+                    inline: "false"
+                })}`,
+                workspaceId
+            );
+        }
+
+        const projectId = requireIdentifier(context.projectId!, "project id");
+        const qs = query({ gizmo_id: projectId });
+        try {
+            return await this.transport.requestJson(
+                `/backend-api/files/download/${fid}?${qs}`,
+                workspaceId
+            );
+        } catch (error: any) {
+            if (error?.status !== 404 && error?.status !== 405) throw error;
+            return this.transport.requestJson(
+                `/backend-api/files/${fid}/download?${qs}`,
+                workspaceId
+            );
+        }
+    }
+
     accountArtifact(kind: "memories" | "custom_instructions" | "settings" | "beta_features", workspaceId: string): Promise<any> {
         const paths = {
             memories: "/backend-api/memories?include_memory_entries=true",
