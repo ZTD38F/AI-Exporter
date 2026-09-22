@@ -66,15 +66,12 @@ function mapMemberships(value: any): ProviderMembership[] {
 }
 
 function mapInventoryItem(
+    inventoryId: string,
     item: any,
     memberships: any,
     workspaceKey: string
 ): ProviderConversationItem {
-    const id = typeof item?.id === "string" && item.id
-        ? item.id
-        : typeof item?.conversation_id === "string" && item.conversation_id
-            ? item.conversation_id
-            : "";
+    const id = inventoryId.trim();
 
     if (!id) throw new Error("ChatGPT inventory item is missing a conversation id");
 
@@ -239,13 +236,8 @@ export class ChatGPTProvider implements AIProvider {
         const memberships = inventory.memberships && typeof inventory.memberships === "object"
             ? inventory.memberships
             : {};
-        const items = Object.values(inventory.listings).map((item: any) => {
-            const id = typeof item?.id === "string"
-                ? item.id
-                : typeof item?.conversation_id === "string"
-                    ? item.conversation_id
-                    : "";
-            return mapInventoryItem(item, memberships[id], workspaceKey);
+        const items = Object.entries(inventory.listings).map(([inventoryId, item]: [string, any]) => {
+            return mapInventoryItem(inventoryId, item, memberships[inventoryId], workspaceKey);
         });
 
         const complete = inventory.conversationInventoryComplete === true;
