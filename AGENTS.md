@@ -1,5 +1,15 @@
 # AI 助手与自动化协作指南 (AI Agent Guide & Rules)
 
+## 产品身份与设计基线 (Product Identity & Design Baseline)
+
+- 产品名称是 **AI Exporter**。
+- **原始 Gemini Exporter 的视觉设计、Workbench 布局、交互模型和整体 UX 是本项目的设计基线与默认规范。**
+- ChatGPT 以及未来其他 AI provider 必须被集成进这套既有设计语言；除非有明确的可用性/无障碍/安全原因并有测试证据，否则不得因为“多 provider”而重新设计整个产品。
+- Gemini 仍然是必须保持零回归的稳定基线 provider。新增 provider 不能通过破坏、替换或弱化原 Gemini Exporter 工作流来实现。
+- 面向用户的通用产品文案使用 **AI Exporter**；仅在说明某个 provider 的专属功能时使用 **Gemini**、**ChatGPT** 等 provider 名称。
+- 任何声称 ChatGPT 或其他 provider “完整支持”的变更，都必须满足对应 inventory、raw capture、assets、integrity/completeness 与 live regression gate，而不能只依据单个 Markdown 导出成功。
+
+
 本文件为所有协助开发与维护本项目（Gemini Exporter）的 AI Agent（包括 Antigravity、Claude Code、Cursor、Copilot、Codex 等）提供统一规范与操作准则。
 
 ---
