@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "Gemini Exporter - 批量导出对话备份",
+    "message": "AI Exporter - AI 对话导出与归档",
     "description": "扩展程序名称。"
   },
   "extDesc": {
-    "message": "开源、纯本地运行：批量导出 Google Gemini 对话与 Takeout 归档为 Markdown、JSON 或 ZIP（完整保存图片）。",
+    "message": "隐私优先、纯本地运行的 AI 对话导出工具。当前稳定支持 Gemini，并在保持原有体验的基础上扩展多平台支持。",
     "description": "扩展程序描述。"
   }
 }
