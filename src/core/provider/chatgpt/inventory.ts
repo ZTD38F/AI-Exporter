@@ -22,7 +22,6 @@ export interface PaginationEvidence {
     uniqueItems: number;
     stopReason:
         | "total_reached"
-        | "short_page"
         | "empty_page"
         | "cursor_exhausted"
         | "repeated_page"
@@ -214,23 +213,6 @@ export async function offsetChain(
                     itemsSeen,
                     uniqueItems: items.length,
                     stopReason: "total_reached",
-                    serverTotal,
-                    finalOffset: nextOffset
-                }
-            };
-        }
-
-        if (batch.length < pageSize && serverTotal === null) {
-            return {
-                items,
-                evidence: {
-                    kind: "offset",
-                    scope,
-                    complete: true,
-                    pagesFetched: page,
-                    itemsSeen,
-                    uniqueItems: items.length,
-                    stopReason: "short_page",
                     serverTotal,
                     finalOffset: nextOffset
                 }
