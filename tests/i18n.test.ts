@@ -81,7 +81,7 @@ test('i18n - ensure no duplicate object literal keys in locale sources', () => {
 test('i18n - dynamic dictionary recovery via ensureLocales and direct locale exports', () => {
     assert.ok(zh && (zh as any).extName, 'zh locale export should be valid');
     assert.ok(en && (en as any).extName, 'en locale export should be valid');
-    assert.strictEqual(I18n.t('extName'), 'Gemini Exporter');
+    assert.strictEqual(I18n.t('extName'), 'AI Exporter');
 });
 
 
@@ -133,7 +133,7 @@ test('i18n - applyI18n translates root element and descendants safely', async ()
 
     try {
         I18n.applyI18n(rootEl as any);
-        assert.strictEqual(rootEl.textContent, 'Gemini Exporter', 'Root element data-i18n should be translated');
+        assert.strictEqual(rootEl.textContent, 'AI Exporter', 'Root element data-i18n should be translated');
         assert.strictEqual(childEl.title, '设置目录...', 'Child element data-i18n-title should be translated');
         assert.strictEqual(childEl.placeholder, '搜索标题 / ID...', 'Child element data-i18n-placeholder should be translated');
     } finally {
