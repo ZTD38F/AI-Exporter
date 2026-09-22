@@ -213,7 +213,7 @@ test('ChatGPT official import - progress reports each conversation source withou
 
     const buffer = await zip.generateAsync({ type: 'nodebuffer' });
     const events: any[] = [];
-    await parseChatGPTOfficialExportZip(buffer, event => events.push(event));
+    await parseChatGPTOfficialExportZip(buffer, (event: { phase: string; current: number; total: number; source?: string }) => events.push(event));
 
     assert.deepStrictEqual(events, [
         {
