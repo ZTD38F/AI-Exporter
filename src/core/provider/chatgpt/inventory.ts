@@ -45,7 +45,7 @@ export interface ChatGPTInventoryResult {
     schemaVersion: 1;
     providerId: "chatgpt";
     workspaceKey: string;
-    complete: boolean;
+    conversationInventoryComplete: boolean;
     listings: Record<string, any>;
     memberships: Record<string, Array<Record<string, any>>>;
     projects: Record<string, {
@@ -481,7 +481,7 @@ export async function captureChatGPTInventory(
         schemaVersion: 1,
         providerId: "chatgpt",
         workspaceKey,
-        complete: errors.length === 0 && evidence.length >= 4 && evidence.every(item => item.complete),
+        conversationInventoryComplete: errors.length === 0 && evidence.length >= 4 && evidence.every(item => item.complete),
         listings,
         memberships,
         projects,
