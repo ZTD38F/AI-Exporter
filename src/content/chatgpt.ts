@@ -11,6 +11,7 @@ import { ChatGPTTransport, ChatGPTTransportError } from "../core/provider/chatgp
 import { parseChatGPTWorkspaces, publicWorkspace } from "../core/provider/chatgpt/workspaces.js";
 import ChatGPTClient from "../core/provider/chatgpt/client.js";
 import { captureChatGPTInventory } from "../core/provider/chatgpt/inventory.js";
+import { captureChatGPTAccountInventory } from "../core/provider/chatgpt/accountInventory.js";
 
 let session: ChatGPTSession | null = null;
 let transport: ChatGPTTransport | null = null;
@@ -75,6 +76,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
             "chatgptReadiness",
             "chatgptDiscoverWorkspaces",
             "chatgptConversationInventory",
+            "chatgptAccountInventory",
             "chatgptResetSession"
         ].includes(action)) {
             return false;
@@ -130,6 +132,38 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
                             const refreshedWorkspaceId = await resolveWorkspaceAccountId(workspaceKey);
                             const inventory = await captureChatGPTInventory(client, refreshedWorkspaceId, workspaceKey, {
                                 pageSize: 100,
+                                maxPages: 10_000
+                            });
+                            return {
+                                ok: true,
+                                provider: "chatgpt",
+                                inventory
+                            };
+                        }
+                        throw error;
+                    }
+                }
+                if (action === "chatgptAccountInventory") {
+                    const workspaceKey = typeof message?.workspaceKey === "string" ? message.workspaceKey : "";
+                    if (!workspaceKey) {
+                        return { ok: false, code: "WORKSPACE_REQUIRED", error: "ChatGPT workspace key is required" };
+                    }
+                    const workspaceId = await resolveWorkspaceAccountId(workspaceKey);
+                    let client = new ChatGPTClient(await ensureTransport());
+                    try {
+                        const inventory = await captureChatGPTAccountInventory(client, workspaceId, workspaceKey, {
+                            maxPages: 10_000
+                        });
+                        return {
+                            ok: true,
+                            provider: "chatgpt",
+                            inventory
+                        };
+                    } catch (error: any) {
+                        if (error instanceof ChatGPTTransportError && error.code === "AUTH_REQUIRED") {
+                            client = new ChatGPTClient(await ensureTransport(true));
+                            const refreshedWorkspaceId = await resolveWorkspaceAccountId(workspaceKey);
+                            const inventory = await captureChatGPTAccountInventory(client, refreshedWorkspaceId, workspaceKey, {
                                 maxPages: 10_000
                             });
                             return {
