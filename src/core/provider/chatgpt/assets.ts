@@ -17,13 +17,14 @@ export interface ChatGPTAssetResolution {
     redactedResolverMetadata: any;
 }
 
-const SIGNED_URL_KEYS = new Set([
+const SIGNED_URL_KEY_PRIORITY = [
     "download_url",
-    "url",
-    "file_url",
     "presigned_url",
-    "signed_url"
-]);
+    "signed_url",
+    "file_url",
+    "url"
+] as const;
+const SIGNED_URL_KEYS = new Set<string>(SIGNED_URL_KEY_PRIORITY);
 
 function safeName(value: any, fallback: string): string {
     if (typeof value !== "string" || !value.trim()) return fallback;
@@ -42,7 +43,13 @@ function addRef(
     const preferredName = safeName(name, fileId);
     if (existing) {
         if (!existing.sources.includes(source)) existing.sources.push(source);
-        if (existing.preferredName === existing.fileId && preferredName !== fileId) {
+        const existingGeneric = existing.preferredName === existing.fileId
+            || existing.preferredName === "image"
+            || existing.preferredName === "citation";
+        const candidateGeneric = preferredName === fileId
+            || preferredName === "image"
+            || preferredName === "citation";
+        if (existingGeneric && !candidateGeneric) {
             existing.preferredName = preferredName;
         }
         if (!existing.mimeType && typeof mimeType === "string") existing.mimeType = mimeType;
@@ -193,7 +200,7 @@ export function findSignedAssetUrl(metadata: any): string | null {
             return;
         }
 
-        for (const key of SIGNED_URL_KEYS) {
+        for (const key of SIGNED_URL_KEY_PRIORITY) {
             const value = node[key];
             if (typeof value === "string" && value.startsWith("https://")) {
                 found = value;
@@ -238,6 +245,7 @@ export function redactChatGPTAssetMetadata(value: any): any {
 function privateLiteralHost(hostname: string): boolean {
     const h = hostname.toLowerCase();
     if (h === "localhost" || h === "localhost.localdomain" || h.endsWith(".localhost")) return true;
+    if (h.startsWith("[") && h.endsWith("]")) return true;
 
     // Browser extensions cannot synchronously verify DNS resolution here.
     // Reject obvious private/reserved literal IPv4 ranges; runtime download
