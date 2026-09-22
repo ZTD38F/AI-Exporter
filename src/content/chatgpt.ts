@@ -165,8 +165,9 @@ if (!bridgeGlobal[BRIDGE_SENTINEL] && typeof chrome !== "undefined" && chrome.ru
                         const workspaceId = await resolveWorkspaceAccountId(workspaceKey);
                         const client = new ChatGPTClient(await ensureTransport());
                         const raw = await client.conversationDetail(conversationId, workspaceId);
-                        assertChatGPTDetailMessageSize(raw);
-                        return normalizeChatGPTConversation(raw, conversationId, workspaceKey);
+                        const detail = normalizeChatGPTConversation(raw, conversationId, workspaceKey);
+                        assertChatGPTDetailMessageSize(detail);
+                        return detail;
                     };
 
                     try {
