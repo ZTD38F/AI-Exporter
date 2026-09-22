@@ -10,7 +10,7 @@ except Exception:
     pass
 
 print("=" * 60)
-print(" Gemini Exporter - Comprehensive Test Suite")
+print(" AI Exporter - Comprehensive Test Suite")
 print("=" * 60)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +27,10 @@ def test_manifest_structure():
         m = json.load(f)
         assert m["manifest_version"] == 3
         assert "storage" in m["permissions"]
+        assert "https://chatgpt.com/*" not in m.get("host_permissions", []), "ChatGPT must remain optional, not an install-time host permission"
+        assert "https://chatgpt.com/*" in m.get("optional_host_permissions", []), "ChatGPT host access must be optional"
+        assert "scripting" in m.get("optional_permissions", []), "ChatGPT runtime injection requires optional scripting permission"
+        assert not any("https://chatgpt.com/*" in c.get("matches", []) for c in m.get("content_scripts", [])), "ChatGPT bridge must not be statically injected"
         assert m["background"]["service_worker"] == "dist/background/background.js", "background service_worker must point to the esbuild dist output"
         cs = m["content_scripts"]
         assert cs[0]["js"] == ["dist/content/content.js"], "ISOLATED content script must load single bundled dist/content/content.js"
@@ -46,10 +50,11 @@ def test_build_pipeline():
         gi = f.read()
     assert re.search(r'^dist/?$', gi, re.MULTILINE), "dist/ build output must be gitignored"
 
-    # Phase 5: verify all 5 bundle entrypoints configured in build.js
+    # Verify all production bundle entrypoints configured in build.js
     with open(os.path.join(BASE_DIR, "build.js"), "r", encoding="utf-8") as f:
         build_content = f.read()
     assert "content/content" in build_content, "build.js must configure content/content bundle"
+    assert "content/chatgpt" in build_content, "build.js must configure optional ChatGPT bridge bundle"
     assert "content/hook" in build_content, "build.js must configure content/hook bundle"
     assert "background/background" in build_content, "build.js must configure background/background bundle"
     assert "ui/popup" in build_content, "build.js must configure ui/popup bundle"
@@ -60,6 +65,7 @@ def test_build_pipeline():
     if os.path.isdir(dist_dir):
         expected_bundles = [
             "dist/content/content.js",
+            "dist/content/chatgpt.js",
             "dist/content/hook.js",
             "dist/background/background.js",
             "dist/ui/popup.js",
