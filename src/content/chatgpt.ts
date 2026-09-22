@@ -13,29 +13,11 @@ import ChatGPTClient from "../core/provider/chatgpt/client.js";
 import { captureChatGPTInventory } from "../core/provider/chatgpt/inventory.js";
 import { captureChatGPTAccountInventory } from "../core/provider/chatgpt/accountInventory.js";
 import { normalizeChatGPTConversation } from "../core/provider/chatgpt/graph.js";
+import { assertChatGPTDetailMessageSize } from "../core/provider/chatgpt/bridgePayload.js";
 
 let session: ChatGPTSession | null = null;
 let transport: ChatGPTTransport | null = null;
 const workspaceIds = new Map<string, string>();
-const MAX_DETAIL_MESSAGE_BYTES = 16 * 1024 * 1024;
-
-function assertDetailMessageSize(raw: any): void {
-    let encodedBytes = 0;
-    try {
-        encodedBytes = new TextEncoder().encode(JSON.stringify(raw)).byteLength;
-    } catch {
-        const error: any = new Error("ChatGPT conversation detail could not be serialized safely");
-        error.code = "DETAIL_SERIALIZATION_FAILED";
-        throw error;
-    }
-    if (encodedBytes > MAX_DETAIL_MESSAGE_BYTES) {
-        const error: any = new Error(
-            `ChatGPT conversation detail is too large for the current extension message bridge (${encodedBytes} bytes > ${MAX_DETAIL_MESSAGE_BYTES})`
-        );
-        error.code = "DETAIL_TOO_LARGE_FOR_MESSAGE";
-        throw error;
-    }
-}
 
 async function ensureTransport(forceRefresh = false): Promise<ChatGPTTransport> {
     if (!transport || !session || forceRefresh) {
@@ -183,7 +165,7 @@ if (!bridgeGlobal[BRIDGE_SENTINEL] && typeof chrome !== "undefined" && chrome.ru
                         const workspaceId = await resolveWorkspaceAccountId(workspaceKey);
                         const client = new ChatGPTClient(await ensureTransport());
                         const raw = await client.conversationDetail(conversationId, workspaceId);
-                        assertDetailMessageSize(raw);
+                        assertChatGPTDetailMessageSize(raw);
                         return normalizeChatGPTConversation(raw, conversationId, workspaceKey);
                     };
 
