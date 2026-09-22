@@ -1,12 +1,12 @@
-// build.js — esbuild pure bundle build pipeline for Gemini Exporter.
+// build.js — esbuild pure bundle build pipeline for AI Exporter.
 //
 // Modern Architecture (Pure Bundle Pipeline):
-// Directly builds the 5 self-contained production IIFE bundles loaded by Chrome MV3:
+// Directly builds the 6 self-contained production IIFE bundles loaded by Chrome MV3:
 //   1. content/content    -> dist/content/content.js   (ISOLATED world content script)
-//   2. content/hook       -> dist/content/hook.js      (MAIN world network interceptor)
-//   3. background/background -> dist/background/background.js (Service Worker bundle)
-//   4. ui/popup          -> dist/ui/popup.js          (Popup modal coordinator)
-//   5. ui/options        -> dist/ui/options.js        (Options workbench coordinator)
+//   2. content/chatgpt    -> dist/content/chatgpt.js   (optional ChatGPT same-origin bridge)\n//   3. content/hook       -> dist/content/hook.js      (MAIN world network interceptor)
+//   4. background/background -> dist/background/background.js (Service Worker bundle)
+//   5. ui/popup          -> dist/ui/popup.js          (Popup modal coordinator)
+//   6. ui/options        -> dist/ui/options.js        (Options workbench coordinator)
 //
 // Optional:
 // Pass `--per-file` to additionally generate individual unbundled modules for offline inspection.
@@ -29,6 +29,7 @@ const DEFINE_VERSION = { __EXT_VERSION__: JSON.stringify(PKG_VERSION) };
 
 const BUNDLE_ENTRIES = {
     'content/content': path.join(SRC, 'content', 'content.ts'),
+    'content/chatgpt': path.join(SRC, 'content', 'chatgpt.ts'),
     'content/hook': path.join(SRC, 'content', 'hookCredentials.ts'),
     'background/background': path.join(SRC, 'background', 'background.ts'),
     'ui/popup': path.join(SRC, 'ui', 'popup', 'popup.ts'),
@@ -37,6 +38,7 @@ const BUNDLE_ENTRIES = {
 
 const EXPECTED_BUNDLES = [
     'dist/content/content.js',
+    'dist/content/chatgpt.js',
     'dist/content/hook.js',
     'dist/background/background.js',
     'dist/ui/popup.js',
@@ -79,14 +81,14 @@ async function build() {
     // Clean dist to ensure zero stale files
     fs.rmSync(DIST, { recursive: true, force: true });
 
-    // Validate that all 5 bundle entrypoint source files exist
+    // Validate that all production bundle entrypoint source files exist
     for (const [entryName, entryFile] of Object.entries(BUNDLE_ENTRIES)) {
         if (!fs.existsSync(entryFile)) {
             throw new Error(`Bundle entrypoint source missing for ${entryName}: ${entryFile}`);
         }
     }
 
-    // 1. Build all 5 production IIFE bundles in parallel
+    // 1. Build all production IIFE bundles in parallel
     const bundleResult = await esbuild.build({
         entryPoints: BUNDLE_ENTRIES,
         outdir: DIST,
