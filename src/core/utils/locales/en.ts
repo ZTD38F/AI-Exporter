@@ -7,7 +7,7 @@ import type { LocaleDictionary } from '../../../types/utils.js';
 const __enFactory = (): LocaleDictionary => {
     return {
 
-            extName: "Gemini Exporter",
+            extName: "AI Exporter",
             syncedBadge: "{0} synced",
             langSwitch: "简体中文",
             openWorkbench: "Open Workbench",

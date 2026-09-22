@@ -1,22 +1,14 @@
-# 🌌 Gemini Exporter
+# 🌌 AI Exporter
 
 <p align="left">
   <b>English</b> | <a href="./README_zh.md">简体中文</a>
 </p>
 
-<p align="left">
-  <a href="https://chromewebstore.google.com/detail/gemini-exporter/ldpbiafkgjlaooeplkiooljccpalpkgf?utm_source=github&utm_medium=readme_en&utm_campaign=github_repo" target="_blank">
-    <img src="https://img.shields.io/badge/Chrome%20Web%20Store-Gemini%20Exporter-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome Web Store">
-  </a>
-  <img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="License: MIT">
-</p>
-
-> **The easiest, privacy-first way to export and archive your Google Gemini conversations.**  
-> Batch export your chat history into clean Markdown, JSON, or a complete ZIP archive with images and attachments. Seamlessly migrate your chats into **Obsidian**, **Notion**, **Logseq**, or your local knowledge base.
+<p align="left">\n  <img src="https://img.shields.io/badge/Status-Active%20Development-blue?style=for-the-badge" alt="Status: Active Development">\n  <img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="License: MIT">\n</p>\n\n> **AI Exporter is the multi-provider evolution of the original Gemini Exporter.**  \n> The original Gemini Exporter interface and workflow remain the design foundation. Gemini export is the current stable provider; ChatGPT support is being integrated behind the same privacy-first local export experience.
 
 ---
 
-## ✨ Why Gemini Exporter?
+## ✨ Why AI Exporter?
 
 - 🔒 **100% Private & Local**: Runs completely inside your browser sandbox. Your conversations, credentials, and cookies are **never sent to any external server**.
 - ⚡ **Zero Setup Required**: No API keys, no complicated tokens, no passwords. Just use Google Gemini as you normally do.
@@ -43,21 +35,22 @@
 
 ---
 
+## 🧩 Provider Status
+
+- **Google Gemini:** stable baseline inherited from the original Gemini Exporter.
+- **ChatGPT:** active integration work. It will be enabled only after inventory, graph, asset and completeness parity tests pass.
+
+The UI design remains based on the original Gemini Exporter rather than being replaced by a new interface.
+
+---
+
 ## 📥 Installation
 
-### Method 1: Chrome Web Store (Recommended)
-
-Install directly from the official Chrome Web Store with one click:
-
-👉 **[Get Gemini Exporter on Chrome Web Store](https://chromewebstore.google.com/detail/gemini-exporter/ldpbiafkgjlaooeplkiooljccpalpkgf?utm_source=github&utm_medium=readme_en&utm_campaign=github_repo)**
-
-*(Compatible with Google Chrome, Microsoft Edge, Brave, Arc, Vivaldi, and other Chromium browsers.)*
-
-### Method 2: Install from Source Code (Developer / Manual)
+### Install from Source Code (Current Development Build)
 
 1. Download or clone this repository:
    ```bash
-   git clone https://github.com/OTLFrostA/gemini-exporter.git
+   git clone https://github.com/ZTD38F/AI-Exporter.git
    ```
 2. In your browser, navigate to the Extensions page:
    - **Chrome**: `chrome://extensions/`
@@ -71,7 +64,7 @@ Install directly from the official Chrome Web Store with one click:
 
 ### 1. Quick Single-Chat Export
 1. Open any chat on [Google Gemini](https://gemini.google.com).
-2. Click the **Gemini Exporter** icon in your browser toolbar.
+2. Click the **AI Exporter** icon in your browser toolbar.
 3. Choose your desired format (Markdown / JSON) and click **"Export Current Page"**.
 
 ### 2. Batch Export All Chats
@@ -84,7 +77,7 @@ Install directly from the official Chrome Web Store with one click:
 ### 3. Archive Years of History via Google Takeout (Optional)
 If you have thousands of chats dating back years, Google's web interface limits sidebar scrolling to around ~600 chats. You can archive your complete history using Google Takeout:
 1. Open **[Google Takeout (Gemini Pre-selected)](https://takeout.google.com/settings/takeout/custom/gemini)**, click "Next step", and download your archive ZIP.
-2. In the Gemini Exporter Workbench, drag and drop the Takeout ZIP into the **Google Takeout Import** box.
+2. In the AI Exporter Workbench, drag and drop the Takeout ZIP into the **Google Takeout Import** box.
 3. The extension will automatically index and merge your historical chats and media offline!
 
 ---
@@ -101,7 +94,7 @@ If you have thousands of chats dating back years, Google's web interface limits 
 
 <details>
 <summary><b>Is my data safe? Does this extension upload my chats anywhere?</b></summary>
-Yes, your data is 100% safe. Gemini Exporter is fully open-source and operates strictly client-side inside your browser. It does not possess any backend server, does not include any analytics or tracking scripts, and never collects or transmits your personal conversations or account credentials.
+Yes, your data is 100% safe. AI Exporter is fully open-source and operates strictly client-side inside your browser. It does not possess any backend server, does not include any analytics or tracking scripts, and never collects or transmits your personal conversations or account credentials.
 </details>
 
 <details>
@@ -126,5 +119,5 @@ Google Gemini's web interface enforces a server-side limitation on how far back 
 
 ## ⚠️ Disclaimer
 
-- **Gemini Exporter** is an independent, open-source personal backup tool. It is **not affiliated with, sponsored by, or endorsed by Google LLC or Google Gemini**.
+- **AI Exporter** is an independent, open-source personal backup tool. It is **not affiliated with, sponsored by, or endorsed by Google LLC or Google Gemini**.
 - "Google" and "Gemini" are registered trademarks of Google LLC.

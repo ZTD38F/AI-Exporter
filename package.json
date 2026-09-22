@@ -1,7 +1,7 @@
 {
-  "name": "gemini-exporter",
+  "name": "ai-exporter",
   "version": "1.5.1",
-  "description": "An open-source, privacy-first Chrome extension to batch export and archive your Google Gemini conversations.",
+  "description": "A privacy-first browser extension for exporting and archiving AI conversations. Built on the original Gemini Exporter design and evolving into a multi-provider AI Exporter.",
   "main": "background.js",
   "scripts": {
     "type-check": "tsc --noEmit",
@@ -22,6 +22,8 @@
     "release": "gh workflow run release.yml --ref main"
   },
   "keywords": [
+    "ai-exporter",
+    "multi-provider",
     "gemini",
     "google-gemini",
     "exporter",

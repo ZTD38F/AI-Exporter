@@ -1,22 +1,14 @@
-# 🌌 Gemini Exporter
+# 🌌 AI Exporter
 
 <p align="left">
   <a href="./README.md">English</a> | <b>简体中文</b>
 </p>
 
-<p align="left">
-  <a href="https://chromewebstore.google.com/detail/gemini-exporter/ldpbiafkgjlaooeplkiooljccpalpkgf?utm_source=github&utm_medium=readme_zh&utm_campaign=github_repo" target="_blank">
-    <img src="https://img.shields.io/badge/Chrome%20%E5%BA%94%E7%94%A8%E5%95%86%E5%BA%97-Gemini%20Exporter-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome 应用商店">
-  </a>
-  <img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="开源协议: MIT">
-</p>
-
-> **简单、隐私安全、完全开源的 Google Gemini 对话批量导出与备份工具。**  
-> 一键将你的全部 Gemini 历史对话导出为精美的 Markdown、JSON 或包含图片附件的完整 ZIP 压缩包，无缝导入 **Obsidian**、**Notion**、**Logseq** 等本地个人知识库。
+<p align="left">\n  <img src="https://img.shields.io/badge/Status-Active%20Development-blue?style=for-the-badge" alt="开发状态">\n  <img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="开源协议: MIT">\n</p>\n\n> **AI Exporter 是在原始 Gemini Exporter 基础上演进的多平台 AI 对话导出工具。**  \n> 界面设计和工作流程继续以原始 Gemini Exporter 为基础。目前 Gemini 是稳定支持的平台，ChatGPT 正在以同样的隐私优先、本地导出方式接入。
 
 ---
 
-## ✨ 为什么选择 Gemini Exporter？
+## ✨ 为什么选择 AI Exporter？
 
 - 🔒 **100% 本地运行与隐私零泄露**：
   - 完全在你的浏览器本地沙箱内处理数据，**绝不上报任何账号凭据、Cookie 或对话内容至外部服务器**。
@@ -45,21 +37,22 @@
 
 ---
 
+## 🧩 平台支持状态
+
+- **Google Gemini：** 继承原始 Gemini Exporter 的稳定实现。
+- **ChatGPT：** 正在接入。只有在历史清单、对话图、附件与完整性校验全部通过后才会正式启用。
+
+UI 设计继续以原始 Gemini Exporter 为基础，不进行无必要的重新设计。
+
+---
+
 ## 📥 安装指南
 
-### 方式一：Chrome 网上应用店一键安装（官方推荐）
-
-通过 Chrome 官方商店一键获取最新正式版：
-
-👉 **[前往 Chrome 应用商店安装 Gemini Exporter](https://chromewebstore.google.com/detail/gemini-exporter/ldpbiafkgjlaooeplkiooljccpalpkgf?utm_source=github&utm_medium=readme_zh&utm_campaign=github_repo)**
-
-*(支持 Google Chrome、Microsoft Edge、Brave、Arc、Vivaldi 等所有基于 Chromium 的现代浏览器。)*
-
-### 方式二：通过源码 / 开发者模式安装
+### 通过源码 / 开发者模式安装（当前开发版）
 
 1. 下载或克隆本仓库到本地：
    ```bash
-   git clone https://github.com/OTLFrostA/gemini-exporter.git
+   git clone https://github.com/ZTD38F/AI-Exporter.git
    ```
 2. 在浏览器中打开扩展管理页面：
    - **Chrome**: 在地址栏访问 `chrome://extensions/`
@@ -73,7 +66,7 @@
 
 ### 1. 快速导出当前单篇对话
 1. 在浏览器中打开 [Google Gemini](https://gemini.google.com) 的任意对话。
-2. 点击浏览器右上角扩展栏的 **Gemini Exporter** 图标。
+2. 点击浏览器右上角扩展栏的 **AI Exporter** 图标。
 3. 选择所需格式（Markdown 或 JSON），点击 **“只导当前页”** 即可瞬间保存。
 
 ### 2. 批量导出全部对话
@@ -86,7 +79,7 @@
 ### 3. 使用 Google Takeout 归档数年历史（进阶）
 如果你的账号有上千条历史对话，Gemini 网页端侧边栏受技术限制通常只支持滚动浏览约 600 条记录。如需完整备份所有远古会话：
 1. 点击打开 **[Google Takeout (已预选 Gemini)](https://takeout.google.com/settings/takeout/custom/gemini)**，直接点击“下一步”并创建导出，下载生成的 Takeout ZIP 压缩包。
-2. 在 Gemini Exporter 工作台的 **“Google Takeout 导入”** 区域拖入该 ZIP 文件。
+2. 在 AI Exporter 工作台的 **“Google Takeout 导入”** 区域拖入该 ZIP 文件。
 3. 扩展程序会在本地离线解析并合并所有远古对话及媒体附件！
 
 ---
@@ -103,7 +96,7 @@
 
 <details>
 <summary><b>我的数据安全吗？插件会上传我的对话吗？</b></summary>
-绝对安全。Gemini Exporter 是一款完全开源的本地工具，没有任何后端服务器，也不包含任何统计、分析或跟踪代码。所有的解析、打包与导出都在你的电脑浏览器内完成，绝不会收集或上传任何个人数据。
+绝对安全。AI Exporter 是一款完全开源的本地工具，没有任何后端服务器，也不包含任何统计、分析或跟踪代码。所有的解析、打包与导出都在你的电脑浏览器内完成，绝不会收集或上传任何个人数据。
 </details>
 
 <details>
@@ -128,5 +121,5 @@
 
 ## ⚠️ 免责声明
 
-- **Gemini Exporter** 是一款独立的个人数据备份开源工具，**与 Google LLC 或 Google Gemini 不存在任何隶属、赞助或背书关系**。
+- **AI Exporter** 是一款独立的个人数据备份开源工具，**与 Google LLC 或 Google Gemini 不存在任何隶属、赞助或背书关系**。
 - "Google" 与 "Gemini" 为 Google LLC 的注册商标。

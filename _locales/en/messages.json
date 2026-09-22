@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "Gemini Exporter - Bulk Export All Chats",
+    "message": "AI Exporter - Export & Archive AI Chats",
     "description": "The name of the extension."
   },
   "extDesc": {
-    "message": "Open-source & private: bulk export Google Gemini chats & Takeout archives to Markdown, JSON or ZIP with images. 100% client-side.",
+    "message": "Privacy-first local exporter for AI conversations. Gemini export is supported now; multi-provider support is being added without sending chats to external servers.",
     "description": "The description of the extension."
   }
 }
