@@ -14,6 +14,8 @@ export interface TabStatusResult {
 }
 
 export interface TabServiceModule {
+    getAITab(providerId: string, scope?: string): Promise<chrome.tabs.Tab | null>;
+    sendToAITab(providerId: string, msg: any, scope?: string, timeoutMs?: number): Promise<any>;
     getGeminiTab(slot?: string): Promise<chrome.tabs.Tab | null>;
     sendToGeminiTab(msg: any, slot?: string, timeoutMs?: number): Promise<any>;
     checkGeminiStatus(slot?: string): Promise<TabStatusResult>;
