@@ -25,7 +25,7 @@ export interface ChatGPTOfficialImportError {
     index?: number;
 }
 
-export interface ChatGPTOfficialAssetEntry {
+export interface ChatGPTOfficialArchiveEntry {
     path: string;
     name: string;
     uncompressedSize?: number;
@@ -40,7 +40,7 @@ export interface ChatGPTOfficialImportResult {
     conversationSources: Record<string, string[]>;
     conflicts: ChatGPTOfficialExportConflict[];
     errors: ChatGPTOfficialImportError[];
-    assetEntries: ChatGPTOfficialAssetEntry[];
+    archiveEntries: ChatGPTOfficialArchiveEntry[];
     importIntegrityComplete: boolean;
 }
 
@@ -155,9 +155,8 @@ export async function parseChatGPTOfficialExportZip(
         throw new Error("No conversations.json or numbered conversations-*.json files were found in the OpenAI export ZIP");
     }
 
-    const assetEntries: ChatGPTOfficialAssetEntry[] = safeEntries
+    const archiveEntries: ChatGPTOfficialArchiveEntry[] = safeEntries
         .filter(({ path }) => !isConversationJsonPath(path))
-        .filter(({ path }) => !/^(?:^|.*\/)(?:chat|message_feedback|model_comparisons|user|account|shared_conversations)\.json$/i.test(path))
         .map(({ path, entry }) => ({
             path,
             name: path.replace(/^.*\//, ""),
@@ -319,7 +318,7 @@ export async function parseChatGPTOfficialExportZip(
         conversationSources,
         conflicts,
         errors,
-        assetEntries,
+        archiveEntries,
         importIntegrityComplete: errors.length === 0 && conflicts.length === 0
     };
 }
