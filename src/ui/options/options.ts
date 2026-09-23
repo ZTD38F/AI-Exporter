@@ -39,6 +39,7 @@ import { OptionsSync } from './modules/optionsSync.js';
 import { OptionsTakeout } from './modules/optionsTakeout.js';
 import { OptionsSettings } from './modules/optionsSettings.js';
 import { ConversationsStore } from '../state/conversationsStore.js';
+import { installSelectionState } from '../state/selectionState.js';
 import { ListView } from '../views/listView.js';
 import { AccountView } from '../views/accountView.js';
 import { DialogView } from '../views/dialogView.js';
@@ -48,6 +49,10 @@ import { TakeoutController } from '../controllers/takeoutController.js';
 import { SyncController } from '../controllers/syncController.js';
 import { ExportController } from '../controllers/exportController.js';
 import { TourGuide } from '../tour/tourGuide.js';
+
+// Selection is durable Workbench state, not a projection of currently rendered rows.
+// Install before any module binds handlers or performs the initial render.
+installSelectionState(ListView);
 
 // Logging helpers
 export function log(msg: string, level: 'info' | 'warn' | 'error' = 'info'): void {
