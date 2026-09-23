@@ -137,25 +137,27 @@ export interface OptionsInitOptions {
     onCheckPendingTakeout?: () => Promise<void> | void;
 }
 
+type WorkbenchLoadStore = (force?: boolean, selectedOverride?: Set<string>) => Promise<any>;
+
 export interface OptionsExportOptions {
-    loadStore?: (force?: boolean) => Promise<any>;
+    loadStore?: WorkbenchLoadStore;
     log?: (msg: string, level?: 'info' | 'warn' | 'error') => void;
     getSearchFilter?: () => string;
 }
 
 export interface OptionsSyncOptions {
-    loadStore?: (force?: boolean) => Promise<any>;
+    loadStore?: WorkbenchLoadStore;
     log?: (msg: string, level?: 'info' | 'warn' | 'error') => void;
     maybePromptTakeout?: (count: number, hitLimit: boolean) => Promise<void> | void;
 }
 
 export interface OptionsTakeoutOptions {
-    loadStore?: (force?: boolean) => Promise<any>;
+    loadStore?: WorkbenchLoadStore;
     log?: (msg: string, level?: 'info' | 'warn' | 'error') => void;
 }
 
 export interface OptionsSettingsOptions {
-    loadStore?: (force?: boolean) => Promise<any>;
+    loadStore?: WorkbenchLoadStore;
     log?: (msg: string, level?: 'info' | 'warn' | 'error') => void;
     clearLog?: () => void;
     renderLog?: () => void;
