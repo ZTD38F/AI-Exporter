@@ -1,4 +1,12 @@
 // src/ui/state/selectionState.ts - canonical Workbench selection independent of filtered DOM
+import { DialogView } from '../views/dialogView.js';
+import { DirHandleController } from '../controllers/dirHandleController.js';
+import { installCanonicalDirectWritePrompt } from '../options/directWriteCompat.js';
+
+// Install before OptionsExport binds its handlers. This compatibility adapter keeps
+// the canonical main Direct Write contract while the recovery PR remains focused
+// on selection/reload behavior.
+installCanonicalDirectWritePrompt(DialogView, DirHandleController);
 
 /**
  * Installs a selection-state adapter around ListView without changing its visual
