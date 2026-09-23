@@ -22,6 +22,13 @@ export function validateZipFile(file?: { size?: number } | null): void {
     }
 }
 
+function normalizedOriginalEntryPath(rawPath: string, entry: any): string {
+    const originalPath = typeof entry?.unsafeOriginalName === 'string'
+        ? entry.unsafeOriginalName
+        : rawPath;
+    return String(originalPath || '').replace(/\\/g, '/');
+}
+
 export function validateZipEntries(zip?: any): void {
     if (!zip || !zip.files) return;
     const entryCount = Object.keys(zip.files).length;
@@ -30,8 +37,15 @@ export function validateZipEntries(zip?: any): void {
     }
 
     let approxUncompressed = 0;
-    const files: any[] = Object.values(zip.files);
-    for (const f of files) {
+    const normalizedPaths = new Set<string>();
+    const files: Array<[string, any]> = Object.entries(zip.files);
+    for (const [rawPath, f] of files) {
+        const normalizedPath = normalizedOriginalEntryPath(rawPath, f);
+        if (normalizedPaths.has(normalizedPath)) {
+            throw new Error(`Duplicate normalized ZIP entry path: ${normalizedPath}`);
+        }
+        normalizedPaths.add(normalizedPath);
+
         if (!f.dir && f._data && typeof f._data.uncompressedSize === 'number') {
             approxUncompressed += f._data.uncompressedSize;
             if (approxUncompressed > MAX_TOTAL_UNCOMPRESSED) {
