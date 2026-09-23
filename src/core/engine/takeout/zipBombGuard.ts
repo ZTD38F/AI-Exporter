@@ -29,6 +29,17 @@ function normalizedOriginalEntryPath(rawPath: string, entry: any): string {
     return String(originalPath || '').replace(/\\/g, '/');
 }
 
+function portableCollisionKey(path: string): string {
+    // Direct Write/export folders can live on case-insensitive Windows/macOS
+    // filesystems. Reject names that those filesystems can alias instead of
+    // allowing a later write to overwrite a distinct archive entry.
+    return path
+        .normalize('NFC')
+        .split('/')
+        .map(part => part.replace(/[ .]+$/g, '').toLocaleLowerCase('en-US'))
+        .join('/');
+}
+
 export function validateZipEntries(zip?: any): void {
     if (!zip || !zip.files) return;
     const entryCount = Object.keys(zip.files).length;
@@ -38,6 +49,7 @@ export function validateZipEntries(zip?: any): void {
 
     let approxUncompressed = 0;
     const normalizedPaths = new Set<string>();
+    const portablePaths = new Map<string, string>();
     const files: Array<[string, any]> = Object.entries(zip.files);
     for (const [rawPath, f] of files) {
         const normalizedPath = normalizedOriginalEntryPath(rawPath, f);
@@ -45,6 +57,13 @@ export function validateZipEntries(zip?: any): void {
             throw new Error(`Duplicate normalized ZIP entry path: ${normalizedPath}`);
         }
         normalizedPaths.add(normalizedPath);
+
+        const collisionKey = portableCollisionKey(normalizedPath);
+        const existingPortablePath = portablePaths.get(collisionKey);
+        if (existingPortablePath !== undefined && existingPortablePath !== normalizedPath) {
+            throw new Error(`Portable ZIP entry path collision: ${existingPortablePath} <> ${normalizedPath}`);
+        }
+        portablePaths.set(collisionKey, normalizedPath);
 
         if (!f.dir && f._data && typeof f._data.uncompressedSize === 'number') {
             approxUncompressed += f._data.uncompressedSize;
