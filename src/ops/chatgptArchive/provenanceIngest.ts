@@ -158,7 +158,9 @@ export function buildProvenanceSnapshot(bundle: ExportEvidenceBundle): Provenanc
         if (!canonicalId) throw new Error("strong native identity failed for " + conversationId);
 
         const normalized = normalizeChatGPTConversation(item.raw, conversationId, bundle.accountId);
-        const verification: VerificationState = normalized.integrity.complete ? "VERIFIED" : "PARTIAL";
+        const integrityComplete = normalized.integrity?.complete === true;
+        const integrityReasons = normalized.integrity?.reasons ?? ["integrity_missing"];
+        const verification: VerificationState = integrityComplete ? "VERIFIED" : "PARTIAL";
         const rawPayloadHash = sha256Hex(stableJson(item.raw));
         const sourceKey = sourceConversationKey(bundle, item, conversationId);
 
@@ -197,10 +199,10 @@ export function buildProvenanceSnapshot(bundle: ExportEvidenceBundle): Provenanc
             canonicalRows.set(canonicalId, candidate);
         }
 
-        if (!normalized.integrity.complete) {
+        if (!integrityComplete) {
             errors.push(ingestError(bundle, canonicalId, {
                 sourceConversationKey: sourceKey,
-                reasons: normalized.integrity.reasons,
+                reasons: integrityReasons,
                 malformedNodeIds: normalized.graph.malformedNodeIds
             }));
         }
