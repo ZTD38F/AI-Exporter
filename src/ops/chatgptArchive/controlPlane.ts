@@ -199,18 +199,15 @@ export function nativeConversationIdFromUrl(url: string | null | undefined): str
     return match ? match[1] : null;
 }
 
-function canonicalKey(observation: IdentityObservation): string {
+function canonicalKey(observation: IdentityObservation): string | null {
     const native = observation.nativeConversationId?.trim() || nativeConversationIdFromUrl(observation.stableUrl);
-    if (native) return \`native:\${native}\`;
-    if (observation.graphFingerprint) return \`graph:\${observation.graphFingerprint}\`;
+    if (native) return `native:${native}`;
+    if (observation.graphFingerprint) return `graph:${observation.graphFingerprint}`;
     if (observation.contentFingerprint) {
-        return \`content:\${observation.contentFingerprint}:created:\${normalizeTimestamp(observation.createTime)}\`;
+        return `content:${observation.contentFingerprint}:created:${normalizeTimestamp(observation.createTime)}`;
     }
-    return \`unresolved:\${stableJson({
-        createTime: normalizeTimestamp(observation.createTime),
-        updateTime: normalizeTimestamp(observation.updateTime),
-        title: observation.title || ""
-    })}\`;
+    // Weak title/timestamp evidence is intentionally insufficient to mint a canonical id.
+    return null;
 }
 
 export function canonicalConversationIdFor(
@@ -218,7 +215,7 @@ export function canonicalConversationIdFor(
     existingCanonicalId?: string | null
 ): string {
     if (existingCanonicalId) return existingCanonicalId;
-    return \`cc_\${sha256Hex(\`\${observation.accountId}\\0\${canonicalKey(observation)}\`).slice(0, 32)}\`;
+    return `cc_${sha256Hex(`${observation.accountId}\\0${canonicalKey(observation)}`).slice(0, 32)}`;
 }
 
 function exactUrlId(observation: IdentityObservation): string | null {
@@ -235,7 +232,7 @@ export function resolveConversationIdentity(
             matched: false,
             confidence: 0,
             canonicalConversationId: null,
-            identityEvidence: [{ method: "ACCOUNT_MISMATCH", value: \`\${left.accountId} != \${right.accountId}\`, strength: "REJECTED" }],
+            identityEvidence: [{ method: "ACCOUNT_MISMATCH", value: `${left.accountId} != ${right.accountId}`, strength: "REJECTED" }],
             deletionGrade: false
         };
     }
@@ -254,7 +251,7 @@ export function resolveConversationIdentity(
                 deletionGrade: true
             };
         }
-        evidence.push({ method: "NATIVE_ID", value: \`\${leftNative} != \${rightNative}\`, strength: "REJECTED" });
+        evidence.push({ method: "NATIVE_ID", value: `${leftNative} != ${rightNative}`, strength: "REJECTED" });
         return { matched: false, confidence: 0, canonicalConversationId: null, identityEvidence: evidence, deletionGrade: false };
     }
 
@@ -271,7 +268,7 @@ export function resolveConversationIdentity(
                 deletionGrade: true
             };
         }
-        evidence.push({ method: "STABLE_URL_ID", value: \`\${leftUrl} != \${rightUrl}\`, strength: "REJECTED" });
+        evidence.push({ method: "STABLE_URL_ID", value: `${leftUrl} != ${rightUrl}`, strength: "REJECTED" });
         return { matched: false, confidence: 0, canonicalConversationId: null, identityEvidence: evidence, deletionGrade: false };
     }
 
@@ -294,7 +291,7 @@ export function resolveConversationIdentity(
         if (timeMatch) {
             evidence.push({
                 method: "TIMESTAMP_CONTENT",
-                value: \`\${normalizeTimestamp(left.createTime)}|\${left.contentFingerprint}\`,
+                value: `${normalizeTimestamp(left.createTime)}|${left.contentFingerprint}`,
                 strength: "STRONG"
             });
         }
@@ -521,12 +518,12 @@ export function buildDeletionManifest(input: {
 }): DeletionManifest {
     if (!input.items.length) throw new Error("Deletion manifest cannot be empty");
     for (const item of input.items) {
-        if (!item.safeToDelete) throw new Error(\`Unsafe manifest item: \${item.canonicalConversationId}\`);
+        if (!item.safeToDelete) throw new Error(`Unsafe manifest item: ${item.canonicalConversationId}`);
         if (item.gateResults.some(gate => !gate.passed)) {
-            throw new Error(\`Manifest item has failed gate: \${item.canonicalConversationId}\`);
+            throw new Error(`Manifest item has failed gate: ${item.canonicalConversationId}`);
         }
         if (!item.nativeConversationId || !item.rawHash || !item.rawExportLocation) {
-            throw new Error(\`Manifest item is missing deletion evidence: \${item.canonicalConversationId}\`);
+            throw new Error(`Manifest item is missing deletion evidence: ${item.canonicalConversationId}`);
         }
     }
 
