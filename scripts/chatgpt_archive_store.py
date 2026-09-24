@@ -63,10 +63,30 @@ CREATE TABLE IF NOT EXISTS conversations (
     UNIQUE(account_id, native_conversation_id)
 );
 
+CREATE TABLE IF NOT EXISTS conversation_sources (
+    source_conversation_key TEXT PRIMARY KEY,
+    canonical_conversation_id TEXT NOT NULL REFERENCES conversations(canonical_conversation_id),
+    source_account_id TEXT NOT NULL REFERENCES accounts(account_id),
+    source_export_id TEXT NOT NULL REFERENCES exports(export_id),
+    source_file_id TEXT NOT NULL REFERENCES source_files(source_file_id),
+    source_file TEXT NOT NULL,
+    source_index INTEGER NOT NULL,
+    native_conversation_id TEXT NOT NULL,
+    raw_payload_hash TEXT NOT NULL,
+    ingestion_version TEXT NOT NULL,
+    verification_state TEXT NOT NULL,
+    UNIQUE(source_export_id, source_file_id, source_index)
+);
+
 CREATE TABLE IF NOT EXISTS messages (
     message_key TEXT PRIMARY KEY,
+    source_conversation_key TEXT NOT NULL REFERENCES conversation_sources(source_conversation_key),
     canonical_conversation_id TEXT NOT NULL REFERENCES conversations(canonical_conversation_id),
-    source_file_id TEXT REFERENCES source_files(source_file_id),
+    source_file_id TEXT NOT NULL REFERENCES source_files(source_file_id),
+    source_account_id TEXT NOT NULL REFERENCES accounts(account_id),
+    source_export_id TEXT NOT NULL REFERENCES exports(export_id),
+    source_file TEXT NOT NULL,
+    node_id TEXT NOT NULL,
     native_message_id TEXT,
     parent_id TEXT,
     create_time TEXT,
@@ -74,20 +94,26 @@ CREATE TABLE IF NOT EXISTS messages (
     raw_payload_hash TEXT NOT NULL,
     raw_json TEXT NOT NULL,
     ingestion_version TEXT NOT NULL,
-    verification_state TEXT NOT NULL
+    verification_state TEXT NOT NULL,
+    UNIQUE(source_conversation_key, node_id)
 );
 
 CREATE TABLE IF NOT EXISTS message_edges (
+    source_conversation_key TEXT NOT NULL REFERENCES conversation_sources(source_conversation_key),
     canonical_conversation_id TEXT NOT NULL REFERENCES conversations(canonical_conversation_id),
-    parent_message_key TEXT,
-    child_message_key TEXT NOT NULL,
-    PRIMARY KEY(canonical_conversation_id, parent_message_key, child_message_key)
+    parent_node_id TEXT NOT NULL,
+    child_node_id TEXT NOT NULL,
+    PRIMARY KEY(source_conversation_key, parent_node_id, child_node_id)
 );
 
 CREATE TABLE IF NOT EXISTS assets (
     asset_id TEXT PRIMARY KEY,
+    source_conversation_key TEXT REFERENCES conversation_sources(source_conversation_key),
     canonical_conversation_id TEXT NOT NULL REFERENCES conversations(canonical_conversation_id),
     source_file_id TEXT REFERENCES source_files(source_file_id),
+    source_account_id TEXT REFERENCES accounts(account_id),
+    source_export_id TEXT REFERENCES exports(export_id),
+    source_file TEXT,
     native_ref TEXT,
     path TEXT,
     sha256 TEXT,
@@ -265,7 +291,7 @@ CREATE INDEX IF NOT EXISTS idx_reconciliation_run
 EXPECTED_TABLES = {
     "accounts", "exports", "source_files", "conversations", "messages", "message_edges",
     "assets", "projects", "knowledge_units", "knowledge_sources", "knowledge_edges",
-    "conversation_identity", "live_inventory", "reconciliation", "retention_decisions",
+    "conversation_sources", "conversation_identity", "live_inventory", "reconciliation", "retention_decisions",
     "delete_manifests", "delete_manifest_items", "mutation_receipts", "verification_runs",
     "errors", "schema_migrations",
 }
@@ -326,8 +352,34 @@ def _immutable_export_upsert(db: sqlite3.Connection, row: dict[str, Any]) -> Non
         ),
     )
 
+def _immutable_insert(
+    db: sqlite3.Connection,
+    table: str,
+    key_column: str,
+    row: dict[str, Any],
+    columns: list[str],
+) -> None:
+    key = row[key_column]
+    existing = db.execute(
+        f"SELECT {', '.join(columns)} FROM {table} WHERE {key_column} = ?",
+        (key,),
+    ).fetchone()
+    signature = tuple(row.get(column) for column in columns)
+    if existing is not None and tuple(existing) != signature:
+        raise ValueError(f"immutable {table} conflict for {key}")
+    placeholders = ", ".join("?" for _ in columns)
+    db.execute(
+        f"INSERT OR IGNORE INTO {table}({', '.join(columns)}) VALUES ({placeholders})",
+        signature,
+    )
+
+
 def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
-    allowed = {"accounts", "exports", "conversations", "knowledge_units", "knowledge_sources"}
+    allowed = {
+        "accounts", "exports", "source_files", "conversations", "conversation_sources",
+        "messages", "message_edges", "assets", "knowledge_units", "knowledge_sources",
+        "knowledge_edges", "errors"
+    }
     unknown = set(snapshot) - allowed
     if unknown:
         raise ValueError("unsupported snapshot keys: " + ", ".join(sorted(unknown)))
@@ -343,6 +395,12 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
         for row in snapshot.get("exports", []):
             _immutable_export_upsert(db, row)
 
+        for row in snapshot.get("source_files", []):
+            _immutable_insert(
+                db, "source_files", "source_file_id", row,
+                ["source_file_id", "export_id", "source_file", "sha256", "size_bytes", "original_json"],
+            )
+
         for row in snapshot.get("conversations", []):
             db.execute(
                 """INSERT INTO conversations(
@@ -356,7 +414,11 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
                     content_fingerprint=COALESCE(excluded.content_fingerprint, conversations.content_fingerprint),
                     semantic_fingerprint=COALESCE(excluded.semantic_fingerprint, conversations.semantic_fingerprint),
                     current_or_historical=excluded.current_or_historical,
-                    verification_state=excluded.verification_state""",
+                    verification_state=CASE
+                        WHEN conversations.verification_state = 'PARTIAL' OR excluded.verification_state = 'PARTIAL'
+                        THEN 'PARTIAL'
+                        ELSE excluded.verification_state
+                    END""",
                 (
                     row["canonical_conversation_id"], row["account_id"],
                     row.get("native_conversation_id"), row.get("title"),
@@ -365,6 +427,49 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
                     row.get("current_or_historical", "CURRENT"),
                     row["verification_state"],
                 ),
+            )
+
+        for row in snapshot.get("conversation_sources", []):
+            _immutable_insert(
+                db, "conversation_sources", "source_conversation_key", row,
+                [
+                    "source_conversation_key", "canonical_conversation_id", "source_account_id",
+                    "source_export_id", "source_file_id", "source_file", "source_index",
+                    "native_conversation_id", "raw_payload_hash", "ingestion_version",
+                    "verification_state",
+                ],
+            )
+
+        for row in snapshot.get("messages", []):
+            _immutable_insert(
+                db, "messages", "message_key", row,
+                [
+                    "message_key", "source_conversation_key", "canonical_conversation_id",
+                    "source_file_id", "source_account_id", "source_export_id", "source_file",
+                    "node_id", "native_message_id", "parent_id", "create_time", "update_time",
+                    "raw_payload_hash", "raw_json", "ingestion_version", "verification_state",
+                ],
+            )
+
+        for row in snapshot.get("message_edges", []):
+            db.execute(
+                """INSERT OR IGNORE INTO message_edges(
+                    source_conversation_key, canonical_conversation_id, parent_node_id, child_node_id
+                ) VALUES (?, ?, ?, ?)""",
+                (
+                    row["source_conversation_key"], row["canonical_conversation_id"],
+                    row["parent_node_id"], row["child_node_id"],
+                ),
+            )
+
+        for row in snapshot.get("assets", []):
+            _immutable_insert(
+                db, "assets", "asset_id", row,
+                [
+                    "asset_id", "source_conversation_key", "canonical_conversation_id",
+                    "source_file_id", "source_account_id", "source_export_id", "source_file",
+                    "native_ref", "path", "sha256", "availability_state", "verification_state",
+                ],
             )
 
         for row in snapshot.get("knowledge_units", []):
@@ -416,9 +521,38 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     knowledge_source_id, row["knowledge_id"], row["account_id"],
-                    row["canonical_conversation_id"], row.get("message_key"),
-                    row.get("source_timestamp"),
+                    row["canonical_conversation_id"], row.get("message_key"), row.get("source_timestamp"),
                     json.dumps(row.get("supporting_evidence", []), ensure_ascii=False),
+                ),
+            )
+
+        for row in snapshot.get("knowledge_edges", []):
+            db.execute(
+                """INSERT OR IGNORE INTO knowledge_edges(
+                    from_knowledge_id, relation, to_knowledge_id, evidence_json
+                ) VALUES (?, ?, ?, ?)""",
+                (
+                    row["from_knowledge_id"], row["relation"], row["to_knowledge_id"],
+                    json.dumps(row.get("evidence", []), ensure_ascii=False),
+                ),
+            )
+
+        for row in snapshot.get("errors", []):
+            db.execute(
+                """INSERT INTO errors(
+                    error_id, run_id, account_id, canonical_conversation_id, type, scope,
+                    severity, retryable, evidence_json, attempt_count, resolution_state
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(error_id) DO UPDATE SET
+                    attempt_count=MAX(errors.attempt_count, excluded.attempt_count),
+                    resolution_state=excluded.resolution_state,
+                    evidence_json=excluded.evidence_json""",
+                (
+                    row["error_id"], row["run_id"], row.get("account_id"),
+                    row.get("canonical_conversation_id"), row["type"], row["scope"],
+                    row["severity"], 1 if row.get("retryable") else 0,
+                    json.dumps(row.get("evidence", {}), ensure_ascii=False),
+                    int(row.get("attempt_count", 1)), row.get("resolution_state", "OPEN"),
                 ),
             )
 
