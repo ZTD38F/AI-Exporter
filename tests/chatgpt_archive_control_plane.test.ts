@@ -8,6 +8,9 @@ const { spawnSync } = require("node:child_process");
 
 const {
     buildDeletionManifest,
+    buildDeletionManifestDraft,
+    sealDeletionManifest,
+    verifyDeletionManifestDraft,
     canonicalConversationIdFor,
     classifyConversationRetention,
     evaluateLosslessDeleteGate,
@@ -194,6 +197,50 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
         liveInventorySnapshotHash: "c".repeat(64),
         items: [{ ...item, safeToDelete: false }]
     }), /Unsafe manifest item/);
+});
+
+
+test("manifest - two-phase draft permits only backup gate pending, then seals exact draft hash", () => {
+    const preBackup = evaluateLosslessDeleteGate({ ...allGates, deletionManifestBackupVerified: false });
+    const item = {
+        accountId: "a1",
+        canonicalConversationId: "cc1",
+        nativeConversationId: "c1",
+        url: "https://chatgpt.com/c/c1",
+        title: "Duplicate",
+        classification: "DELETE_EXACT_DUPLICATE",
+        reasonCodes: ["EXACT_DUPLICATE"],
+        identityConfidence: 1,
+        deletionConfidence: 1,
+        rawExportLocation: "/evidence/export.zip",
+        rawHash: "a".repeat(64),
+        knowledgeExtractionState: "VERIFIED",
+        knowledgeUnitsPreserved: 4,
+        uniqueInformationRemaining: 0,
+        attachmentsState: "NONE",
+        dependencies: [],
+        gateResults: preBackup.gateResults,
+        safeToDelete: false,
+        plannedAction: "DELETE"
+    };
+    const draft = buildDeletionManifestDraft({
+        manifestId: "m-draft",
+        generationTimestamp: "2026-09-24T20:00:00.000Z",
+        softwareVersion: "test",
+        sourceExportHashes: ["b".repeat(64)],
+        liveInventorySnapshotHash: "c".repeat(64),
+        items: [item]
+    });
+    assert.strictEqual(verifyDeletionManifestDraft(draft), true);
+    assert.strictEqual(draft.state, "AWAITING_BACKUP_VERIFICATION");
+    assert.throws(
+        () => sealDeletionManifest(draft, { draftSha256: "0".repeat(64), verified: true }),
+        /backup verification failed/
+    );
+    const sealed = sealDeletionManifest(draft, { draftSha256: draft.draftSha256, verified: true });
+    assert.strictEqual(sealed.state, "SEALED");
+    assert.strictEqual(sealed.items[0].safeToDelete, true);
+    assert.strictEqual(verifyDeletionManifest(sealed), true);
 });
 
 test("browserless helpers - secrets are redacted and resume state deduplicates by native id", () => {
