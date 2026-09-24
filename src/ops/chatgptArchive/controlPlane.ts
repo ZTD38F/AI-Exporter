@@ -430,10 +430,15 @@ export function reconcileConversations(
 
     for (const exported of exports) {
         let best: { index: number; resolution: IdentityResolution } | null = null;
+        let weakCandidate = false;
         for (let index = 0; index < live.length; index++) {
             if (usedLive.has(index)) continue;
             const resolution = resolveConversationIdentity(exported, live[index]);
             if (!resolution.matched) continue;
+            if (!resolution.deletionGrade) {
+                weakCandidate = true;
+                continue;
+            }
             if (!best || resolution.confidence > best.resolution.confidence) best = { index, resolution };
         }
 
@@ -463,7 +468,7 @@ export function reconcileConversations(
                 title: exported.title || null,
                 identityMethod: null,
                 identityConfidence: 0,
-                status: "EXPORT_ONLY"
+                status: weakCandidate ? "AMBIGUOUS" : "EXPORT_ONLY"
             });
         }
     }
