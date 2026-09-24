@@ -196,7 +196,7 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
         sourceExportHashes: ["b".repeat(64)],
         liveInventorySnapshotHash: "c".repeat(64),
         items: [{ ...item, safeToDelete: false }]
-    }), /Unsafe manifest item/);
+    }), /safe_to_delete is inconsistent with gates/);
 });
 
 
