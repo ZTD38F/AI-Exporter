@@ -7,6 +7,7 @@ Raw exports remain immutable external evidence referenced by hash/location.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -121,13 +122,13 @@ CREATE TABLE IF NOT EXISTS knowledge_units (
 );
 
 CREATE TABLE IF NOT EXISTS knowledge_sources (
+    knowledge_source_id TEXT PRIMARY KEY,
     knowledge_id TEXT NOT NULL REFERENCES knowledge_units(knowledge_id),
     account_id TEXT NOT NULL REFERENCES accounts(account_id),
     canonical_conversation_id TEXT NOT NULL REFERENCES conversations(canonical_conversation_id),
     message_key TEXT REFERENCES messages(message_key),
     source_timestamp TEXT,
-    evidence_json TEXT NOT NULL DEFAULT '[]',
-    PRIMARY KEY(knowledge_id, account_id, canonical_conversation_id, message_key)
+    evidence_json TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS knowledge_edges (
@@ -300,11 +301,12 @@ def schema_state(db: sqlite3.Connection) -> dict[str, Any]:
 
 def _immutable_export_upsert(db: sqlite3.Connection, row: dict[str, Any]) -> None:
     existing = db.execute(
-        "SELECT account_id, raw_location, zip_sha256, ingestion_version, verification_state FROM exports WHERE export_id = ?",
+        "SELECT account_id, export_timestamp, raw_location, zip_sha256, ingestion_version, verification_state FROM exports WHERE export_id = ?",
         (row["export_id"],),
     ).fetchone()
     signature = (
         row["account_id"],
+        row.get("export_timestamp"),
         row["raw_location"],
         row["zip_sha256"],
         row["ingestion_version"],
@@ -398,14 +400,24 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
             )
 
         for row in snapshot.get("knowledge_sources", []):
+            source_identity = "\0".join([
+                row["knowledge_id"],
+                row["account_id"],
+                row["canonical_conversation_id"],
+                row.get("message_key") or "",
+            ])
+            knowledge_source_id = row.get("knowledge_source_id") or (
+                "ks_" + hashlib.sha256(source_identity.encode("utf-8")).hexdigest()[:32]
+            )
             db.execute(
                 """INSERT OR IGNORE INTO knowledge_sources(
-                    knowledge_id, account_id, canonical_conversation_id, message_key,
-                    source_timestamp, evidence_json
-                ) VALUES (?, ?, ?, ?, ?, ?)""",
+                    knowledge_source_id, knowledge_id, account_id, canonical_conversation_id,
+                    message_key, source_timestamp, evidence_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    row["knowledge_id"], row["account_id"], row["canonical_conversation_id"],
-                    row.get("message_key"), row.get("source_timestamp"),
+                    knowledge_source_id, row["knowledge_id"], row["account_id"],
+                    row["canonical_conversation_id"], row.get("message_key"),
+                    row.get("source_timestamp"),
                     json.dumps(row.get("supporting_evidence", []), ensure_ascii=False),
                 ),
             )
