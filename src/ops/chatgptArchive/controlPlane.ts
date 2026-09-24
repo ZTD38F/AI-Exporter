@@ -539,10 +539,32 @@ export function buildDeletionManifestDraft(input: {
 }): DeletionManifestDraft {
     if (!input.items.length) throw new Error("Deletion manifest draft cannot be empty");
     for (const item of input.items) {
-        const failed = item.gateResults.filter(gate => !gate.passed && gate.code !== MANIFEST_BACKUP_GATE);
-        if (failed.length) {
+        if (!item.classification.startsWith("DELETE_") || item.plannedAction !== "DELETE") {
+            throw new Error(`Manifest draft item is not a deletion classification: ${item.canonicalConversationId}`);
+        }
+        if (item.uniqueInformationRemaining !== 0) {
+            throw new Error(`Manifest draft item still has unique information: ${item.canonicalConversationId}`);
+        }
+
+        const failedAll = item.gateResults.filter(gate => !gate.passed);
+        const failedPreBackup = failedAll.filter(gate => gate.code !== MANIFEST_BACKUP_GATE);
+        if (failedPreBackup.length) {
             throw new Error(`Manifest draft item has failed pre-backup gate: ${item.canonicalConversationId}`);
         }
+
+        const backupGate = item.gateResults.find(gate => gate.code === MANIFEST_BACKUP_GATE);
+        if (!backupGate) {
+            throw new Error(`Manifest draft item is missing backup gate: ${item.canonicalConversationId}`);
+        }
+
+        // safeToDelete must describe the evidence truthfully. Before backup verification
+        // the only valid false state is exactly the pending backup gate. If all gates are
+        // already green, the item must already be marked safe; do not silently upgrade it.
+        const expectedSafe = failedAll.length === 0;
+        if (item.safeToDelete !== expectedSafe) {
+            throw new Error(`Manifest draft item safe_to_delete is inconsistent with gates: ${item.canonicalConversationId}`);
+        }
+
         if (!item.nativeConversationId || !item.rawHash || !item.rawExportLocation) {
             throw new Error(`Manifest draft item is missing deletion evidence: ${item.canonicalConversationId}`);
         }
