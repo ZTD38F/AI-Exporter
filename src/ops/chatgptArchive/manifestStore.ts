@@ -1,5 +1,5 @@
 import { mkdir, open, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
     sealDeletionManifest,
     sha256Hex,
@@ -19,7 +19,7 @@ export interface PersistedManifestPair {
 }
 
 async function durableImmutableWrite(path: string, content: string): Promise<string> {
-    await mkdir(join(path, ".."), { recursive: true }).catch(() => undefined);
+    await mkdir(dirname(path), { recursive: true });
     try {
         const handle = await open(path, "wx", 0o600);
         try {
