@@ -13,6 +13,9 @@ export interface BrowserlessAccountConfig {
     startUrl?: string;
     workspace?: string | null;
     locale?: string;
+    expectedAccountIdentity?: string;
+    accountIdentityProbe?: (page: Page) => Promise<string>;
+    closeRemoteOnDisconnect?: boolean;
 }
 
 export interface SidebarInventoryResumeState {
@@ -188,10 +191,28 @@ export class BrowserlessChatGPTAccountAdapter {
     }
 
     async close(): Promise<void> {
-        if (this.browser) await this.browser.close();
+        // Persistent Browserless sessions are not owned by this adapter by default.
+        // Closing the remote browser can destroy authenticated session state.
+        if (this.browser && this.config.closeRemoteOnDisconnect) await this.browser.close();
         this.browser = null;
         this.context = null;
         this.page = null;
+    }
+
+    private async verifyAccountBinding(page: Page): Promise<void> {
+        if (!this.config.expectedAccountIdentity || !this.config.accountIdentityProbe) {
+            throw Object.assign(
+                new Error("Account-bound mutation requires an independent Browserless account identity probe"),
+                { code: "ACCOUNT_VERIFICATION_REQUIRED" }
+            );
+        }
+        const observed = await this.config.accountIdentityProbe(page);
+        if (!observed || observed !== this.config.expectedAccountIdentity) {
+            throw Object.assign(
+                new Error("Browserless session is bound to a different ChatGPT account"),
+                { code: "WRONG_ACCOUNT" }
+            );
+        }
     }
 
     private requirePage(): Page {
@@ -272,6 +293,7 @@ export class BrowserlessChatGPTAccountAdapter {
         const page = this.requirePage();
         await page.goto(item.url, { waitUntil: "domcontentloaded" });
         await requireAuthenticated(page);
+        await this.verifyAccountBinding(page);
         const currentId = nativeConversationIdFromUrl(page.url());
         const identityMatched = currentId === item.nativeConversationId;
         if (!identityMatched) {
@@ -326,6 +348,7 @@ export class BrowserlessChatGPTAccountAdapter {
         const page = this.requirePage();
         await page.goto(item.url, { waitUntil: "domcontentloaded" });
         await requireAuthenticated(page);
+        await this.verifyAccountBinding(page);
         if (nativeConversationIdFromUrl(page.url()) !== item.nativeConversationId) {
             throw Object.assign(new Error("Deletion refused: conversation identity changed before mutation"), { code: "IDENTITY" });
         }
