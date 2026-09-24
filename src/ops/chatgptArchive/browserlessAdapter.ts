@@ -312,15 +312,36 @@ export class BrowserlessChatGPTAccountAdapter {
         await openConversationActions(page);
         const deleteControl = await deleteMenuControl(page);
         const deleteControlFound = Boolean(await deleteControl.count());
-        // Do not click delete during dry-run. Confirmation availability cannot be truthfully proven
-        // without entering mutation flow, so it remains false and actual deletion re-checks it.
+        let confirmationControlFound = false;
+        if (deleteControlFound) {
+            // Enter confirmation flow without committing mutation.
+            await deleteControl.click();
+            const confirm = page.getByRole("button", { name: CONFIRM_DELETE_NAMES }).last();
+            confirmationControlFound = Boolean(await confirm.count());
+
+            // Close the confirmation flow without confirming deletion.
+            const cancel = page.getByRole("button", { name: /cancel|close|отмена|atcelt|aizv[eē]rt/i }).last();
+            if (await cancel.count()) {
+                await cancel.click();
+            } else {
+                await page.keyboard.press("Escape");
+            }
+
+            // A dry-run is valid only if the conversation still exists after closing the dialog.
+            if (nativeConversationIdFromUrl(page.url()) !== item.nativeConversationId) {
+                throw Object.assign(
+                    new Error("Dry-run safety violation: conversation state changed while probing confirmation"),
+                    { code: "DATA_LOSS_RISK" }
+                );
+            }
+        }
         return {
             accountId: this.config.accountId,
             nativeConversationId: item.nativeConversationId,
             url: item.url,
             identityMatched,
             deleteControlFound,
-            confirmationControlFound: false,
+            confirmationControlFound,
             observedTitle: await page.title().catch(() => null),
             generatedAt: new Date().toISOString()
         };
@@ -341,8 +362,13 @@ export class BrowserlessChatGPTAccountAdapter {
         );
         if (!manifestItem || !manifestItem.safeToDelete) throw new Error("Deletion refused: item not authorized by manifest");
         if (item.accountId !== this.config.accountId) throw new Error("Deletion refused: wrong account adapter");
-        if (!dryRun.identityMatched || !dryRun.deleteControlFound || dryRun.nativeConversationId !== item.nativeConversationId) {
-            throw new Error("Deletion refused: dry-run identity/control proof is insufficient");
+        if (
+            !dryRun.identityMatched
+            || !dryRun.deleteControlFound
+            || !dryRun.confirmationControlFound
+            || dryRun.nativeConversationId !== item.nativeConversationId
+        ) {
+            throw new Error("Deletion refused: dry-run identity/control/confirmation proof is insufficient");
         }
 
         const page = this.requirePage();
