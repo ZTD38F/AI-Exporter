@@ -213,9 +213,11 @@ function canonicalKey(observation: IdentityObservation): string | null {
 export function canonicalConversationIdFor(
     observation: IdentityObservation,
     existingCanonicalId?: string | null
-): string {
+): string | null {
     if (existingCanonicalId) return existingCanonicalId;
-    return `cc_${sha256Hex(`${observation.accountId}\\0${canonicalKey(observation)}`).slice(0, 32)}`;
+    const key = canonicalKey(observation);
+    if (!key) return null;
+    return `cc_${sha256Hex(`${observation.accountId}\\0${key}`).slice(0, 32)}`;
 }
 
 function exactUrlId(observation: IdentityObservation): string | null {
