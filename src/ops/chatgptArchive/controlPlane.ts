@@ -158,8 +158,21 @@ export interface DeleteManifestItem {
     plannedAction: "DELETE";
 }
 
+export interface DeletionManifestDraft {
+    schemaVersion: 1;
+    state: "AWAITING_BACKUP_VERIFICATION";
+    manifestId: string;
+    generationTimestamp: string;
+    softwareVersion: string;
+    sourceExportHashes: string[];
+    liveInventorySnapshotHash: string;
+    items: DeleteManifestItem[];
+    draftSha256: string;
+}
+
 export interface DeletionManifest {
     schemaVersion: 1;
+    state: "SEALED";
     manifestId: string;
     generationTimestamp: string;
     softwareVersion: string;
@@ -510,27 +523,34 @@ function manifestPayload(manifest: Omit<DeletionManifest, "manifestSha256">): st
     return stableJson(manifest);
 }
 
-export function buildDeletionManifest(input: {
+function draftPayload(draft: Omit<DeletionManifestDraft, "draftSha256">): string {
+    return stableJson(draft);
+}
+
+const MANIFEST_BACKUP_GATE = "L_MANIFEST_BACKUP_VERIFIED";
+
+export function buildDeletionManifestDraft(input: {
     manifestId: string;
     generationTimestamp: string;
     softwareVersion: string;
     sourceExportHashes: string[];
     liveInventorySnapshotHash: string;
     items: DeleteManifestItem[];
-}): DeletionManifest {
-    if (!input.items.length) throw new Error("Deletion manifest cannot be empty");
+}): DeletionManifestDraft {
+    if (!input.items.length) throw new Error("Deletion manifest draft cannot be empty");
     for (const item of input.items) {
-        if (!item.safeToDelete) throw new Error(`Unsafe manifest item: ${item.canonicalConversationId}`);
-        if (item.gateResults.some(gate => !gate.passed)) {
-            throw new Error(`Manifest item has failed gate: ${item.canonicalConversationId}`);
+        const failed = item.gateResults.filter(gate => !gate.passed && gate.code !== MANIFEST_BACKUP_GATE);
+        if (failed.length) {
+            throw new Error(`Manifest draft item has failed pre-backup gate: ${item.canonicalConversationId}`);
         }
         if (!item.nativeConversationId || !item.rawHash || !item.rawExportLocation) {
-            throw new Error(`Manifest item is missing deletion evidence: ${item.canonicalConversationId}`);
+            throw new Error(`Manifest draft item is missing deletion evidence: ${item.canonicalConversationId}`);
         }
     }
 
-    const payload: Omit<DeletionManifest, "manifestSha256"> = {
+    const payload: Omit<DeletionManifestDraft, "draftSha256"> = {
         schemaVersion: 1,
+        state: "AWAITING_BACKUP_VERIFICATION",
         manifestId: input.manifestId,
         generationTimestamp: input.generationTimestamp,
         softwareVersion: input.softwareVersion,
@@ -543,13 +563,75 @@ export function buildDeletionManifest(input: {
     };
     return deepFreeze({
         ...payload,
+        draftSha256: sha256Hex(draftPayload(payload))
+    });
+}
+
+export function verifyDeletionManifestDraft(draft: DeletionManifestDraft): boolean {
+    const { draftSha256, ...payload } = draft;
+    return draft.state === "AWAITING_BACKUP_VERIFICATION"
+        && /^[a-f0-9]{64}$/.test(draftSha256)
+        && sha256Hex(draftPayload(payload)) === draftSha256
+        && draft.items.every(item =>
+            item.gateResults.every(gate => gate.code === MANIFEST_BACKUP_GATE || gate.passed)
+        );
+}
+
+export function sealDeletionManifest(
+    draft: DeletionManifestDraft,
+    backupVerification: { draftSha256: string; verified: boolean }
+): DeletionManifest {
+    if (!verifyDeletionManifestDraft(draft)) throw new Error("Deletion manifest draft integrity check failed");
+    if (!backupVerification.verified || backupVerification.draftSha256 !== draft.draftSha256) {
+        throw new Error("Deletion manifest backup verification failed");
+    }
+
+    const sealedItems = draft.items.map(item => ({
+        ...item,
+        gateResults: item.gateResults.map(gate =>
+            gate.code === MANIFEST_BACKUP_GATE ? { ...gate, passed: true } : gate
+        ),
+        safeToDelete: true
+    }));
+
+    const payload: Omit<DeletionManifest, "manifestSha256"> = {
+        schemaVersion: 1,
+        state: "SEALED",
+        manifestId: draft.manifestId,
+        generationTimestamp: draft.generationTimestamp,
+        softwareVersion: draft.softwareVersion,
+        sourceExportHashes: [...draft.sourceExportHashes],
+        liveInventorySnapshotHash: draft.liveInventorySnapshotHash,
+        items: sealedItems
+    };
+    return deepFreeze({
+        ...payload,
         manifestSha256: sha256Hex(manifestPayload(payload))
     });
 }
 
+export function buildDeletionManifest(input: {
+    manifestId: string;
+    generationTimestamp: string;
+    softwareVersion: string;
+    sourceExportHashes: string[];
+    liveInventorySnapshotHash: string;
+    items: DeleteManifestItem[];
+}): DeletionManifest {
+    const draft = buildDeletionManifestDraft(input);
+    const backupGatePassed = draft.items.every(item =>
+        item.gateResults.some(gate => gate.code === MANIFEST_BACKUP_GATE && gate.passed)
+    );
+    if (!backupGatePassed) {
+        throw new Error("Deletion manifest backup must be verified before direct sealing");
+    }
+    return sealDeletionManifest(draft, { draftSha256: draft.draftSha256, verified: true });
+}
+
 export function verifyDeletionManifest(manifest: DeletionManifest): boolean {
     const { manifestSha256, ...payload } = manifest;
-    return /^[a-f0-9]{64}$/.test(manifestSha256)
+    return manifest.state === "SEALED"
+        && /^[a-f0-9]{64}$/.test(manifestSha256)
         && sha256Hex(manifestPayload(payload)) === manifestSha256
         && manifest.items.every(item => item.safeToDelete && item.gateResults.every(gate => gate.passed));
 }
