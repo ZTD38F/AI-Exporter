@@ -17,6 +17,8 @@ const {
     nativeConversationIdFromUrl,
     reconcileConversations,
     resolveConversationIdentity,
+    sha256Hex,
+    stableJson,
     verifyDeletionManifest
 } = require("../src/ops/chatgptArchive/controlPlane.js");
 const {
@@ -189,6 +191,19 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
     tampered.items[0].nativeConversationId = "other";
     assert.strictEqual(verifyDeletionManifest(tampered), false);
 
+    const resignedMissingGates = JSON.parse(JSON.stringify(manifest));
+    resignedMissingGates.items[0].gateResults = [];
+    const { manifestSha256: _missingGateHash, ...missingGatePayload } = resignedMissingGates;
+    resignedMissingGates.manifestSha256 = sha256Hex(stableJson(missingGatePayload));
+    assert.strictEqual(verifyDeletionManifest(resignedMissingGates), false);
+
+    const resignedKeepClassification = JSON.parse(JSON.stringify(manifest));
+    resignedKeepClassification.items[0].classification = "KEEP_UNIQUE";
+    resignedKeepClassification.items[0].uniqueInformationRemaining = 1;
+    const { manifestSha256: _keepHash, ...keepPayload } = resignedKeepClassification;
+    resignedKeepClassification.manifestSha256 = sha256Hex(stableJson(keepPayload));
+    assert.strictEqual(verifyDeletionManifest(resignedKeepClassification), false);
+
     assert.throws(() => buildDeletionManifest({
         manifestId: "m2",
         generationTimestamp: "2026-09-24T20:00:00.000Z",
@@ -233,6 +248,13 @@ test("manifest - two-phase draft permits only backup gate pending, then seals ex
     });
     assert.strictEqual(verifyDeletionManifestDraft(draft), true);
     assert.strictEqual(draft.state, "AWAITING_BACKUP_VERIFICATION");
+
+    const resignedIncompleteDraft = JSON.parse(JSON.stringify(draft));
+    resignedIncompleteDraft.items[0].gateResults = resignedIncompleteDraft.items[0].gateResults
+        .filter((gate: any) => gate.code !== "M_LIVE_MATCH_UNIQUE");
+    const { draftSha256: _draftHash, ...incompleteDraftPayload } = resignedIncompleteDraft;
+    resignedIncompleteDraft.draftSha256 = sha256Hex(stableJson(incompleteDraftPayload));
+    assert.strictEqual(verifyDeletionManifestDraft(resignedIncompleteDraft), false);
     assert.throws(
         () => sealDeletionManifest(draft, { draftSha256: "0".repeat(64), verified: true }),
         /backup verification failed/
