@@ -374,6 +374,32 @@ def _immutable_insert(
     )
 
 
+def _required_row(
+    db: sqlite3.Connection,
+    query: str,
+    params: tuple[Any, ...],
+    label: str,
+) -> tuple[Any, ...]:
+    row = db.execute(query, params).fetchone()
+    if row is None:
+        raise ValueError(f"{label} references missing canonical evidence")
+    return tuple(row)
+
+
+def _assert_conversation_identity(db: sqlite3.Connection, row: dict[str, Any]) -> None:
+    existing = db.execute(
+        "SELECT account_id, native_conversation_id FROM conversations "
+        "WHERE canonical_conversation_id = ?",
+        (row["canonical_conversation_id"],),
+    ).fetchone()
+    incoming = (row["account_id"], row.get("native_conversation_id"))
+    if existing is not None and tuple(existing) != incoming:
+        raise ValueError(
+            "cross-account conversation identity conflict for "
+            + row["canonical_conversation_id"]
+        )
+
+
 def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
     allowed = {
         "accounts", "exports", "source_files", "conversations", "conversation_sources",
@@ -402,6 +428,7 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
             )
 
         for row in snapshot.get("conversations", []):
+            _assert_conversation_identity(db, row)
             db.execute(
                 """INSERT INTO conversations(
                     canonical_conversation_id, account_id, native_conversation_id, title,
@@ -430,6 +457,43 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
             )
 
         for row in snapshot.get("conversation_sources", []):
+            conversation_identity = _required_row(
+                db,
+                "SELECT account_id, native_conversation_id FROM conversations "
+                "WHERE canonical_conversation_id = ?",
+                (row["canonical_conversation_id"],),
+                "conversation source",
+            )
+            if conversation_identity != (
+                row["source_account_id"],
+                row["native_conversation_id"],
+            ):
+                raise ValueError(
+                    "cross-account conversation source conflict for "
+                    + row["source_conversation_key"]
+                )
+            export_account = _required_row(
+                db,
+                "SELECT account_id FROM exports WHERE export_id = ?",
+                (row["source_export_id"],),
+                "conversation source export",
+            )[0]
+            if export_account != row["source_account_id"]:
+                raise ValueError(
+                    "cross-account export provenance conflict for "
+                    + row["source_conversation_key"]
+                )
+            source_identity = _required_row(
+                db,
+                "SELECT export_id, source_file FROM source_files WHERE source_file_id = ?",
+                (row["source_file_id"],),
+                "conversation source file",
+            )
+            if source_identity != (row["source_export_id"], row["source_file"]):
+                raise ValueError(
+                    "source-file provenance conflict for "
+                    + row["source_conversation_key"]
+                )
             _immutable_insert(
                 db, "conversation_sources", "source_conversation_key", row,
                 [
@@ -441,6 +505,26 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
             )
 
         for row in snapshot.get("messages", []):
+            source_identity = _required_row(
+                db,
+                "SELECT canonical_conversation_id, source_account_id, source_export_id, "
+                "source_file_id, source_file FROM conversation_sources "
+                "WHERE source_conversation_key = ?",
+                (row["source_conversation_key"],),
+                "message source",
+            )
+            incoming_identity = (
+                row["canonical_conversation_id"],
+                row["source_account_id"],
+                row["source_export_id"],
+                row["source_file_id"],
+                row["source_file"],
+            )
+            if source_identity != incoming_identity:
+                raise ValueError(
+                    "cross-account message provenance conflict for "
+                    + row["message_key"]
+                )
             _immutable_insert(
                 db, "messages", "message_key", row,
                 [
@@ -452,6 +536,18 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
             )
 
         for row in snapshot.get("message_edges", []):
+            source_conversation_id = _required_row(
+                db,
+                "SELECT canonical_conversation_id FROM conversation_sources "
+                "WHERE source_conversation_key = ?",
+                (row["source_conversation_key"],),
+                "message edge source",
+            )[0]
+            if source_conversation_id != row["canonical_conversation_id"]:
+                raise ValueError(
+                    "cross-account message edge conflict for "
+                    + row["source_conversation_key"]
+                )
             db.execute(
                 """INSERT OR IGNORE INTO message_edges(
                     source_conversation_key, canonical_conversation_id, parent_node_id, child_node_id
@@ -463,6 +559,34 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
             )
 
         for row in snapshot.get("assets", []):
+            conversation_account = _required_row(
+                db,
+                "SELECT account_id FROM conversations WHERE canonical_conversation_id = ?",
+                (row["canonical_conversation_id"],),
+                "asset conversation",
+            )[0]
+            if row.get("source_account_id") not in (None, conversation_account):
+                raise ValueError("cross-account asset provenance conflict for " + row["asset_id"])
+            if row.get("source_conversation_key"):
+                source_identity = _required_row(
+                    db,
+                    "SELECT canonical_conversation_id, source_account_id, source_export_id, "
+                    "source_file_id, source_file FROM conversation_sources "
+                    "WHERE source_conversation_key = ?",
+                    (row["source_conversation_key"],),
+                    "asset source",
+                )
+                incoming_identity = (
+                    row["canonical_conversation_id"],
+                    row.get("source_account_id"),
+                    row.get("source_export_id"),
+                    row.get("source_file_id"),
+                    row.get("source_file"),
+                )
+                if source_identity != incoming_identity:
+                    raise ValueError(
+                        "cross-account asset source conflict for " + row["asset_id"]
+                    )
             _immutable_insert(
                 db, "assets", "asset_id", row,
                 [
@@ -505,6 +629,17 @@ def ingest_snapshot(db: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
             )
 
         for row in snapshot.get("knowledge_sources", []):
+            conversation_account = _required_row(
+                db,
+                "SELECT account_id FROM conversations WHERE canonical_conversation_id = ?",
+                (row["canonical_conversation_id"],),
+                "knowledge source conversation",
+            )[0]
+            if conversation_account != row["account_id"]:
+                raise ValueError(
+                    "cross-account knowledge provenance conflict for "
+                    + row["canonical_conversation_id"]
+                )
             source_identity = "\0".join([
                 row["knowledge_id"],
                 row["account_id"],
