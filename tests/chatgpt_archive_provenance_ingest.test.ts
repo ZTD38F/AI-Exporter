@@ -120,6 +120,72 @@ test("provenance ingest - invalid or mismatched raw source evidence fails closed
     assert.throws(() => buildProvenanceSnapshot(mismatch), /missing source evidence/);
 });
 
+test("sqlite provenance store - cross-account canonical identity injection rolls back", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ai-exporter-account-isolation-"));
+    const db = path.join(tmp, "archive.sqlite3");
+    const payloadPath = path.join(tmp, "snapshot.json");
+    const script = path.join(process.cwd(), "scripts", "chatgpt_archive_store.py");
+    const python = process.platform === "win32" ? "python" : "python3";
+
+    const first = buildProvenanceSnapshot(bundle(
+        "export-account-a", "sf-account-a", "conversations.json",
+        conversation("shared-native-id", "Account A title", 100), "a"
+    ));
+    fs.writeFileSync(payloadPath, JSON.stringify(first));
+    const initial = spawnSync(
+        python,
+        [script, "--db", db, "ingest", "--json", payloadPath],
+        { encoding: "utf8" }
+    );
+    assert.strictEqual(initial.status, 0, initial.stderr);
+
+    const secondBundle = {
+        ...bundle(
+            "export-account-b", "sf-account-b", "conversations.json",
+            conversation("shared-native-id", "Injected B title", 200), "b"
+        ),
+        accountId: "account-b",
+        accountLabel: "B"
+    };
+    const injected = buildProvenanceSnapshot(secondBundle);
+    const accountACanonicalId = first.conversations[0].canonical_conversation_id;
+    injected.conversations[0].canonical_conversation_id = accountACanonicalId;
+    for (const row of injected.conversation_sources) {
+        row.canonical_conversation_id = accountACanonicalId;
+    }
+    for (const row of injected.messages) {
+        row.canonical_conversation_id = accountACanonicalId;
+    }
+    for (const row of injected.message_edges) {
+        row.canonical_conversation_id = accountACanonicalId;
+    }
+
+    fs.writeFileSync(payloadPath, JSON.stringify(injected));
+    const conflict = spawnSync(
+        python,
+        [script, "--db", db, "ingest", "--json", payloadPath],
+        { encoding: "utf8" }
+    );
+    assert.notStrictEqual(conflict.status, 0);
+    assert.match(conflict.stderr, /cross-account conversation identity conflict/);
+
+    const query = [
+        "import sqlite3,json,sys",
+        "db=sqlite3.connect(sys.argv[1])",
+        "row=db.execute('select account_id,title from conversations').fetchone()",
+        "sources=db.execute('select count(*) from conversation_sources').fetchone()[0]",
+        "print(json.dumps({'account_id':row[0],'title':row[1],'sources':sources},sort_keys=True))"
+    ].join(";");
+    const stateRun = spawnSync(python, ["-c", query, db], { encoding: "utf8" });
+    assert.strictEqual(stateRun.status, 0, stateRun.stderr);
+    const state = JSON.parse(stateRun.stdout);
+    assert.deepStrictEqual(state, {
+        account_id: "account-a",
+        sources: 1,
+        title: "Account A title"
+    });
+});
+
 test("sqlite provenance store - source observations are idempotent and immutable", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ai-exporter-provenance-"));
     const db = path.join(tmp, "archive.sqlite3");
