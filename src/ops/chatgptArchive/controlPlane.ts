@@ -528,6 +528,53 @@ function draftPayload(draft: Omit<DeletionManifestDraft, "draftSha256">): string
 }
 
 const MANIFEST_BACKUP_GATE = "L_MANIFEST_BACKUP_VERIFIED";
+const MANIFEST_GATE_CODES = new Set(DELETE_GATES.map(([, code]) => code));
+
+function isSha256(value: unknown): value is string {
+    return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function hasCompleteManifestGates(item: any, sealed: boolean): boolean {
+    if (!Array.isArray(item?.gateResults) || item.gateResults.length !== MANIFEST_GATE_CODES.size) {
+        return false;
+    }
+    const seen = new Set<string>();
+    for (const gate of item.gateResults) {
+        if (!gate || typeof gate.code !== "string" || typeof gate.passed !== "boolean") return false;
+        if (!MANIFEST_GATE_CODES.has(gate.code) || seen.has(gate.code)) return false;
+        if (sealed && !gate.passed) return false;
+        if (!sealed && gate.code !== MANIFEST_BACKUP_GATE && !gate.passed) return false;
+        seen.add(gate.code);
+    }
+    if (seen.size !== MANIFEST_GATE_CODES.size) return false;
+    return item.safeToDelete === item.gateResults.every((gate: DeleteGateResult) => gate.passed);
+}
+
+function isManifestItemSemanticallyValid(item: any, sealed: boolean): item is DeleteManifestItem {
+    if (!item || typeof item !== "object") return false;
+    if (typeof item.classification !== "string" || !item.classification.startsWith("DELETE_")) return false;
+    if (item.plannedAction !== "DELETE" || item.uniqueInformationRemaining !== 0) return false;
+    if (!item.accountId || !item.canonicalConversationId || !item.nativeConversationId) return false;
+    if (!item.rawExportLocation || !isSha256(item.rawHash)) return false;
+    if (nativeConversationIdFromUrl(item.url) !== item.nativeConversationId) return false;
+    if (item.knowledgeExtractionState !== "VERIFIED") return false;
+    if (!Number.isFinite(item.identityConfidence) || item.identityConfidence < 0 || item.identityConfidence > 1) return false;
+    if (!Number.isFinite(item.deletionConfidence) || item.deletionConfidence < 0 || item.deletionConfidence > 1) return false;
+    return hasCompleteManifestGates(item, sealed);
+}
+
+function hasValidManifestEnvelope(value: any, sealed: boolean): boolean {
+    if (!value || value.schemaVersion !== 1) return false;
+    if (!value.manifestId || !value.generationTimestamp || !value.softwareVersion) return false;
+    if (!Array.isArray(value.sourceExportHashes) || !value.sourceExportHashes.length) return false;
+    if (!value.sourceExportHashes.every(isSha256) || !isSha256(value.liveInventorySnapshotHash)) return false;
+    if (!Array.isArray(value.items) || !value.items.length) return false;
+    if (!value.items.every((item: any) => isManifestItemSemanticallyValid(item, sealed))) return false;
+    const targets = value.items.map((item: DeleteManifestItem) =>
+        stableJson([item.accountId, item.canonicalConversationId, item.nativeConversationId])
+    );
+    return new Set(targets).size === targets.length;
+}
 
 export function buildDeletionManifestDraft(input: {
     manifestId: string;
@@ -590,13 +637,12 @@ export function buildDeletionManifestDraft(input: {
 }
 
 export function verifyDeletionManifestDraft(draft: DeletionManifestDraft): boolean {
+    if (!draft || typeof draft !== "object") return false;
     const { draftSha256, ...payload } = draft;
     return draft.state === "AWAITING_BACKUP_VERIFICATION"
-        && /^[a-f0-9]{64}$/.test(draftSha256)
+        && isSha256(draftSha256)
         && sha256Hex(draftPayload(payload)) === draftSha256
-        && draft.items.every(item =>
-            item.gateResults.every(gate => gate.code === MANIFEST_BACKUP_GATE || gate.passed)
-        );
+        && hasValidManifestEnvelope(draft, false);
 }
 
 export function sealDeletionManifest(
@@ -651,9 +697,10 @@ export function buildDeletionManifest(input: {
 }
 
 export function verifyDeletionManifest(manifest: DeletionManifest): boolean {
+    if (!manifest || typeof manifest !== "object") return false;
     const { manifestSha256, ...payload } = manifest;
     return manifest.state === "SEALED"
-        && /^[a-f0-9]{64}$/.test(manifestSha256)
+        && isSha256(manifestSha256)
         && sha256Hex(manifestPayload(payload)) === manifestSha256
-        && manifest.items.every(item => item.safeToDelete && item.gateResults.every(gate => gate.passed));
+        && hasValidManifestEnvelope(manifest, true);
 }
