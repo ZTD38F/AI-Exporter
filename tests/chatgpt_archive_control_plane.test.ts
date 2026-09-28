@@ -183,7 +183,7 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
         manifestId: "m1",
         generationTimestamp: "2026-09-24T20:00:00.000Z",
         softwareVersion: "test",
-        sourceExportHashes: ["b".repeat(64)],
+        sourceExportHashes: ["a".repeat(64)],
         liveInventorySnapshotHash: "c".repeat(64),
         items: [item]
     });
@@ -214,11 +214,26 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
     resignedDuplicateLiveTarget.manifestSha256 = sha256Hex(stableJson(duplicateTargetPayload));
     assert.strictEqual(verifyDeletionManifest(resignedDuplicateLiveTarget), false);
 
+    const resignedUnbackedRawHash = JSON.parse(JSON.stringify(manifest));
+    resignedUnbackedRawHash.items[0].rawHash = "b".repeat(64);
+    const { manifestSha256: _unbackedHash, ...unbackedPayload } = resignedUnbackedRawHash;
+    resignedUnbackedRawHash.manifestSha256 = sha256Hex(stableJson(unbackedPayload));
+    assert.strictEqual(verifyDeletionManifest(resignedUnbackedRawHash), false);
+
+    assert.throws(() => buildDeletionManifest({
+        manifestId: "m-unbacked-source",
+        generationTimestamp: "2026-09-28T14:00:00.000Z",
+        softwareVersion: "test",
+        sourceExportHashes: ["b".repeat(64)],
+        liveInventorySnapshotHash: "c".repeat(64),
+        items: [item]
+    }), /draft integrity check failed/);
+
     assert.throws(() => buildDeletionManifest({
         manifestId: "m-duplicate-live-target",
         generationTimestamp: "2026-09-28T12:00:00.000Z",
         softwareVersion: "test",
-        sourceExportHashes: ["b".repeat(64)],
+        sourceExportHashes: ["a".repeat(64)],
         liveInventorySnapshotHash: "c".repeat(64),
         items: [item, { ...item, canonicalConversationId: "cc-other" }]
     }), /draft integrity check failed/);
@@ -227,7 +242,7 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
         manifestId: "m2",
         generationTimestamp: "2026-09-24T20:00:00.000Z",
         softwareVersion: "test",
-        sourceExportHashes: ["b".repeat(64)],
+        sourceExportHashes: ["a".repeat(64)],
         liveInventorySnapshotHash: "c".repeat(64),
         items: [{ ...item, safeToDelete: false }]
     }), /safe_to_delete is inconsistent with gates/);
@@ -261,7 +276,7 @@ test("manifest - two-phase draft permits only backup gate pending, then seals ex
         manifestId: "m-draft",
         generationTimestamp: "2026-09-24T20:00:00.000Z",
         softwareVersion: "test",
-        sourceExportHashes: ["b".repeat(64)],
+        sourceExportHashes: ["a".repeat(64)],
         liveInventorySnapshotHash: "c".repeat(64),
         items: [item]
     });
@@ -311,7 +326,7 @@ test("browserless deletion authorization - exact manifest item and dry-run targe
         manifestId: "m-browserless",
         generationTimestamp: "2026-09-28T00:00:00.000Z",
         softwareVersion: "test",
-        sourceExportHashes: ["b".repeat(64)],
+        sourceExportHashes: ["a".repeat(64)],
         liveInventorySnapshotHash: "c".repeat(64),
         items: [item]
     });
