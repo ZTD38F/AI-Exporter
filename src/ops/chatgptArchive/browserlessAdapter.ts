@@ -1,6 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import {
     nativeConversationIdFromUrl,
+    stableJson,
     verifyDeletionManifest,
     type DeletionManifest,
     type DeleteManifestItem,
@@ -58,6 +59,43 @@ export interface MutationReceipt {
     manifestSha256: string;
     status: "MUTATION_SENT" | "NOT_ATTEMPTED";
     generatedAt: string;
+}
+
+export function requireAuthorizedDeletionTarget(input: {
+    manifest: DeletionManifest;
+    item: DeleteManifestItem;
+    dryRun: DeleteDryRunReceipt;
+    adapterAccountId: string;
+}): DeleteManifestItem {
+    const { manifest, item, dryRun, adapterAccountId } = input;
+    if (!verifyDeletionManifest(manifest)) {
+        throw new Error("Deletion refused: manifest hash or gates are invalid");
+    }
+    const manifestItem = manifest.items.find(candidate =>
+        candidate.accountId === item.accountId
+        && candidate.canonicalConversationId === item.canonicalConversationId
+        && candidate.nativeConversationId === item.nativeConversationId
+    );
+    if (!manifestItem || !manifestItem.safeToDelete) {
+        throw new Error("Deletion refused: item not authorized by manifest");
+    }
+    if (stableJson(manifestItem) !== stableJson(item)) {
+        throw new Error("Deletion refused: requested item differs from sealed manifest");
+    }
+    if (manifestItem.accountId !== adapterAccountId) {
+        throw new Error("Deletion refused: wrong account adapter");
+    }
+    if (
+        !dryRun.identityMatched
+        || !dryRun.deleteControlFound
+        || !dryRun.confirmationControlFound
+        || dryRun.accountId !== manifestItem.accountId
+        || dryRun.nativeConversationId !== manifestItem.nativeConversationId
+        || dryRun.url !== manifestItem.url
+    ) {
+        throw new Error("Deletion refused: dry-run identity/control/confirmation proof is insufficient");
+    }
+    return manifestItem;
 }
 
 const MORE_BUTTON_NAMES = /more|options|ещ[её]|vair[aā]k|darb[iī]bas/i;
@@ -354,28 +392,18 @@ export class BrowserlessChatGPTAccountAdapter {
         mutationId: string;
     }): Promise<MutationReceipt> {
         const { manifest, item, dryRun } = input;
-        if (!verifyDeletionManifest(manifest)) throw new Error("Deletion refused: manifest hash or gates are invalid");
-        const manifestItem = manifest.items.find(candidate =>
-            candidate.accountId === item.accountId
-            && candidate.canonicalConversationId === item.canonicalConversationId
-            && candidate.nativeConversationId === item.nativeConversationId
-        );
-        if (!manifestItem || !manifestItem.safeToDelete) throw new Error("Deletion refused: item not authorized by manifest");
-        if (item.accountId !== this.config.accountId) throw new Error("Deletion refused: wrong account adapter");
-        if (
-            !dryRun.identityMatched
-            || !dryRun.deleteControlFound
-            || !dryRun.confirmationControlFound
-            || dryRun.nativeConversationId !== item.nativeConversationId
-        ) {
-            throw new Error("Deletion refused: dry-run identity/control/confirmation proof is insufficient");
-        }
+        const authorizedItem = requireAuthorizedDeletionTarget({
+            manifest,
+            item,
+            dryRun,
+            adapterAccountId: this.config.accountId
+        });
 
         const page = this.requirePage();
-        await page.goto(item.url, { waitUntil: "domcontentloaded" });
+        await page.goto(authorizedItem.url, { waitUntil: "domcontentloaded" });
         await requireAuthenticated(page);
         await this.verifyAccountBinding(page);
-        if (nativeConversationIdFromUrl(page.url()) !== item.nativeConversationId) {
+        if (nativeConversationIdFromUrl(page.url()) !== authorizedItem.nativeConversationId) {
             throw Object.assign(new Error("Deletion refused: conversation identity changed before mutation"), { code: "IDENTITY" });
         }
 
@@ -392,9 +420,9 @@ export class BrowserlessChatGPTAccountAdapter {
 
         return {
             mutationId: input.mutationId,
-            accountId: item.accountId,
-            canonicalConversationId: item.canonicalConversationId,
-            nativeConversationId: item.nativeConversationId,
+            accountId: authorizedItem.accountId,
+            canonicalConversationId: authorizedItem.canonicalConversationId,
+            nativeConversationId: authorizedItem.nativeConversationId,
             manifestSha256: manifest.manifestSha256,
             // Mutation receipt does NOT claim deletion verification. Post-delete inventory must do that.
             status: "MUTATION_SENT",
