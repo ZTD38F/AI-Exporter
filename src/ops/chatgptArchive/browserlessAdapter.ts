@@ -1,5 +1,6 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import {
+    isCanonicalChatGPTConversationUrl,
     nativeConversationIdFromUrl,
     stableJson,
     verifyDeletionManifest,
@@ -326,6 +327,9 @@ export class BrowserlessChatGPTAccountAdapter {
         }
         if (item.accountId !== this.config.accountId) {
             throw new Error("Dry-run refused: wrong account adapter");
+        }
+        if (!isCanonicalChatGPTConversationUrl(item.url, item.nativeConversationId)) {
+            throw new Error("Dry-run refused: target is not a canonical ChatGPT conversation URL");
         }
 
         const page = this.requirePage();
