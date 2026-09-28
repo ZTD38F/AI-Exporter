@@ -212,6 +212,33 @@ export function nativeConversationIdFromUrl(url: string | null | undefined): str
     return match ? match[1] : null;
 }
 
+
+export function isCanonicalChatGPTConversationUrl(
+    url: string | null | undefined,
+    expectedNativeConversationId?: string | null
+): boolean {
+    if (!url) return false;
+    try {
+        const parsed = new URL(url);
+        if (
+            parsed.protocol !== "https:"
+            || parsed.hostname !== "chatgpt.com"
+            || parsed.port !== ""
+            || parsed.username !== ""
+            || parsed.password !== ""
+        ) {
+            return false;
+        }
+        const nativeConversationId = nativeConversationIdFromUrl(parsed.pathname);
+        return Boolean(
+            nativeConversationId
+            && (!expectedNativeConversationId || nativeConversationId === expectedNativeConversationId)
+        );
+    } catch {
+        return false;
+    }
+}
+
 function canonicalKey(observation: IdentityObservation): string | null {
     const native = observation.nativeConversationId?.trim() || nativeConversationIdFromUrl(observation.stableUrl);
     if (native) return `native:${native}`;
@@ -556,7 +583,7 @@ function isManifestItemSemanticallyValid(item: any, sealed: boolean): item is De
     if (item.plannedAction !== "DELETE" || item.uniqueInformationRemaining !== 0) return false;
     if (!item.accountId || !item.canonicalConversationId || !item.nativeConversationId) return false;
     if (!item.rawExportLocation || !isSha256(item.rawHash)) return false;
-    if (nativeConversationIdFromUrl(item.url) !== item.nativeConversationId) return false;
+    if (!isCanonicalChatGPTConversationUrl(item.url, item.nativeConversationId)) return false;
     if (item.knowledgeExtractionState !== "VERIFIED") return false;
     if (!Number.isFinite(item.identityConfidence) || item.identityConfidence < 0 || item.identityConfidence > 1) return false;
     if (!Number.isFinite(item.deletionConfidence) || item.deletionConfidence < 0 || item.deletionConfidence > 1) return false;
