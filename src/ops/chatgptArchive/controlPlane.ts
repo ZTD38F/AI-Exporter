@@ -570,10 +570,14 @@ function hasValidManifestEnvelope(value: any, sealed: boolean): boolean {
     if (!value.sourceExportHashes.every(isSha256) || !isSha256(value.liveInventorySnapshotHash)) return false;
     if (!Array.isArray(value.items) || !value.items.length) return false;
     if (!value.items.every((item: any) => isManifestItemSemanticallyValid(item, sealed))) return false;
-    const targets = value.items.map((item: DeleteManifestItem) =>
-        stableJson([item.accountId, item.canonicalConversationId, item.nativeConversationId])
+    const canonicalTargets = value.items.map((item: DeleteManifestItem) =>
+        stableJson([item.accountId, item.canonicalConversationId])
     );
-    return new Set(targets).size === targets.length;
+    const liveTargets = value.items.map((item: DeleteManifestItem) =>
+        stableJson([item.accountId, item.nativeConversationId])
+    );
+    return new Set(canonicalTargets).size === canonicalTargets.length
+        && new Set(liveTargets).size === liveTargets.length;
 }
 
 export function buildDeletionManifestDraft(input: {
