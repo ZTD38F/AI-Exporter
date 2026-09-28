@@ -205,6 +205,24 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
     resignedKeepClassification.manifestSha256 = sha256Hex(stableJson(keepPayload));
     assert.strictEqual(verifyDeletionManifest(resignedKeepClassification), false);
 
+    const resignedDuplicateLiveTarget = JSON.parse(JSON.stringify(manifest));
+    resignedDuplicateLiveTarget.items.push({
+        ...resignedDuplicateLiveTarget.items[0],
+        canonicalConversationId: "cc-other"
+    });
+    const { manifestSha256: _duplicateTargetHash, ...duplicateTargetPayload } = resignedDuplicateLiveTarget;
+    resignedDuplicateLiveTarget.manifestSha256 = sha256Hex(stableJson(duplicateTargetPayload));
+    assert.strictEqual(verifyDeletionManifest(resignedDuplicateLiveTarget), false);
+
+    assert.throws(() => buildDeletionManifest({
+        manifestId: "m-duplicate-live-target",
+        generationTimestamp: "2026-09-28T12:00:00.000Z",
+        softwareVersion: "test",
+        sourceExportHashes: ["b".repeat(64)],
+        liveInventorySnapshotHash: "c".repeat(64),
+        items: [item, { ...item, canonicalConversationId: "cc-other" }]
+    }), /draft integrity check failed/);
+
     assert.throws(() => buildDeletionManifest({
         manifestId: "m2",
         generationTimestamp: "2026-09-24T20:00:00.000Z",
