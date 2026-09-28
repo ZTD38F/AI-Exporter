@@ -24,6 +24,7 @@ const {
 const {
     emptyResumeState,
     mergeSidebarObservation,
+    requireAuthorizedDeletionTarget,
     sanitizeBrowserlessEndpointForLogs
 } = require("../src/ops/chatgptArchive/browserlessAdapter.js");
 
@@ -263,6 +264,74 @@ test("manifest - two-phase draft permits only backup gate pending, then seals ex
     assert.strictEqual(sealed.state, "SEALED");
     assert.strictEqual(sealed.items[0].safeToDelete, true);
     assert.strictEqual(verifyDeletionManifest(sealed), true);
+});
+
+test("browserless deletion authorization - exact manifest item and dry-run target are inseparable", () => {
+    const gate = evaluateLosslessDeleteGate(allGates);
+    const item = {
+        accountId: "a1",
+        canonicalConversationId: "cc1",
+        nativeConversationId: "c1",
+        url: "https://chatgpt.com/c/c1",
+        title: "Duplicate",
+        classification: "DELETE_EXACT_DUPLICATE",
+        reasonCodes: ["EXACT_DUPLICATE"],
+        identityConfidence: 1,
+        deletionConfidence: 1,
+        rawExportLocation: "/evidence/export.zip",
+        rawHash: "a".repeat(64),
+        knowledgeExtractionState: "VERIFIED",
+        knowledgeUnitsPreserved: 4,
+        uniqueInformationRemaining: 0,
+        attachmentsState: "NONE",
+        dependencies: [],
+        gateResults: gate.gateResults,
+        safeToDelete: true,
+        plannedAction: "DELETE"
+    };
+    const manifest = buildDeletionManifest({
+        manifestId: "m-browserless",
+        generationTimestamp: "2026-09-28T00:00:00.000Z",
+        softwareVersion: "test",
+        sourceExportHashes: ["b".repeat(64)],
+        liveInventorySnapshotHash: "c".repeat(64),
+        items: [item]
+    });
+    const dryRun = {
+        accountId: "a1",
+        nativeConversationId: "c1",
+        url: "https://chatgpt.com/c/c1",
+        identityMatched: true,
+        deleteControlFound: true,
+        confirmationControlFound: true,
+        observedTitle: "Duplicate",
+        generatedAt: "2026-09-28T00:01:00.000Z"
+    };
+
+    assert.strictEqual(requireAuthorizedDeletionTarget({
+        manifest, item, dryRun, adapterAccountId: "a1"
+    }), manifest.items[0]);
+
+    assert.throws(() => requireAuthorizedDeletionTarget({
+        manifest,
+        item: { ...item, url: "https://chatgpt.com/c/c1?substituted=1" },
+        dryRun,
+        adapterAccountId: "a1"
+    }), /differs from sealed manifest/);
+
+    assert.throws(() => requireAuthorizedDeletionTarget({
+        manifest,
+        item,
+        dryRun: { ...dryRun, accountId: "a2" },
+        adapterAccountId: "a1"
+    }), /dry-run identity/);
+
+    assert.throws(() => requireAuthorizedDeletionTarget({
+        manifest,
+        item,
+        dryRun: { ...dryRun, url: "https://chatgpt.com/c/c1?other-proof=1" },
+        adapterAccountId: "a1"
+    }), /dry-run identity/);
 });
 
 test("browserless helpers - secrets are redacted and resume state deduplicates by native id", () => {
