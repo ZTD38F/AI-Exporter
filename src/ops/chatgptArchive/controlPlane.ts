@@ -570,6 +570,8 @@ function hasValidManifestEnvelope(value: any, sealed: boolean): boolean {
     if (!value.sourceExportHashes.every(isSha256) || !isSha256(value.liveInventorySnapshotHash)) return false;
     if (!Array.isArray(value.items) || !value.items.length) return false;
     if (!value.items.every((item: any) => isManifestItemSemanticallyValid(item, sealed))) return false;
+    const sourceExportHashes = new Set(value.sourceExportHashes);
+    if (!value.items.every((item: DeleteManifestItem) => sourceExportHashes.has(item.rawHash))) return false;
     const canonicalTargets = value.items.map((item: DeleteManifestItem) =>
         stableJson([item.accountId, item.canonicalConversationId])
     );
