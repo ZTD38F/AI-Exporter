@@ -14,6 +14,7 @@ const {
     canonicalConversationIdFor,
     classifyConversationRetention,
     evaluateLosslessDeleteGate,
+    isCanonicalChatGPTConversationUrl,
     nativeConversationIdFromUrl,
     reconcileConversations,
     resolveConversationIdentity,
@@ -220,6 +221,21 @@ test("manifest - unsafe candidates are rejected and hash detects tampering", () 
     resignedUnbackedRawHash.manifestSha256 = sha256Hex(stableJson(unbackedPayload));
     assert.strictEqual(verifyDeletionManifest(resignedUnbackedRawHash), false);
 
+    const resignedExternalTarget = JSON.parse(JSON.stringify(manifest));
+    resignedExternalTarget.items[0].url = "https://attacker.example/c/c1";
+    const { manifestSha256: _externalTargetHash, ...externalTargetPayload } = resignedExternalTarget;
+    resignedExternalTarget.manifestSha256 = sha256Hex(stableJson(externalTargetPayload));
+    assert.strictEqual(verifyDeletionManifest(resignedExternalTarget), false);
+
+    assert.throws(() => buildDeletionManifest({
+        manifestId: "m-external-target",
+        generationTimestamp: "2026-09-29T00:00:00.000Z",
+        softwareVersion: "test",
+        sourceExportHashes: ["a".repeat(64)],
+        liveInventorySnapshotHash: "c".repeat(64),
+        items: [{ ...item, url: "https://attacker.example/c/c1" }]
+    }), /draft integrity check failed/);
+
     assert.throws(() => buildDeletionManifest({
         manifestId: "m-unbacked-source",
         generationTimestamp: "2026-09-28T14:00:00.000Z",
@@ -369,6 +385,11 @@ test("browserless deletion authorization - exact manifest item and dry-run targe
 
 test("browserless helpers - secrets are redacted and resume state deduplicates by native id", () => {
     assert.strictEqual(nativeConversationIdFromUrl("https://chatgpt.com/c/abc-123?x=1"), "abc-123");
+    assert.strictEqual(isCanonicalChatGPTConversationUrl("https://chatgpt.com/c/abc-123?x=1", "abc-123"), true);
+    assert.strictEqual(isCanonicalChatGPTConversationUrl("https://attacker.example/c/abc-123", "abc-123"), false);
+    assert.strictEqual(isCanonicalChatGPTConversationUrl("http://chatgpt.com/c/abc-123", "abc-123"), false);
+    assert.strictEqual(isCanonicalChatGPTConversationUrl("https://evil.chatgpt.com/c/abc-123", "abc-123"), false);
+    assert.strictEqual(isCanonicalChatGPTConversationUrl("https://user:secret@chatgpt.com/c/abc-123", "abc-123"), false);
     const safe = sanitizeBrowserlessEndpointForLogs("wss://chrome.example?token=secret&session=private&foo=bar");
     assert.ok(!safe.includes("secret"));
     assert.ok(!safe.includes("private"));
