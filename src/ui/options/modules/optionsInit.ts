@@ -179,7 +179,7 @@ export async function checkExportSession(): Promise<void> {
     }
 }
 
-export async function loadStore(force: boolean = false): Promise<any> {
+export async function loadStore(force: boolean = false, selectedOverride?: Set<string>): Promise<any> {
     try {
         if (typeof window !== 'undefined') {
             (window as any).__workbenchLoadStore = loadStore;
@@ -192,13 +192,13 @@ export async function loadStore(force: boolean = false): Promise<any> {
         const { conversations: incoming, exportedIds } = await Store.loadStore(slot);
         updateAccountSlotSelector();
 
-        let prevSelected: Set<string> | null = null;
+        let prevSelected: Set<string> | null = selectedOverride instanceof Set ? new Set(selectedOverride) : null;
         try {
-            if (!force && List && Store.getConversations().length > 0) {
+            if (!(selectedOverride instanceof Set) && !force && List && Store.getConversations().length > 0) {
                 prevSelected = List.getSelectedIds();
             }
         } catch {
-            prevSelected = null;
+            prevSelected = selectedOverride instanceof Set ? new Set(selectedOverride) : null;
         }
 
         const syncInfo = await Store.getLastSync(slot);

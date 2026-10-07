@@ -116,7 +116,7 @@ export const isRealTitle = (tStr?: string | null, id?: string | null): boolean =
     return !!(tStr && String(tStr).trim().length > 1);
 };
 
-let __loadStore: ((force?: boolean) => Promise<any>) | null = null;
+let __loadStore: ((force?: boolean, selectedOverride?: Set<string>) => Promise<any>) | null = null;
 let __log: ((msg: string, level?: 'info' | 'warn' | 'error') => void) | null = null;
 let __getSearchFilter: () => string = () => '';
 let _isExporting = false;
@@ -231,6 +231,33 @@ export function updateZipUi(): void {
     }
 }
 
+export function selectionAfterExport(
+    selectedIds: Iterable<string>,
+    selected: any[],
+    failedList: any[]
+): Set<string> {
+    const remaining = new Set<string>(Array.from(selectedIds || [], id => String(id)));
+    const failedIds = new Set<string>();
+    for (const failed of failedList || []) {
+        const rawId = typeof failed === 'string' ? failed : failed?.id || failed?.chatId;
+        if (!rawId) continue;
+        const nid = normId(String(rawId));
+        failedIds.add(String(rawId));
+        failedIds.add(nid);
+        failedIds.add('c_' + nid);
+    }
+    for (const chat of selected || []) {
+        const rawId = typeof chat === 'string' ? chat : chat?.id;
+        if (!rawId) continue;
+        const nid = normId(String(rawId));
+        if (failedIds.has(String(rawId)) || failedIds.has(nid) || failedIds.has('c_' + nid)) continue;
+        remaining.delete(String(rawId));
+        remaining.delete(nid);
+        remaining.delete('c_' + nid);
+    }
+    return remaining;
+}
+
 export async function startExportPipeline(
     selected: any[],
     format: string,
@@ -246,6 +273,7 @@ export async function startExportPipeline(
     const List = getList();
 
     const convs = Store ? Store.getConversations() : [];
+    let selectionForReload: Set<string> | undefined;
 
     // S-1 Memory Guardrail: Pre-flight memory estimation for large ZIP exports
     if (includeZip) {
@@ -387,6 +415,9 @@ export async function startExportPipeline(
                 ? result.landedChats
                 : (typeof result?.exportedCount === 'number' ? result.exportedCount : Math.max(0, selected.length - failedCount));
 
+            const selectedBeforeReload = List ? List.getSelectedIds() : new Set<string>();
+            selectionForReload = selectionAfterExport(selectedBeforeReload, selected, failedList);
+
             let finishMsg = '';
             if (failedCount > 0) {
                 if (typeof t === 'function') {
@@ -431,7 +462,7 @@ export async function startExportPipeline(
             if (progWrap) progWrap.style.display = 'none';
             if (bar) bar.style.width = '0%';
         }, 3000);
-        if (__loadStore) await __loadStore(true);
+        if (__loadStore) await __loadStore(true, selectionForReload);
     }
 }
 
@@ -468,60 +499,19 @@ export async function exportSelected(overrideFormat: string | null = null): Prom
 
     const constants = getConstants();
     const threshold = (constants && constants.DIRECT_WRITE_THRESHOLD) ? constants.DIRECT_WRITE_THRESHOLD : 50;
-    if (includeZip && !dirHandle && selected.length >= threshold && Dialogs && Dialogs.showDirectWritePrompt) {
-        const suppressKey = (constants && constants.STORAGE_KEYS?.SUPPRESS_DIRECT_WRITE_PROMPT) || 'gemini_suppress_direct_write_prompt';
-        let isSuppressed = false;
-        try {
-            const d = await chrome.storage.local.get([suppressKey]);
-            isSuppressed = !!d[suppressKey];
-        } catch (e) {
-            console.warn('[GemExporter:storage] Storage operation failed:', e);
-        }
-
-        if (!isSuppressed) {
-            try {
-                await chrome.storage.local.set({ [suppressKey]: true });
-            } catch (e) {
-                console.warn('[GemExporter:storage] Storage operation failed:', e);
+    if (includeZip && selected.length >= threshold && Dialogs && typeof Dialogs.showDirectWritePrompt === 'function') {
+        Dialogs.showDirectWritePrompt(
+            selected.length,
+            () => {
+                if (zipCheck) zipCheck.checked = false;
+                updateZipUi();
+                startExportPipeline(selected, format, skip, includeIndex, includeAssets, false, dirHandle);
+            },
+            () => {
+                startExportPipeline(selected, format, skip, includeIndex, includeAssets, true, dirHandle);
             }
-
-            Dialogs.showDirectWritePrompt(
-                selected.length,
-                async () => {
-                    try {
-                        let newHandle: any = null;
-                        if (DirHandle) {
-                            newHandle = await DirHandle.requestDirHandle();
-                            const dirLabel = $('dirLabel');
-                            if (dirLabel) dirLabel.textContent = typeof t === 'function' ? t('dirCurrent', newHandle.name) : `已选目录: ${newHandle.name}`;
-                            log(typeof t === 'function' ? t('logFolderSelected', newHandle.name) : `已选择保存目录: ${newHandle.name}`);
-                            const liveStorage = getLiveStorage();
-                            if (liveStorage && typeof liveStorage.setLiveConfig === 'function') {
-                                await liveStorage.setLiveConfig({ dirName: newHandle.name });
-                            }
-                        }
-                        const zipCh = $('includeZip') as HTMLInputElement | null;
-                        if (zipCh) {
-                            zipCh.checked = false;
-                            updateZipUi();
-                            try {
-                                await chrome.storage.local.set({ gemini_export_zip: false });
-                            } catch (e) {
-                                console.warn('[GemExporter:storage] Storage operation failed:', e);
-                            }
-                        }
-                        await startExportPipeline(selected, format, skip, includeIndex, includeAssets, false, newHandle);
-                    } catch (err: unknown) {
-                        const errMsg = getErrorMessage(err);
-                        log(typeof t === 'function' ? t('dirCancelled', errMsg) : `未选择导出目录: ${errMsg}`, 'warn');
-                    }
-                },
-                async () => {
-                    await startExportPipeline(selected, format, skip, includeIndex, includeAssets, true, null);
-                }
-            );
-            return;
-        }
+        );
+        return;
     }
 
     await startExportPipeline(selected, format, skip, includeIndex, includeAssets, includeZip, dirHandle);
@@ -621,6 +611,7 @@ export const OptionsExport = {
     exportSelected,
     startExportPipeline,
     updateZipUi,
+    selectionAfterExport,
     getLastFailedChats,
     renderExportFailureBanner,
     hideExportFailureBanner,
