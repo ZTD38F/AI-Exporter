@@ -216,3 +216,29 @@ test('ChatGPT graph - image pointer and metadata file descriptors survive normal
     assert.strictEqual(attachments[1].fileId, 'file-doc-1');
     assert.strictEqual(attachments[1].fileName, 'notes.pdf');
 });
+
+
+test('ChatGPT graph - malformed mapping node is explicit PARTIAL evidence', () => {
+    const raw = {
+        id: 'conv-malformed-node',
+        current_node: 'good',
+        mapping: {
+            good: {
+                id: 'good',
+                parent: null,
+                children: [],
+                message: msg('m-good', 'user', 'preserve me', 1)
+            },
+            broken: 'provider-drift'
+        }
+    };
+
+    const normalized = normalizeChatGPTConversation(raw);
+
+    assert.deepStrictEqual(normalized.graph.malformedNodeIds, ['broken']);
+    assert.strictEqual(normalized.graph.totalNodes, 2);
+    assert.strictEqual(normalized.graph.normalizationComplete, false);
+    assert.strictEqual(normalized.integrity.complete, false);
+    assert.ok(normalized.integrity.reasons.includes('malformed_node'));
+    assert.strictEqual(normalized.raw, raw, 'raw malformed graph must remain preserved as evidence');
+});
