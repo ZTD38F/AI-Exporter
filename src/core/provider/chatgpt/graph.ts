@@ -32,6 +32,7 @@ export interface ChatGPTGraphDiagnostics {
     orphanParentNodeIds: string[];
     danglingChildRefs: Array<{ parentNodeId: string; childNodeId: string }>;
     cycleNodeIds: string[];
+    malformedNodeIds: string[];
     observedContentTypes: Record<string, number>;
     observedProviderRoles: Record<string, number>;
     unparsedContentParts: number;
@@ -321,11 +322,15 @@ export function analyzeChatGPTGraph(raw: any): {
     const observedContentTypes: Record<string, number> = {};
     const observedProviderRoles: Record<string, number> = {};
     const branchIndex: ChatGPTGraphNodeSummary[] = [];
+    const malformedNodeIds: string[] = [];
     let messageNodes = 0;
 
     for (const [nodeId, rawNode] of Object.entries(mapping)) {
         const node = objectRecord(rawNode);
-        if (!node) continue;
+        if (!node) {
+            malformedNodeIds.push(nodeId);
+            continue;
+        }
 
         const parentId = typeof node.parent === "string" && node.parent ? node.parent : null;
         const childIds = Array.isArray(node.children)
@@ -362,6 +367,7 @@ export function analyzeChatGPTGraph(raw: any): {
     rootNodeIds.sort();
     branchPointNodeIds.sort();
     orphanParentNodeIds.sort();
+    malformedNodeIds.sort();
     branchIndex.sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 
     const active = buildActivePath(mapping, currentNodeId);
@@ -396,6 +402,7 @@ export function analyzeChatGPTGraph(raw: any): {
         && orphanParentNodeIds.length === 0
         && danglingChildRefs.length === 0
         && cycleNodeIds.length === 0
+        && malformedNodeIds.length === 0
         && unparsedContentParts === 0;
 
     return {
@@ -412,6 +419,7 @@ export function analyzeChatGPTGraph(raw: any): {
             orphanParentNodeIds,
             danglingChildRefs,
             cycleNodeIds,
+            malformedNodeIds,
             observedContentTypes,
             observedProviderRoles,
             unparsedContentParts,
@@ -473,6 +481,7 @@ export function normalizeChatGPTConversation(
                     analyzed.diagnostics.orphanParentNodeIds.length ? "orphan_parent" : "",
                     analyzed.diagnostics.danglingChildRefs.length ? "dangling_child" : "",
                     analyzed.diagnostics.cycleNodeIds.length ? "graph_cycle" : "",
+                    analyzed.diagnostics.malformedNodeIds.length ? "malformed_node" : "",
                     analyzed.diagnostics.unparsedContentParts ? "unparsed_content" : ""
                 ].filter(Boolean)
         }
