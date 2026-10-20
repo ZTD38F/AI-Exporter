@@ -179,9 +179,10 @@ function buildAttachments(
         const attId = opts.id;
         if (!attId || seenIds.has(attId)) return;
         seenIds.add(attId);
-        // Observed: attachment id already carries the "file-" prefix and the zip
-        // entry is "<id>.dat"; try both spellings when resolving.
-        const candidates = [`${attId}.dat`, attId.replace(/^file-/, 'file-') + '.dat'];
+        // Official ZIPs usually store "file-<id>.dat"; accept both the
+        // prefixed and unprefixed spelling without a no-op replacement.
+        const alias = attId.startsWith('file-') ? attId.slice(5) : `file-${attId}`;
+        const candidates = [`${attId}.dat`, `${alias}.dat`];
         let fileObj: any = null;
         let datName = candidates[0];
         for (const c of candidates) {

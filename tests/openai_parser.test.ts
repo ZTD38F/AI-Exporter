@@ -132,6 +132,20 @@ test('openai_parser - parses conversations, folds thoughts, resolves attachments
     assert.strictEqual(b.messages[2].content, 'a!');
 });
 
+test('openai_parser - resolves prefixed archive filename from unprefixed attachment ID', async () => {
+    const conv = convA();
+    conv.mapping['n1'].message.metadata.attachments[0].id = 'abc123';
+    const zipBuffer = await buildZip([conv], {
+        'file-abc123.dat': Buffer.from('PREFIX-ALIAS-DATA'),
+    });
+    const parsed = await OpenAiParser.parseOpenAiZip(zipBuffer);
+    const attachment = parsed.conversations[0].messages[0].attachments[0];
+    assert.strictEqual(attachment.localName, 'file-abc123.dat');
+    const media = parsed.mediaMap[conv.id];
+    assert.strictEqual(media.length, 1);
+    assert.strictEqual(Buffer.from(await media[0].fileObj.async('uint8array')).toString(), 'PREFIX-ALIAS-DATA');
+});
+
 test('openai_parser - rejects zip without conversations.json', async () => {
     (global as any).JSZip = require('../lib/jszip.min.js');
     const zip = new (global as any).JSZip();

@@ -11,6 +11,18 @@ test('assetFetcher - toHighRes preserves gstatic.com thumbnail URLs without corr
     const transformed = toHighRes(gstaticUrl);
     assert.strictEqual(transformed, gstaticUrl, 'Must not append =s1024-rj to gstatic.com images');
 
+    for (const misleading of [
+        'https://gstatic.com.attacker.example/thumb.png',
+        'https://attacker.example/thumb.png?origin=gstatic.com',
+        'https://fake-gstatic.com/thumb.png',
+        'https://attacker.example/gstatic.com/thumb.png',
+    ]) {
+        assert.notStrictEqual(toHighRes(misleading), misleading,
+            'Untrusted URLs must not receive gstatic thumbnail exemptions');
+    }
+    assert.strictEqual(toHighRes('https://gstatic.com/thumb.jpg'), 'https://gstatic.com/thumb.jpg',
+        'A direct gstatic.com host remains exempt');
+
     const lh3Url = 'https://lh3.googleusercontent.com/abc=s512?alr=yes';
     const transformedLh3 = toHighRes(lh3Url);
     assert.ok(transformedLh3.includes('=s1024-rj'), 'googleusercontent URLs should still be upgraded');
