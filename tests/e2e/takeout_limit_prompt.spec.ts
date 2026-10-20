@@ -73,6 +73,28 @@ test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
 
   test('should automatically show modal when deep scan completes with hitGoogleLimit', async ({ context, extensionId }) => {
     // 1. Open mock Gemini page in background with credentials and network routing for MaZiqc
+    // Seed extension preferences BEFORE loading Gemini. Clearing storage after
+    // credential capture races with the content script and makes scans randomly fail.
+    const worker = context.serviceWorkers()[0];
+    await worker.evaluate(async () => {
+      await chrome.storage.local.clear();
+      await chrome.storage.local.set({
+        has_completed_tour: true,
+        last_seen_feature_version: '99.9.9'
+      });
+      await chrome.storage.session.set({
+        gemini_credentials_map: {
+          mock_session: {
+            sid: 'mock_session',
+            at: 'mock_at_token_limit',
+            bl: 'boq_assistant-bard-web-server_20260802.09_p1',
+            accountSlot: 'u0',
+            lastUsed: Date.now()
+          }
+        },
+        gemini_credentials: { sid: 'mock_session', at: 'mock_at_token_limit' }
+      });
+    });
     const geminiPage = await context.newPage();
 
     await geminiPage.route('https://gemini.google.com/**', async (route) => {
@@ -128,13 +150,10 @@ test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
     await page.waitForLoadState('domcontentloaded');
 
     const modal = page.locator('#takeoutLimitModal');
-    await page.evaluate(async () => {
-      await chrome.storage.local.clear();
-      await chrome.storage.local.set({
-        has_completed_tour: true,
-        last_seen_feature_version: '99.9.9'
-      });
-    });
+    await expect.poll(async () => page.evaluate(async () => {
+      const d = await chrome.storage.session.get('gemini_credentials_map');
+      return Object.keys(d.gemini_credentials_map || {}).length;
+    }), { timeout: 15000 }).toBeGreaterThan(0);
     await expect(modal).toBeHidden();
 
     // 3. Click full deep scan button (#btnDeepScan)

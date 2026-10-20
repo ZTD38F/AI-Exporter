@@ -12,6 +12,8 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
   });
 
   test('should execute 7-step tour with 100% zero-occlusion and physical mouse hit-testing', async ({ context, extensionId }) => {
+    // Seven screenshot + animation cycles need more than the default 30s on loaded CI workers.
+    test.setTimeout(90000);
     const page = await context.newPage();
     await page.setViewportSize({ width: 1280, height: 800 });
 
