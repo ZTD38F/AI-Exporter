@@ -23,7 +23,7 @@ on:
       publish_to_store:
         description: '发布到 Chrome Web Store 商店审查 (false = 仅生成 GitHub Release)'
         required: true
-        default: true
+        default: false
         type: boolean
 
 jobs:
@@ -36,7 +36,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          # Tag releases must build the exact tagged revision, not the moving main.
+          ref: ${{ github.ref_type == 'tag' && github.ref || 'main' }}
           fetch-depth: 0
 
       - name: Determine version and create tag
@@ -135,7 +136,11 @@ jobs:
       - name: Package extension zip
         run: |
           npm run package
-          ZIP_NAME="gemini-exporter-${{ env.TAG }}.zip"
+          # Expose canonical AI Exporter branding without changing the upstream build input.
+          UPSTREAM_ZIP="gemini-exporter-v${{ env.VERSION }}.zip"
+          ZIP_NAME="AI-Exporter-${{ env.TAG }}.zip"
+          test -s "$UPSTREAM_ZIP"
+          mv "$UPSTREAM_ZIP" "$ZIP_NAME"
           echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
           ls -lh "${ZIP_NAME}"
           unzip -l "${ZIP_NAME}" | tail -n 8
@@ -144,7 +149,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
-          name: Gemini Exporter ${{ env.TAG }}
+          name: AI Exporter ${{ env.TAG }}
           files: ${{ env.ZIP_NAME }}
           generate_release_notes: true
           draft: false
@@ -166,7 +171,8 @@ jobs:
           fi
 
       - name: Upload to Chrome Web Store
-        if: steps.check_cws.outputs.has_cws == 'true'
+        # Explicit opt-in only; tag pushes and default manual runs can NEVER publish to Store.
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_store == true && steps.check_cws.outputs.has_cws == 'true' }}
         uses: mnao305/chrome-extension-upload@v5.0.0
         continue-on-error: true
         with:
@@ -175,4 +181,4 @@ jobs:
           client-id: ${{ secrets.CHROME_CLIENT_ID }}
           client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
           refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
-          publish: ${{ github.event.inputs.publish_to_store || true }}
+          publish: true
