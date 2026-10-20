@@ -664,13 +664,27 @@ export const isRealTitle = (title?: string | null, id?: string | number): boolea
                         if (this.aborted || (abortSignal && abortSignal.aborted)) break;
 
                         if (!res || !res.success) {
-                            const fetchErr = res ? res.error : 'unknown';
-                            onLog(I18n.t('logFetchFailed', fetchErr), 'warn');
-                            failedChats.push({ id: requestedItem.id, title: requestedItem.title || requestedItem.id, error: fetchErr });
-                            onLog(I18n.t('logExportSkipped', requestedItem.title || requestedItem.id, fetchErr), 'warn');
-                            completedCount++;
-                            updateProgress(completedCount, requestedItem.title || requestedItem.id);
-                            continue;
+                            // Offline Takeout import is a first-class export source. When the
+                            // Gemini tab is closed/unavailable, do not discard a verified
+                            // local chat merely because the online fetch failed. This is
+                            // deliberately scoped to the active account slot and requires
+                            // nonempty messages; missing chats remain explicit failures.
+                            let offlineChat: any = null;
+                            try {
+                                offlineChat = takeoutEngine?.getTakeoutOfflineChat?.(nid, currentSlot) || null;
+                            } catch { /* Takeout lookup failure must not mask original fetch error */ }
+                            if (offlineChat && Array.isArray(offlineChat.messages) && offlineChat.messages.length > 0) {
+                                res = { success: true, results: [{ ...offlineChat, id: nid }], skipped: 0 };
+                                onLog(I18n.t('logTakeoutChatRecovered', offlineChat.title || requestedItem.title || nid), 'info');
+                            } else {
+                                const fetchErr = res ? res.error : 'unknown';
+                                onLog(I18n.t('logFetchFailed', fetchErr), 'warn');
+                                failedChats.push({ id: requestedItem.id, title: requestedItem.title || requestedItem.id, error: fetchErr });
+                                onLog(I18n.t('logExportSkipped', requestedItem.title || requestedItem.id, fetchErr), 'warn');
+                                completedCount++;
+                                updateProgress(completedCount, requestedItem.title || requestedItem.id);
+                                continue;
+                            }
                         }
 
                         skipped += (res.skipped || 0);
