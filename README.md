@@ -35,6 +35,14 @@
 
 ---
 
+## Upstream source baseline
+
+The Gemini engine and Workbench have been updated from original **Gemini Exporter v1.5.1**
+to **v1.7.0**, while retaining the AI Exporter product identity and existing
+provider-neutral ChatGPT foundation. See [ORIGIN.md](./ORIGIN.md) for the official
+upstream revision, audited CRX provenance, and integrity details. The ChatGPT JSON
+ZIP automation is tracked separately in [issue #17](https://github.com/ZTD38F/AI-Exporter/issues/17).
+
 ## 🧩 Provider Status
 
 - **Google Gemini:** stable baseline inherited from the original Gemini Exporter.

@@ -1,4 +1,3 @@
-// rpcClient.ts - Low-level HTTP POST and batchexecute RPC communication
 import type { GeminiProtocolModule } from "../../protocol/protocol.js";
 
 const GEMINI_API_URL = "https://gemini.google.com/_/BardChatUi/data/batchexecute";
@@ -22,15 +21,13 @@ export interface GeminiClientRpcClientModule {
     nextReqid: () => string;
     generateFallbackSid: () => string;
     postBatchexecute: (options: RpcRequestOptions) => Promise<Response>;
-}
-
-declare global {
-    var GeminiClientRpcClient: GeminiClientRpcClientModule;
+    mergeAbortSignals: (signals: Array<AbortSignal | null | undefined>) => AbortSignal | undefined;
 }
 
 import { GeminiProtocol } from "../../protocol/protocol.js";
 import { GeminiUtils } from "../../utils/utils.js";
 import { GeminiResponseParserClass } from "../geminiParser.js";
+import { generateFallbackSid } from "./credentialManager.js";
 
 function getProtocol(): GeminiProtocolModule {
     return GeminiProtocol;
@@ -46,7 +43,6 @@ function getParser(): any {
     return GeminiResponseParserClass;
 }
 
-
     function getApiUrl(slot?: string | null): string {
         if (slot && slot !== "default") {
             let t = slot.startsWith("/") ? slot : (slot.startsWith("u/") ? `/${slot}` : slot.replace(/^u/, "/u/"));
@@ -55,13 +51,13 @@ function getParser(): any {
         return GEMINI_API_URL;
     }
 
-    function generateFallbackSid(): string {
-        return String(Math.floor(Math.random() * 1e19));
+    function mergeAbortSignals(signals: Array<AbortSignal | null | undefined>): AbortSignal | undefined {
+        const active = signals.filter((s): s is AbortSignal => !!s);
+        if (active.length === 0) return undefined;
+        if (active.length === 1) return active[0];
+        return AbortSignal.any(active);
     }
 
-    /**
-     * Executes raw batchexecute POST request with automatic timeout and signal handling
-     */
     async function postBatchexecute(options: RpcRequestOptions): Promise<Response> {
         const {
             api,
@@ -106,7 +102,7 @@ function getParser(): any {
                 },
                 body: body.toString(),
                 credentials: "include",
-                signal: signal || (controller ? controller.signal : undefined)
+                signal: mergeAbortSignals([signal, controller ? controller.signal : null])
             });
             return resp;
         } finally {
@@ -122,7 +118,8 @@ export {
     getApiUrl,
     nextReqid,
     generateFallbackSid,
-    postBatchexecute
+    postBatchexecute,
+    mergeAbortSignals
 };
 
 export const GeminiClientRpcClient: GeminiClientRpcClientModule = {
@@ -133,10 +130,10 @@ export const GeminiClientRpcClient: GeminiClientRpcClientModule = {
     getApiUrl,
     nextReqid,
     generateFallbackSid,
-    postBatchexecute
+    postBatchexecute,
+    mergeAbortSignals
 };
 
-if (typeof globalThis !== 'undefined') (globalThis as any).GeminiClientRpcClient = GeminiClientRpcClient;
 if (typeof module === 'object' && module.exports) module.exports = GeminiClientRpcClient;
 
 export default GeminiClientRpcClient;

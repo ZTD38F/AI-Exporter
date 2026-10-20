@@ -1,26 +1,44 @@
-// src/content/badgeView.ts - Draggable Badge UI & Position Management
+import type { OpenOptionsMessage } from '../types/messages.js';
+import { STORAGE_KEYS } from '../core/utils/constants.js';
+import { setBadgePosition, getBadgePosition } from '../core/storage/storageService.js';
 let __lastKnownCount: number | null = null;
 
 export function applyStoredBadgePosition(el: HTMLElement | null): void {
     if (!el) return;
+    const applyPos = (pos: any): boolean => {
+        if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+            const maxLeft = Math.max(8, window.innerWidth - (el.offsetWidth || 110) - 8);
+            const maxTop = Math.max(8, window.innerHeight - (el.offsetHeight || 34) - 8);
+            const left = Math.min(Math.max(8, pos.left), maxLeft);
+            const top = Math.min(Math.max(8, pos.top), maxTop);
+            el.style.left = `${left}px`;
+            el.style.top = `${top}px`;
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+            return true;
+        }
+        return false;
+    };
+
     try {
-        const raw = localStorage.getItem('gemini_export_badge_pos');
+        const raw = localStorage.getItem(STORAGE_KEYS.BADGE_POS);
         if (raw) {
             const pos = JSON.parse(raw);
-            if (typeof pos.left === 'number' && typeof pos.top === 'number') {
-                const maxLeft = Math.max(8, window.innerWidth - (el.offsetWidth || 110) - 8);
-                const maxTop = Math.max(8, window.innerHeight - (el.offsetHeight || 34) - 8);
-                const left = Math.min(Math.max(8, pos.left), maxLeft);
-                const top = Math.min(Math.max(8, pos.top), maxTop);
-                el.style.left = `${left}px`;
-                el.style.top = `${top}px`;
-                el.style.right = 'auto';
-                el.style.bottom = 'auto';
-            }
+            if (applyPos(pos)) return;
         }
     } catch (e) {
         if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:badgeView]', e);
     }
+
+    void getBadgePosition().then((pos) => {
+        if (applyPos(pos)) {
+            try {
+                localStorage.setItem(STORAGE_KEYS.BADGE_POS, JSON.stringify(pos));
+            } catch {
+                /* intentional: best-effort caching */
+            }
+        }
+    }).catch(() => {});
 }
 
 export function makeBadgeDraggable(div: HTMLElement, onClick?: (e: MouseEvent) => void): void {
@@ -85,10 +103,8 @@ export function makeBadgeDraggable(div: HTMLElement, onClick?: (e: MouseEvent) =
             const rect = div.getBoundingClientRect();
             const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
             try {
-                localStorage.setItem('gemini_export_badge_pos', JSON.stringify(pos));
-                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                    chrome.storage.local.set({ gemini_export_badge_pos: pos }).catch?.(() => {});
-                }
+                localStorage.setItem(STORAGE_KEYS.BADGE_POS, JSON.stringify(pos));
+                void setBadgePosition(pos);
             } catch (e) {
                 console.warn('[GemExporter:storage] Storage operation failed:', e);
             }
@@ -108,7 +124,8 @@ export function makeBadgeDraggable(div: HTMLElement, onClick?: (e: MouseEvent) =
             onClick(e);
         } else {
             try {
-                const p = chrome.runtime.sendMessage({ action: 'openOptions' });
+                const msg: OpenOptionsMessage = { action: 'openOptions' };
+                const p = chrome.runtime.sendMessage(msg);
                 if (p && p.catch) p.catch(() => {});
             } catch (e) {
                 if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:badgeView]', e);
@@ -174,6 +191,9 @@ export function updateBadge(
         }
         if (typeof mergedLen === 'number' && mergedLen >= 0) {
             __lastKnownCount = mergedLen;
+        }
+        if (__liveSaveTimer || __liveSaveWarningTimer || badge?.classList?.contains?.('live-saved') || badge?.classList?.contains?.('live-save-warning')) {
+            return;
         }
         const zh = opts.isZh ? opts.isZh() : true;
         let targetText = '';
@@ -283,15 +303,5 @@ export const BadgeView = {
     setLastKnownCount
 };
 
-
-(BadgeView as any).BadgeView = BadgeView;
-(BadgeView as any).default = BadgeView;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).BadgeView = BadgeView;
-}
-if (typeof module !== 'undefined' && (module as any).exports) {
-    (module as any).exports = BadgeView;
-}
 
 export default BadgeView;

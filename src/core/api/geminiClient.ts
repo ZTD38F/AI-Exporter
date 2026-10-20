@@ -1,33 +1,23 @@
 import GeminiProtocol, { GeminiProtocolModule } from "../protocol/protocol.js";
 import { isDevMode } from "../utils/utils.js";
+import { extractConversationIdFromUrl } from "../utils/pathUtils.js";
 import { GeminiResponseParserClass, type GeminiResponseParserFacade } from "./geminiParser.js";
+import { __resolveModule } from "../utils/moduleOverrides.js";
 import GeminiClientCredentialManager, {
-    GeminiClientCredentialManagerModule,
-    GeminiCredentials,
     getBlFromPage,
     getAtFromPage,
     detectSlot,
-    getCredStorage,
     loadCredMap,
     resolveCred
 } from "./client/credentialManager.js";
-import GeminiClientRetryPolicy, {
-    GeminiClientRetryPolicyModule,
-    handleHttp400,
-    handleHttp401,
-    handleHttp429
-} from "./client/retryPolicy.js";
+import GeminiClientRetryPolicy from "./client/retryPolicy.js";
 import GeminiClientRpcClient, {
-    GeminiClientRpcClientModule,
     postBatchexecute,
     getApiUrl
 } from "./client/rpcClient.js";
 import GeminiClientPagination, {
-    GeminiClientPaginationModule,
-    PaginationOptions,
-    PaginationResult,
-    getAllConversations,
-    getConversationDetail
+    type PaginationOptions,
+    type PaginationResult
 } from "./client/pagination.js";
 import type { ListParseResult } from "./parser/parseList.js";
 import type { DetailParseResult } from "./parser/parseDetail.js";
@@ -38,16 +28,10 @@ export interface GeminiAPIClientOptions {
 }
 
 function getProtocol(): GeminiProtocolModule {
-    if (typeof globalThis !== "undefined" && (globalThis as any).GeminiProtocol) {
-        return (globalThis as any).GeminiProtocol;
-    }
-    return GeminiProtocol;
+    return __resolveModule('GeminiProtocol', GeminiProtocol);
 }
 
 function getParser(): GeminiResponseParserFacade {
-    if (typeof globalThis !== "undefined" && (globalThis as any).GeminiResponseParserClass) {
-        return (globalThis as any).GeminiResponseParserClass;
-    }
     return GeminiResponseParserClass;
 }
 
@@ -78,15 +62,14 @@ const pagination = GeminiClientPagination;
             this.aborted = true;
         }
 
-        // 兼容标准 AbortSignal 及过渡期全局标志（仅作 fallback）
+        // 兼容标准 AbortSignal 及过渡期全局标志（仅作 fallback: window.__gemExporterAborted）
         isAborted(callSignal?: AbortSignal | null): boolean {
             if (this.aborted) return true;
             if (callSignal && callSignal.aborted) return true;
             if (this.signal && this.signal.aborted) return true;
             return !!(
-                (typeof window !== "undefined" && ((window as any).__gemExporterAborted || (window as any).window?.__gemExporterAborted)) ||
-                (typeof window !== "undefined" && (window as any)['__gemExporterAborted']) || // window.__gemExporterAborted fallback check
-                (typeof globalThis !== "undefined" && (globalThis as any).__gemExporterAborted)
+                (typeof globalThis !== "undefined" && (globalThis as any).__gemExporterAborted) ||
+                (typeof window !== "undefined" && (window as any).__gemExporterAborted)
             );
         }
 
@@ -99,16 +82,12 @@ const pagination = GeminiClientPagination;
             let api = getApiUrl(cred.accountSlot || "default");
             const filter = customFilter || [0, null, 1];
             const P = getProtocol();
-            let req = pageToken ? JSON.stringify([
-                    [
-                        [P.RPCS.LIST, JSON.stringify([50, pageToken, filter]), null, "generic"]
-                    ]
-                ]) :
-                JSON.stringify([
-                    [
-                        [P.RPCS.LIST, JSON.stringify([50, null, filter]), null, "generic"]
-                    ]
-                ]);
+            // JSPB request layout: [pageSize=50, pageToken, filter]
+            let req = JSON.stringify([
+                [
+                    [P.RPCS.LIST, JSON.stringify([50, pageToken || null, filter]), null, "generic"]
+                ]
+            ]);
 
             let resp = await postBatchexecute({
                 api,
@@ -116,6 +95,7 @@ const pagination = GeminiClientPagination;
                 fReq: req,
                 cred,
                 sourcePath: "/app",
+                timeoutMs: 30000,
                 signal: opts?.signal || this.signal
             });
 
@@ -125,7 +105,6 @@ const pagination = GeminiClientPagination;
                     snippet = (await resp.text()).slice(0, 320);
                 } catch (e) { if (typeof console !== "undefined" && console.debug) console.debug("[GemExporter:geminiClient.ts]", e); }
 
-                // 400 Bad Request XSRF token retry
                 const retry400 = retryPolicy.handleHttp400 ? await retryPolicy.handleHttp400({
                     resp,
                     snippet,
@@ -146,22 +125,22 @@ const pagination = GeminiClientPagination;
                     });
                 }
 
-                // 401 Unauthorized cleanup
                 if (resp.status === 401 && retryPolicy.handleHttp401) {
                     await retryPolicy.handleHttp401({
                         cred,
                         loadCredMap,
-                        getCredStorage: credentialManager.getCredStorage
+                        getCredStorage: credentialManager.getCredStorage,
+                        refreshAtFromPage: credentialManager.getAtFromPage
                     });
                 }
 
-                // 429 Rate limiting backoff
                 const retryCount = (opts && opts._retryCount) || 0;
                 const maxRetries = (opts && opts.maxRetries) !== undefined ? opts.maxRetries : 3;
                 const retry429 = retryPolicy.handleHttp429 ? await retryPolicy.handleHttp429({
                     resp,
                     retryCount,
                     maxRetries,
+                    signal: opts?.signal || this.signal,
                     label: "getConversationList"
                 }) : { shouldRetry: false };
 
@@ -171,8 +150,9 @@ const pagination = GeminiClientPagination;
                         _retryCount: retry429.nextRetryCount
                     });
                 }
+                if ((retry429 as any).aborted) throw new Error("用户取消：429 退避等待被中断 (getConversationList)");
 
-                throw new Error(`HTTP ${resp.status} :: ${snippet} sid:${cred.sid?.slice(0,6)} atLen:${cred.at?.length} bl:${cred.bl?.slice(0,12)}`);
+                throw new Error(`HTTP ${resp.status} :: ${snippet} sidLen:${cred.sid?.length ?? 0} atLen:${cred.at?.length ?? 0} hasBl:${cred.bl ? 'yes' : 'no'}`);
             }
             let txt = await resp.text();
             return getParser().parseList(txt);
@@ -198,6 +178,9 @@ const pagination = GeminiClientPagination;
             const detailOnly = !!(opts && opts.detailOnly);
             const P = getProtocol();
             const rpcids = detailOnly ? P.RPCS.DETAIL : `${P.RPCS.DETAIL},${P.RPCS.LIST}`;
+            // JSPB request layout:
+            // DETAIL: [convId, 10|null, pageToken, 1, [1], [4], null, 1]
+            // META: [1, null, [null, null, 1, null, 1, convId]]
 
             let innerDetail = (opts && opts.altParams)
                 ? JSON.stringify([id, null, pageToken || null, 1, [1], [4], null, 1])
@@ -223,7 +206,6 @@ const pagination = GeminiClientPagination;
                     snippet = (await resp.text()).slice(0, 320);
                 } catch { /* intentional: best-effort cleanup */ }
 
-                // 400 Bad Request XSRF token retry
                 const retry400 = retryPolicy.handleHttp400 ? await retryPolicy.handleHttp400({
                     resp,
                     snippet,
@@ -244,22 +226,22 @@ const pagination = GeminiClientPagination;
                     });
                 }
 
-                // 401 Unauthorized cleanup
                 if (resp.status === 401 && retryPolicy.handleHttp401) {
                     await retryPolicy.handleHttp401({
                         cred,
                         loadCredMap,
-                        getCredStorage: credentialManager.getCredStorage
+                        getCredStorage: credentialManager.getCredStorage,
+                        refreshAtFromPage: credentialManager.getAtFromPage
                     });
                 }
 
-                // 429 Rate limiting backoff
                 const retryCount = (opts && opts._retryCount) || 0;
                 const maxRetries = (opts && opts.maxRetries) !== undefined ? opts.maxRetries : 3;
                 const retry429 = retryPolicy.handleHttp429 ? await retryPolicy.handleHttp429({
                     resp,
                     retryCount,
                     maxRetries,
+                    signal: opts?.signal || this.signal,
                     label: `fetchConversationPage ${id}`
                 }) : { shouldRetry: false };
                 if (retry429.shouldRetry) {
@@ -268,6 +250,7 @@ const pagination = GeminiClientPagination;
                         _retryCount: retry429.nextRetryCount
                     });
                 }
+                if ((retry429 as any).aborted) throw new Error("用户取消：429 退避等待被中断 (fetchConversationPage)");
 
                 console.error(`[Gemini Exporter Client] fetchConversationPage HTTP error ${resp.status} for ${id}:`, snippet);
                 throw new Error(`HTTP ${resp.status} ${resp.statusText} :: ${snippet}`);
@@ -281,12 +264,18 @@ const pagination = GeminiClientPagination;
                 }
                 return parsed;
             } catch (err: any) {
-                const isDeletedOrInaccessible = text && (text.includes("BardErrorInfo") || text.includes("1167"));
-                if (isDeletedOrInaccessible) {
+                const errCategory = getProtocol().classifyDetailError(text, resp?.status);
+                if (errCategory === 'confirmed_deleted') {
                     if (isDev) {
-                        console.info(`[Gemini Exporter Client] Conversation ${id} is inaccessible or deleted on server (BardErrorInfo: 1167). Skipping.`);
+                        console.info(`[Gemini Exporter Client] Conversation ${id} is confirmed deleted on server (BardErrorInfo: 1167). Skipping.`);
                     }
-                    throw new Error(`会话已在服务端删除或不可访问 (${id})`);
+                    throw new Error(`会话已在服务端删除 (${id}) [BardErrorInfo: 1167]`);
+                }
+                if (errCategory === 'rate_limited') {
+                    throw new Error(`Google 服务端限流或到达上限 (${id}) [BardErrorInfo: 1096]`);
+                }
+                if (errCategory === 'inaccessible') {
+                    throw new Error(`会话暂时不可访问或服务端异常 (${id}) [BardErrorInfo]`);
                 }
                 console.error(`[Gemini Exporter Client] parseDetail failed for ${id}:`, err.message, "raw text snippet:", text.slice(0, 400));
                 throw new Error(`解析详情失败 (${err.message}): ${text.slice(0, 100)}`);
@@ -300,21 +289,10 @@ const pagination = GeminiClientPagination;
             throw new Error("pagination module not found");
         }
 
-        // @contentScriptOnly — requires live page DOM, guarded for non-DOM environments
-        getCurrentConversationId(): string | null {
-            if (typeof document === "undefined") return null;
-            try {
-                const glob: any = typeof window !== "undefined" ? window : (typeof globalThis !== "undefined" ? globalThis : {});
-                let u = new URL(glob.location.href);
-                let parts = u.pathname.split("/");
-                let idx = parts.indexOf("app");
-                if (idx !== -1 && idx < parts.length - 1) return parts[idx + 1];
-                let g = parts.indexOf("gem");
-                if (g !== -1 && g < parts.length - 2) return parts[g + 2];
-                return null;
-            } catch {
-                return null;
-            }
+        getCurrentConversationId(url?: string): string | null {
+            const targetUrl = url || (typeof window !== "undefined" && window.location ? window.location.href : null);
+            if (!targetUrl) return null;
+            return extractConversationIdFromUrl(targetUrl);
         }
     }
 
@@ -347,21 +325,7 @@ type DetectSlotFn = typeof detectSlot;
 type ResolveCredFn = typeof resolveCred;
 type LoadCredMapFn = typeof loadCredMap;
 
-declare global {
-    var GeminiAPIClient: typeof GeminiAPIClient;
-    var getApiUrl: GetApiUrlFn;
-    var detectSlot: DetectSlotFn;
-    var resolveCred: ResolveCredFn;
-    var loadCredMap: LoadCredMapFn;
-}
 
-if (typeof globalThis !== "undefined") {
-    if (!(globalThis as any).GeminiAPIClient) (globalThis as any).GeminiAPIClient = GeminiAPIClient;
-    if (!(globalThis as any).getApiUrl) (globalThis as any).getApiUrl = getApiUrl;
-    if (!(globalThis as any).detectSlot) (globalThis as any).detectSlot = detectSlot;
-    if (!(globalThis as any).resolveCred) (globalThis as any).resolveCred = resolveCred;
-    if (!(globalThis as any).loadCredMap) (globalThis as any).loadCredMap = loadCredMap;
-}
 
 if (typeof module === "object" && module.exports) {
     module.exports = GeminiClientExports;

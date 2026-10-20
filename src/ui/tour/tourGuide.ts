@@ -1,5 +1,12 @@
-// src/ui/tour/tourGuide.ts - Interactive Spotlight Onboarding Guide for Gemini Exporter
 import type { TourGuideContract } from '../../types/ui.js';
+import { __resolveModule } from '../../core/utils/moduleOverrides.js';
+import StorageService from '../../core/storage/storageService.js';
+import TabService from '../../core/utils/tabService.js';
+import { t } from '../uiCommon.js';
+import { STEPS } from './tourSteps.js';
+import { positionElements as positionTourElements } from './tourPosition.js';
+import { getExtensionVersion } from '../../core/utils/constants.js';
+export { STEPS } from './tourSteps.js';
 
 let currentStep = 0;
 let isActive = false;
@@ -13,28 +20,8 @@ let pollTimer: any = null;
 let lastTabStatus: any = null;
 let activeActionCleanup: (() => void) | null = null;
 
-const t = (key: string, ...args: any[]): string => {
-    if (typeof I18n !== 'undefined' && I18n.t) {
-        return I18n.t(key, ...args);
-    }
-    return key;
-};
-
-import StorageService from '../../core/storage/storageService.js';
-import TabService from '../../core/utils/tabService.js';
-import { STEPS } from './tourSteps.js';
-import { positionElements as positionTourElements } from './tourPosition.js';
-export { STEPS } from './tourSteps.js';
-
-const getStorage = () => {
-    if (typeof (globalThis as any).StorageService !== 'undefined') return (globalThis as any).StorageService;
-    return StorageService;
-};
-
-const getTabService = () => {
-    if (typeof (globalThis as any).TabService !== 'undefined') return (globalThis as any).TabService;
-    return TabService;
-};
+const getStorage = () => __resolveModule('StorageService', StorageService);
+const getTabService = () => __resolveModule('TabService', TabService);
 
 export function clearActionListeners(): void {
     if (typeof activeActionCleanup === 'function') {
@@ -57,9 +44,9 @@ export function bindStepAction(step: any): void {
         triggered = true;
         clearActionListeners();
         if (step.isFinal) {
-            finishTour();
+            void finishTour();
         } else {
-            nextStep();
+            void nextStep();
         }
     };
 
@@ -91,9 +78,26 @@ function createElements(): void {
 
     popoverEl = document.createElement('div');
     popoverEl.className = 'tour-popover';
+    popoverEl.addEventListener('click', (e: MouseEvent) => {
+        e.stopPropagation();
+    });
 
     overlayEl.appendChild(spotlightEl);
     overlayEl.appendChild(popoverEl);
+
+    overlayEl.addEventListener('click', (e: MouseEvent) => {
+        if (popoverEl && popoverEl.contains(e.target as Node)) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        if (spotlightMode) {
+            void dismissFeatureSpotlight();
+        } else {
+            void finishTour();
+        }
+    });
+
     document.body.appendChild(overlayEl);
 
     document.removeEventListener('keydown', handleKeydown as any);
@@ -130,14 +134,14 @@ function handleKeydown(e: KeyboardEvent): void {
     if (!isActive) return;
     if (e.key === 'Escape') {
         if (spotlightMode) {
-            dismissFeatureSpotlight();
+            void dismissFeatureSpotlight();
         } else {
-            skipTour();
+            void skipTour();
         }
     } else if (!spotlightMode && e.key === 'ArrowRight' && currentStep < STEPS.length - 1) {
-        nextStep();
+        void nextStep();
     } else if (!spotlightMode && e.key === 'ArrowLeft' && currentStep > 0) {
-        prevStep();
+        void prevStep();
     }
 }
 
@@ -147,7 +151,10 @@ function handleResize(): void {
 }
 
 function positionElements(step: any): void {
-    return positionTourElements(spotlightEl, popoverEl, step);
+    const targetStep = spotlightMode && step.spotlightTarget
+        ? { ...step, getTarget: step.spotlightTarget }
+        : step;
+    return positionTourElements(spotlightEl, popoverEl, targetStep);
 }
 
 async function checkCurrentTabStatus(): Promise<{ status: string; error?: string }> {
@@ -176,12 +183,12 @@ function startPollingTabStatus(): void {
         const prevStatus = lastTabStatus;
         if (status.status !== lastTabStatus) {
             lastTabStatus = status.status;
-            updateStepContent(STEPS[0]);
+            void updateStepContent(STEPS[0]);
 
             if ((prevStatus === 'NO_TAB' || prevStatus === 'NEED_REFRESH') && status.status === 'CONNECTED') {
                 setTimeout(() => {
                     if (isActive && currentStep === 0) {
-                        nextStep();
+                        void nextStep();
                     }
                 }, 800);
             }
@@ -201,19 +208,20 @@ async function updateStepContent(step: any): Promise<void> {
 
     if (spotlightMode) {
         const badgeLabel = t('tourFeatureBadge') || 'NEW FEATURE';
-        const rawTitle = t(step.titleKey);
+        const rawTitle = t(step.spotlightTitleKey || step.titleKey);
         const titleHtml = rawTitle.replace(/^(步骤|Step)\s*\d+\/\d+:\s*/i, '');
-        const bodyHtml = `<div class="tour-content">${t(step.descKey)}</div>`;
-        const hintHtml = step.hintKey ? `<div class="tour-action-hint">${t(step.hintKey)}</div>` : '';
+        const bodyHtml = `<div class="tour-content">${t(step.spotlightDescKey || step.descKey)}</div>`;
+        const hintKey = step.spotlightHintKey || step.hintKey;
+        const hintHtml = hintKey ? `<div class="tour-action-hint">${t(hintKey)}</div>` : '';
 
         const actionBtnLabel = activeSpotlightOptions?.actionLabelKey
             ? t(activeSpotlightOptions.actionLabelKey)
-            : t('tourBtnEnableNow');
+            : t(step.spotlightActionLabelKey || 'tourBtnEnableNow');
 
         popoverEl.innerHTML = `
             <div class="tour-header">
                 <span class="tour-step-badge tour-feature-badge">✨ ${badgeLabel} v${activeSpotlightVersion}</span>
-                <button class="tour-close-btn" id="tourCloseBtn" title="Close (ESC)">✕</button>
+                <button class="tour-close-btn" id="tourCloseBtn" title="${t('tourCloseTip') || 'Close (ESC)'}">✕</button>
             </div>
             <div class="tour-title">${titleHtml}</div>
             ${bodyHtml}
@@ -237,6 +245,12 @@ async function updateStepContent(step: any): Promise<void> {
                 } catch (e) {
                     console.warn('[TourGuide] spotlight onAction error:', e);
                 }
+            } else if (step.id === 'export') {
+                await dismissFeatureSpotlight();
+                const format = document.getElementById('format');
+                format?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                format?.focus();
+                return;
             } else if (step.id === 'live_save') {
                 const diskToggle = document.getElementById('liveSaveDiskToggle') as HTMLInputElement | null;
                 if (diskToggle && !diskToggle.checked) {
@@ -285,11 +299,21 @@ async function updateStepContent(step: any): Promise<void> {
                     </button>
                 </div>
             `;
-        } else {
+        } else if (status.status === 'CONNECTED') {
             bodyHtml = `
                 <div class="tour-content">${t('tourStep1ConnectedDesc') || t('tourStep1Connected')}</div>
                 <div class="tour-action-box">
                     <div class="tour-status-indicator tour-status-ok ok">✅ ${t('tourStep1Connected')}</div>
+                </div>
+            `;
+        } else {
+            bodyHtml = `
+                <div class="tour-content">${t('tourStep1ErrorDesc') || status.error || t('tourStep1NeedRefresh')}</div>
+                <div class="tour-action-box">
+                    <div class="tour-status-indicator tour-status-warn warn">⚠️ ${t('tourStep1ErrorStatus') || 'Connection error'}</div>
+                    <button id="tourBtnReloadGemini" class="tour-action-btn secondary">
+                        ${t('tourStep1BtnRefresh')}
+                    </button>
                 </div>
             `;
         }
@@ -307,7 +331,7 @@ async function updateStepContent(step: any): Promise<void> {
     popoverEl.innerHTML = `
         <div class="tour-header">
             <span class="tour-step-badge">${stepNum} / ${totalSteps}</span>
-            <button class="tour-close-btn" id="tourCloseBtn" title="Close (ESC)">✕</button>
+            <button class="tour-close-btn" id="tourCloseBtn" title="${t('tourCloseTip') || 'Close (ESC)'}">✕</button>
         </div>
         <div class="tour-title">${titleHtml}</div>
         ${bodyHtml}
@@ -328,9 +352,9 @@ async function updateStepContent(step: any): Promise<void> {
     document.getElementById('tourPrevBtn')?.addEventListener('click', prevStep);
     document.getElementById('tourNextBtn')?.addEventListener('click', () => {
         if (isFinal) {
-            finishTour();
+            void finishTour();
         } else {
-            nextStep();
+            void nextStep();
         }
     });
 
@@ -394,7 +418,7 @@ export async function finishTour(): Promise<void> {
             await storage.setTourCompleted(true);
         }
         if (storage.setLastSeenFeatureVersion) {
-            const currentVer = (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || '1.5.0';
+            const currentVer = getExtensionVersion();
             await storage.setLastSeenFeatureVersion(currentVer);
         }
     }
@@ -402,20 +426,8 @@ export async function finishTour(): Promise<void> {
     removeElements();
 }
 
-export async function skipTour(): Promise<void> {
-    const storage = getStorage();
-    if (storage) {
-        if (storage.setTourCompleted) {
-            await storage.setTourCompleted(true);
-        }
-        if (storage.setLastSeenFeatureVersion) {
-            const currentVer = (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || '1.5.0';
-            await storage.setLastSeenFeatureVersion(currentVer);
-        }
-    }
-    spotlightMode = false;
-    removeElements();
-}
+export const skipTour = finishTour;
+
 
 export async function startFeatureSpotlight(
     stepId: string,
@@ -434,8 +446,9 @@ export async function startFeatureSpotlight(
     const step = STEPS[currentStep];
 
     stopPolling();
+    clearActionListeners();
     await updateStepContent(step);
-    bindStepAction(step);
+    if (step.id !== 'export') bindStepAction(step);
 }
 
 export async function dismissFeatureSpotlight(): Promise<void> {
@@ -471,17 +484,6 @@ export const TourGuide: TourGuideContract = {
     STEPS
 };
 
-(TourGuide as any).TourGuide = TourGuide;
-(TourGuide as any).default = TourGuide;
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).TourGuide = TourGuide;
-}
-if (typeof window !== 'undefined') {
-    (window as any).TourGuide = TourGuide;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = TourGuide;
-}
 
 export default TourGuide;

@@ -13,7 +13,7 @@ import GeminiClientCredentialManager from "../../api/client/credentialManager.js
 export class GeminiProvider implements AIProvider {
     readonly id = "gemini";
     readonly name = "Google Gemini";
-    readonly hostPatterns = ["https://gemini.google.com/*"] as const;
+    readonly hostPatterns = ["https://gemini.google.com/*", "https://bard.google.com/*"] as const;
 
     readonly capabilities: ProviderCapabilities = {
         realtimeObservation: true,
@@ -41,7 +41,7 @@ export class GeminiProvider implements AIProvider {
 
     matchesUrl(url: string): boolean {
         try {
-            return new URL(url).hostname === "gemini.google.com";
+            return ["gemini.google.com", "bard.google.com"].includes(new URL(url).hostname);
         } catch {
             return false;
         }
@@ -55,7 +55,7 @@ export class GeminiProvider implements AIProvider {
                 return {
                     ready: true,
                     scopeKey: slot,
-                    accountName: slot
+                    accountSlot: cred.accountSlot || slot
                 };
             }
             return {

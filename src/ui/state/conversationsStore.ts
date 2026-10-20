@@ -1,29 +1,22 @@
-// src/ui/state/conversationsStore.ts - State layer, no DOM rendering, only data + storage
 import type { Conversation } from '../../types/conversation.js';
 import type { ExportRecord, IConversationsStore } from '../../types/ui.js';
+import { __resolveModule } from '../../core/utils/moduleOverrides.js';
 
-import StorageService, { type StorageServiceModule } from '../../core/storage/storageService.js';
+import StorageService from '../../core/storage/storageService.js';
 import GeminiUtils, {
-    type GeminiUtilsModule,
     normId as utilsNormId,
     deduplicateConversations as utilsDeduplicateConversations,
-    resolveTitle as utilsResolveTitle,
-    compareConversations as utilsCompareConversations
+    isTakeoutConversation
 } from '../../core/utils/utils.js';
+import { STORAGE_KEYS } from '../../core/utils/constants.js';
 
 let conversations: Conversation[] = [];
 let exportedIds: Record<string, ExportRecord> = {};
 let currentSlot: string = 'u0';
 let accountSlots: Record<string, any> = {};
 
-const getStorage = (): any => {
-    if (typeof (globalThis as any).StorageService !== 'undefined') return (globalThis as any).StorageService;
-    return StorageService;
-};
-const getUtils = (): any => {
-    if (typeof (globalThis as any).GeminiUtils !== 'undefined') return (globalThis as any).GeminiUtils;
-    return GeminiUtils;
-};
+const getStorage = (): any => __resolveModule('StorageService', StorageService);
+const getUtils = (): any => __resolveModule('GeminiUtils', GeminiUtils);
 
 export const normId = (id?: string | null): string => {
     const utils = getUtils();
@@ -34,7 +27,24 @@ export const normId = (id?: string | null): string => {
 export function getConversations(): Conversation[] { return conversations; }
 export function setConversations(list: Conversation[]): void { conversations = list || []; }
 export function getExportedIds(): Record<string, ExportRecord> { return exportedIds; }
-export function setExportedIds(map: Record<string, ExportRecord>): void { exportedIds = map || {}; }
+
+// Fold legacy alias keys ('c_<id>' / raw id) into canonical normId keys for consistent in-memory lookups
+function collapseExportAliases(map: Record<string, any>): void {
+    for (const k of Object.keys(map)) {
+        const ck = normId(k);
+        if (!ck || ck === k) continue;
+        if (!(ck in map)) {
+            map[ck] = map[k];
+        }
+        delete map[k];
+    }
+}
+
+export function setExportedIds(map: Record<string, ExportRecord>): void {
+    const next = map || {};
+    collapseExportAliases(next);
+    exportedIds = next;
+ }
 export function getCurrentSlot(): string { return currentSlot; }
 export function setCurrentSlot(slot: string): void { currentSlot = slot || 'u0'; }
 export function getAccountSlots(): Record<string, any> { return accountSlots; }
@@ -42,8 +52,7 @@ export function setAccountSlots(map: Record<string, any>): void { accountSlots =
 
 export function getExportedRecord(id?: string | null): ExportRecord | null {
     if (!id || !exportedIds) return null;
-    const nid = normId(id);
-    return exportedIds[id] || exportedIds['c_' + nid] || exportedIds[nid] || null;
+    return exportedIds[normId(id)] || null;
 }
 
 export function getSignature(list?: Conversation[]): string {
@@ -67,12 +76,12 @@ export async function loadStore(slotOverride?: string): Promise<{
 }> {
     let slot = slotOverride || currentSlot || 'u0';
     const storage = getStorage();
-    const slots = storage ? await storage.getAccountSlots() : ((await chrome.storage.local.get(['gemini_account_slots'])).gemini_account_slots || {});
+    const slots = storage ? await storage.getAccountSlots() : ((await chrome.storage.local.get([STORAGE_KEYS.ACCOUNT_SLOTS]))[STORAGE_KEYS.ACCOUNT_SLOTS] || {});
     setAccountSlots(slots);
 
-    let incoming = storage ? await storage.getConversations(slot) : [];
-    // If the requested slot is empty, check all candidate slots for conversations
-    if (!incoming || !incoming.length) {
+    let incoming = (storage ? await storage.getConversations(slot) : []) || [];
+    // Only fall back to another slot on initial cold launch if no slot was requested
+    if (!slotOverride && !currentSlot && (!incoming || !incoming.length)) {
         const candidates = ['u0', ...Object.keys(slots || {})].filter(s => s !== slot);
         for (const cand of candidates) {
             const candConvs = storage ? await storage.getConversations(cand) : [];
@@ -94,43 +103,28 @@ export async function loadStore(slotOverride?: string): Promise<{
 export async function getLastSync(slot?: string): Promise<{ timestamp: number | null; count: number }> {
     const s = slot || currentSlot || 'u0';
     const storage = getStorage();
-    if (storage && storage.getLastSync) return await storage.getLastSync(s);
-    const syncKey = s === 'u0' ? 'gemini_last_sync' : `gemini_last_sync_${s}`;
-    const countKey = s === 'u0' ? 'gemini_last_count' : `gemini_last_count_${s}`;
-    const countKeyLegacy = s === 'u0' ? 'gemini_last_sync_count' : `gemini_last_sync_count_${s}`;
-    const data: any = await chrome.storage.local.get([syncKey, countKey, countKeyLegacy]);
-    return { timestamp: data[syncKey] || null, count: (typeof data[countKey] === 'number' ? data[countKey] : data[countKeyLegacy]) || 0 };
+    if (storage?.getLastSync) return await storage.getLastSync(s);
+    return { timestamp: null, count: 0 };
 }
 
 export async function saveConversations(slot: string, list: Conversation[]): Promise<void> {
     const s = slot || currentSlot;
     const storage = getStorage();
-    if (storage) await storage.setConversations(s, list);
-    else {
-        const convKey = s === 'u0' ? 'gemini_conversations' : `gemini_conversations_${s}`;
-        await chrome.storage.local.set({ [convKey]: list || [] });
-    }
+    if (storage?.setConversations) await storage.setConversations(s, list);
     if (s === currentSlot) setConversations(list);
-}
-
-export async function saveExportedIds(slot: string, map: Record<string, ExportRecord>): Promise<void> {
-    const s = slot || currentSlot;
-    const storage = getStorage();
-    if (storage) await storage.setExportedIds(s, map);
-    else {
-        const expKey = s === 'u0' ? 'exportedIds' : `gemini_exported_${s}`;
-        await chrome.storage.local.set({ [expKey]: map || {} });
-    }
-    if (s === currentSlot) setExportedIds(map);
 }
 
 export async function clearExported(slot: string): Promise<void> {
     const s = slot || currentSlot;
     const storage = getStorage();
-    if (storage && storage.setExportedIds) await storage.setExportedIds(s, {});
-    else {
-        const expKey = s === 'u0' ? 'exportedIds' : `gemini_exported_${s}`;
-        await chrome.storage.local.remove([expKey]);
+    if (storage?.removeExportRecords) {
+        // P1-3: clear via the transactional delete path instead of a bare
+        // whole-map overwrite. removeExportRecords re-reads the map inside the
+        // storage write chain and deletes only the listed ids, so records
+        // written concurrently by saveExportRecord can neither be clobbered
+        // (overwrite race) nor resurrected (delete-then-write race).
+        const cur = (storage?.getExportedIds ? await storage.getExportedIds(s) : null) || {};
+        await storage.removeExportRecords(s, Object.keys(cur));
     }
     if (s === currentSlot) setExportedIds({});
 }
@@ -138,37 +132,39 @@ export async function clearExported(slot: string): Promise<void> {
 export async function clearAll(slot: string): Promise<void> {
     const s = slot || currentSlot;
     const storage = getStorage();
-    if (storage && storage.setConversations) await storage.setConversations(s, []);
-    else {
-        const convKey = s === 'u0' ? 'gemini_conversations' : `gemini_conversations_${s}`;
-        await chrome.storage.local.remove([convKey]);
+    if (storage?.clearConversations) {
+        await storage.clearConversations(s);
+    } else if (storage?.setConversations) {
+        await storage.setConversations(s, []);
     }
-    if (s === currentSlot) setConversations([]);
+    if (s === currentSlot) {
+        setConversations([]);
+        setExportedIds({});
+    }
 }
 
 export async function getDevMode(): Promise<boolean> {
     const storage = getStorage();
-    if (storage && storage.getDevMode) return await storage.getDevMode();
-    const d = await chrome.storage.local.get(['gemini_dev_mode']);
-    return !!d.gemini_dev_mode;
+    if (storage?.getDevMode) return await storage.getDevMode();
+    return false;
 }
 
 export async function setDevMode(devOn: boolean): Promise<void> {
     const storage = getStorage();
-    if (storage && storage.setDevMode) await storage.setDevMode(devOn);
-    else await chrome.storage.local.set({ gemini_dev_mode: !!devOn });
+    if (storage?.setDevMode) await storage.setDevMode(devOn);
 }
 
 export async function removeConversation(id: string): Promise<Conversation[]> {
     if (!id) return conversations;
     const nid = normId(id);
     const storage = getStorage();
-    conversations = (conversations || []).filter(c => normId(c.id) !== nid);
-    if (storage && storage.removeConversation) {
+    // Write-through: persist to storage first so a storage failure does not
+    // leave the in-memory cache out of sync (item gone from cache but still
+    // in chrome.storage). If the await throws, memory stays untouched.
+    if (storage?.removeConversation) {
         await storage.removeConversation(currentSlot, nid);
-    } else {
-        await saveConversations(currentSlot, conversations);
     }
+    conversations = (conversations || []).filter(c => normId(c.id) !== nid);
     return conversations;
 }
 
@@ -180,12 +176,7 @@ export async function reconcileWithCloud(activeCloudList: any[], options: any = 
         const keepTakeout = options.keepTakeout !== false;
         conversations = (conversations || []).filter(c => {
             const nid = normId(c.id);
-            const isTakeout = keepTakeout && (
-                c.source === 'takeout' ||
-                c.titleSource === 'takeout' ||
-                c.isTakeoutOnly ||
-                (c.titles && c.titles.takeout && !c.titles.rpc && !c.titles.dom)
-            );
+            const isTakeout = keepTakeout && isTakeoutConversation(c);
             return activeIdSet.has(nid) || isTakeout;
         });
         return res;
@@ -193,56 +184,20 @@ export async function reconcileWithCloud(activeCloudList: any[], options: any = 
     return { kept: conversations.length, removed: 0, removedIds: [] };
 }
 
-export function normalizeAndDeduplicate(incoming: Conversation[]): { processed: Conversation[]; hasDirtyTitles: boolean } {
-    if (!Array.isArray(incoming)) return { processed: [], hasDirtyTitles: false };
+export function normalizeAndDeduplicate(incoming: Conversation[]): { processed: Conversation[]; hasDirtyTitles: boolean; changedCount: number } {
+    if (!Array.isArray(incoming)) return { processed: [], hasDirtyTitles: false, changedCount: 0 };
     const utils = getUtils();
     if (utils && typeof utils.deduplicateConversations === 'function') {
         const res = utils.deduplicateConversations(incoming);
-        return { processed: res.processed, hasDirtyTitles: res.hasDirtyTitles };
+        return { processed: res.processed, hasDirtyTitles: res.hasDirtyTitles, changedCount: res.changedCount || 0 };
     }
 
-    const uResolveTitle = (chat: any) => (utils && typeof utils.resolveTitle === 'function'
-        ? utils.resolveTitle(chat)
-        : { title: (chat?.title || '').trim() || '未命名对话', source: chat?.titleSource || 'legacy' });
-    const uCompare = (a: any, b: any) => (utils && typeof utils.compareConversations === 'function'
-        ? utils.compareConversations(a, b)
-        : 0);
-
-    const dedupMap = new Map<string, Conversation>();
-    let hasDirtyTitles = false;
-    incoming.forEach(c => {
-        if (!c || !c.id) return;
-        const u = ((c as any).url || (c as any).href || '').toString();
-        if (/accounts\.google\.com|SignOutOptions/i.test(u)) return;
-
-        const nid = normId(c.id);
-        if (utils && typeof utils.isReservedRoute === 'function' && (utils.isReservedRoute(nid) || utils.isReservedRoute(c.id))) {
-            hasDirtyTitles = true;
-            return;
-        }
-        const resolved = uResolveTitle(c);
-        dedupMap.set(nid, {
-            ...c,
-            id: nid,
-            title: resolved.title,
-            titleSource: resolved.source
-        });
-    });
-
-    const processed = Array.from(dedupMap.values());
-    processed.sort(uCompare);
-    return { processed, hasDirtyTitles };
+    const res = utilsDeduplicateConversations(incoming);
+    return { processed: res.processed, hasDirtyTitles: res.hasDirtyTitles, changedCount: res.changedCount || 0 };
 }
 
 export function hasTakeoutData(): boolean {
-    return (conversations || []).some(c => (
-        c && (
-            c.source === 'takeout' ||
-            c.titleSource === 'takeout' ||
-            c.isTakeoutOnly ||
-            (c.titles && c.titles.takeout)
-        )
-    ));
+    return (conversations || []).some(c => c && isTakeoutConversation(c));
 }
 
 export const ConversationsStore: IConversationsStore = {
@@ -261,7 +216,6 @@ export const ConversationsStore: IConversationsStore = {
     loadStore,
     getLastSync,
     saveConversations,
-    saveExportedIds,
     clearExported,
     clearAll,
     getDevMode,
@@ -270,15 +224,5 @@ export const ConversationsStore: IConversationsStore = {
     hasTakeoutData,
     normId
 };
-
-(ConversationsStore as any).ConversationsStore = ConversationsStore;
-(ConversationsStore as any).default = ConversationsStore;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).ConversationsStore = ConversationsStore;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = ConversationsStore;
-}
 
 export default ConversationsStore;

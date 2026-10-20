@@ -1,5 +1,18 @@
-// src/core/engine/takeoutEngine.ts - Re-export facade for Takeout operations
-import MediaIndex, {
+import type { GeneratedMediaIdentity } from '../../types/conversation.js';
+// Stable public facade for Takeout operations.
+//
+// Design intent — kept deliberately, this is not an empty shell:
+// - This module is the SOLE public entry point for Takeout APIs. Nothing imports
+//   ./takeout/mediaIndex.js or ./takeout/takeoutParser.js directly.
+// - It aggregates two implementation modules (mediaIndex + takeoutParser) into one
+//   coherent `TakeoutEngine` namespace, so consumers are insulated from internal
+//   file moves.
+// - The `TakeoutEngine` namespace object is the identity key of the
+//   __resolveModule('TakeoutEngine', …) test seam (see takeoutController.ts,
+//   optionsContext.ts, and tests using __setModuleOverride('TakeoutEngine', …)).
+//   Deleting this facade would force the seam to be re-keyed and churn
+//   2 production + 7 test files for zero behavioral gain.
+import {
     getTakeoutOfflineChat,
     getTakeoutFallbackMedia,
     getTakeoutMediaForChat,
@@ -7,12 +20,10 @@ import MediaIndex, {
     clearTakeoutData,
     getStore,
     __slotTakeouts,
-    type MediaIndexModule,
     type TakeoutStore
 } from "./takeout/mediaIndex.js";
-import TakeoutParser, {
+import {
     parseTakeoutZip,
-    type TakeoutParserModule,
     type TakeoutParseResult
 } from "./takeout/takeoutParser.js";
 
@@ -20,17 +31,13 @@ export type { TakeoutStore, TakeoutParseResult };
 
 export interface TakeoutEngineModule {
     getTakeoutOfflineChat: (chatId: string, slot?: string | null) => any;
-    getTakeoutFallbackMedia: (chatId: string, filenameOrId: string, slot?: string | null) => Promise<Uint8Array | null>;
+    getTakeoutFallbackMedia: (chatId: string, filenameOrId: string, slot?: string | null, generation?: GeneratedMediaIdentity) => Promise<Uint8Array | null>;
     getTakeoutMediaForChat: (chatId: string, slot?: string | null) => any[];
     extractC2PATimestamp: (bufferOrArray: any) => number | null;
     parseTakeoutZip: (file: any, onProgress?: ((pct: number, msg: string) => void) | null, slot?: string | null) => Promise<TakeoutParseResult>;
     clearTakeoutData: (slot?: string | null) => void;
     getStore: (slot?: string | null) => TakeoutStore;
     __slotTakeouts: Map<string, TakeoutStore>;
-}
-
-declare global {
-    var TakeoutEngine: TakeoutEngineModule;
 }
 
 export {
@@ -55,13 +62,4 @@ export const TakeoutEngine: TakeoutEngineModule = {
     __slotTakeouts
 };
 
-(TakeoutEngine as any).TakeoutEngine = TakeoutEngine;
-(TakeoutEngine as any).default = TakeoutEngine;
-
-if (typeof globalThis !== 'undefined' && !(globalThis as any).TakeoutEngine) {
-    (globalThis as any).TakeoutEngine = TakeoutEngine;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = TakeoutEngine;
-}
 export default TakeoutEngine;

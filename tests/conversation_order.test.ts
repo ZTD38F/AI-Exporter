@@ -35,12 +35,13 @@ test('GeminiUtils.getEffectiveTimestamp - hierarchy and type safety', () => {
     };
     assert.strictEqual(GeminiUtils.getEffectiveTimestamp(chat3), 1800, 'createdAt fallback');
 
-    // Case 5: Falls back to lastSeen string
+    // Case 5: lastSeen is client-observed and must NOT feed the authoritative
+    // timestamp (PR-3, core-vocab audit D2). No server timestamp -> 0.
     const isoTime = '2026-09-03T18:00:00.000Z';
     const chat4 = {
         lastSeen: isoTime
     };
-    assert.strictEqual(GeminiUtils.getEffectiveTimestamp(chat4), new Date(isoTime).getTime());
+    assert.strictEqual(GeminiUtils.getEffectiveTimestamp(chat4), 0, 'lastSeen-only chat must return 0');
 });
 
 test('GeminiParser.parseDetail - exports updatedAt as maxTs and timestamp as maxTs', () => {
@@ -86,7 +87,7 @@ test('GeminiParser.parseDetail - exports updatedAt as maxTs and timestamp as max
     assert.strictEqual(detail.chatTime, 1700005000000, 'chatTime should align with updatedAt');
 });
 
-test('Conversation sorting - accurately orders by latest activity and never puts new chats at tail', () => {
+test('Conversation sorting - orders by latest server activity; lastSeen-only chats sort after timestamped ones (PR-3)', () => {
     const getEffectiveTime = GeminiUtils.getEffectiveTimestamp;
 
     function sortConversations(list: any[]) {
@@ -149,10 +150,13 @@ test('Conversation sorting - accurately orders by latest activity and never puts
     assert.strictEqual(sorted1[1].id, 'chat_3days_old');
     assert.strictEqual(sorted1[2].id, 'chat_month_old');
 
-    // Test 2: Brand new chat captured from DOM with recent lastSeen MUST NOT be pushed to tail
+    // Test 2 (PR-3, core-vocab audit D2): lastSeen no longer feeds
+    // getEffectiveTimestamp, so a DOM capture without server timestamps
+    // orders below server-timestamped chats in a pure-server-time sort.
     const sorted2 = sortConversations([chatB, chatC, chatD]);
-    assert.strictEqual(sorted2[0].id, 'chat_brand_new_dom', 'Brand new chat must be ranked at top and never at the tail');
-    assert.notStrictEqual(sorted2[sorted2.length - 1].id, 'chat_brand_new_dom', 'Brand new chat must never be at the tail');
+    assert.strictEqual(sorted2[0].id, 'chat_3days_old');
+    assert.strictEqual(sorted2[1].id, 'chat_month_old');
+    assert.strictEqual(sorted2[2].id, 'chat_brand_new_dom', 'lastSeen-only chat sorts after timestamped chats');
 });
 
 test('Conversation merge - updates updatedAt when conversation becomes active again', () => {
@@ -231,55 +235,9 @@ test('GeminiParser.parseList - accurately extracts server timestamp from index 5
 
     // Verify ordering: Page 1 (newer) MUST be ahead of Page 2 (older), even if Page 2 was parsed later in real time
     const combined = [conv2, conv1]; // Even if scanned in reverse or later
-    combined.sort((a, b) => b.updatedAt - a.updatedAt);
+    combined.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
     assert.strictEqual(combined[0].id, 'page1', 'Page 1 (newer updatedAt) must remain on top of Page 2');
     assert.strictEqual(combined[1].id, 'page2');
-});
-
-test('Conversation merge - authoritative RPC server list heals contaminated Date.now() timestamps', () => {
-    function mergeWithRpcAuthority(existing: any[], incoming: any[]) {
-        const map = new Map();
-        existing.forEach((c: any) => map.set(c.id, { ...c }));
-
-        incoming.forEach((c: any) => {
-
-            const old = map.get(c.id);
-            let cUpdated = c.updatedAt || c.timestamp || null;
-            let oldUpdated = old?.updatedAt || old?.timestamp || null;
-
-            let isRpcSource = c.titleSource === 'rpc' || c.source === 'network-list';
-            let bestUpdatedAt = oldUpdated;
-            if (cUpdated && (isRpcSource || !bestUpdatedAt || cUpdated > bestUpdatedAt)) {
-                bestUpdatedAt = cUpdated;
-            }
-
-            let bestTimestamp = isRpcSource ? (cUpdated || bestUpdatedAt) : (bestUpdatedAt || old?.timestamp || c.timestamp || null);
-
-            map.set(c.id, {
-                ...(old || {}),
-                ...c,
-                timestamp: bestTimestamp,
-                updatedAt: bestUpdatedAt || bestTimestamp
-            });
-        });
-
-        return Array.from(map.values());
-    }
-
-    // Suppose old stored item was contaminated with an inflated Date.now() timestamp (e.g. 1799999999000)
-    const contaminatedExisting = [
-        { id: 'chat_old_history', title: 'Old History', updatedAt: 1799999999000, timestamp: 1799999999000 }
-    ];
-
-    // Authoritative RPC scan returns the true historical timestamp from Google (1700000000000)
-    const rpcIncoming = [
-        { id: 'chat_old_history', title: 'Old History', titleSource: 'rpc', updatedAt: 1700000000000, timestamp: 1700000000000 }
-    ];
-
-    const merged = mergeWithRpcAuthority(contaminatedExisting, rpcIncoming);
-    assert.strictEqual(merged.length, 1);
-    assert.strictEqual(merged[0].updatedAt, 1700000000000, 'Contaminated timestamp must be corrected by authoritative RPC timestamp');
-    assert.strictEqual(merged[0].timestamp, 1700000000000, 'timestamp must be healed to true server timestamp');
 });
 
 test('GeminiUtils.compareConversations - authoritative SSoT comparator', () => {
@@ -309,7 +267,9 @@ test('GeminiUtils.compareConversations - authoritative SSoT comparator', () => {
     assert.deepStrictEqual(list.map(c => c.id), ['c1', 'c3', 'c4', 'c2']);
 });
 
-test('Continuing old conversation - updates timestamp and elevates conversation to index 0', () => {
+test('mergeConversation - newer incoming server timestamp upgrades updatedAt/timestamp monotonically', () => {
+    // Pure merge semantics: an RPC/list entry carrying a newer SERVER
+    // timestamp upgrades the record (Math.max).
     const existingList = [
         { id: 'c_top1', title: 'Top 1', updatedAt: 5000, timestamp: 5000, createdAt: 4500, sidebarIndex: 0 },
         { id: 'c_top2', title: 'Top 2', updatedAt: 4000, timestamp: 4000, createdAt: 3500, sidebarIndex: 1 },
@@ -321,19 +281,19 @@ test('Continuing old conversation - updates timestamp and elevates conversation 
     existingList.sort(GeminiUtils.compareConversations);
     assert.strictEqual(existingList[3].id, 'c_old_chat', 'Old chat should initially be at the tail');
 
-    // User chats in c_old_chat, triggering stream-complete at now = 9000
+    // A list-sync entry with a newer server timestamp upgrades the record
     const now = 9000;
-    const incomingTouch = {
+    const incomingSync = {
         id: 'old_chat',
         timestamp: now,
         updatedAt: now,
         sidebarIndex: 0
     };
 
-    const mergeRes = GeminiUtils.mergeConversation(existingList[3], incomingTouch, { source: 'stream-complete' });
+    const mergeRes = GeminiUtils.mergeConversation(existingList[3], incomingSync, { source: 'network-list' });
     assert.strictEqual(mergeRes.isChanged, true, 'merge must flag isChanged when timestamp is bumped');
-    assert.strictEqual(mergeRes.merged.updatedAt, 9000, 'updatedAt must be bumped to current stream time');
-    assert.strictEqual(mergeRes.merged.timestamp, 9000, 'timestamp must be bumped to current stream time');
+    assert.strictEqual(mergeRes.merged.updatedAt, 9000, 'updatedAt must be bumped to newer server time');
+    assert.strictEqual(mergeRes.merged.timestamp, 9000, 'timestamp must be bumped to newer server time');
     assert.strictEqual(mergeRes.merged.createdAt, 800, 'original createdAt must be preserved');
     assert.strictEqual(mergeRes.merged.title, 'Old Chat Project', 'original title must be preserved');
     assert.strictEqual(mergeRes.merged.messageCount, 4, 'original messageCount must be preserved');
@@ -343,10 +303,115 @@ test('Continuing old conversation - updates timestamp and elevates conversation 
     updatedList.sort(GeminiUtils.compareConversations);
 
     // Assert old_chat is now at the very top (index 0)
-    assert.strictEqual(updatedList[0].id, 'old_chat', 'Continued conversation must rise to index 0 (top of list)');
+    assert.strictEqual(updatedList[0].id, 'old_chat', 'Conversation with newer server timestamp must rise to index 0 (top of list)');
     assert.strictEqual(updatedList[1].id, 'c_top1');
     assert.strictEqual(updatedList[2].id, 'c_top2');
     assert.strictEqual(updatedList[3].id, 'c_top3');
+});
+
+test('Title arbitration & non-downgrade CAS immunity - Takeout and DOM titles cannot be overwritten by truncated sniff', () => {
+    // 1. Existing Takeout conversation
+    const oldTakeout = {
+        id: 'c_tock_resy',
+        title: '预约平台混淆： Tock与Resy的区别',
+        titleSource: 'takeout',
+        titles: { takeout: '预约平台混淆： Tock与Resy的区别' },
+        updatedAt: 1000
+    };
+
+    // 2. Incoming sniff from detail RPC with truncated smartSummarizePrompt
+    const incomingSniff = {
+        id: 'tock_resy',
+        title: '预约平台混淆',
+        titleSource: 'sniff',
+        titles: { sniff: '预约平台混淆' },
+        updatedAt: 1000
+    };
+
+    const res1 = GeminiUtils.mergeConversation(oldTakeout, incomingSniff, { source: 'network-detail' });
+    assert.strictEqual(res1.merged.title, '预约平台混淆： Tock与Resy的区别', 'Takeout title must NOT be overwritten by truncated sniff title');
+    assert.strictEqual(res1.merged.titleSource, 'takeout');
+
+    // 3. Incoming DOM title upgrades Takeout title
+    const incomingDom = {
+        id: 'tock_resy',
+        title: '预约平台混淆： Tock与Resy的区别 (完整版)',
+        titleSource: 'dom',
+        titles: { dom: '预约平台混淆： Tock与Resy的区别 (完整版)' },
+        updatedAt: 1000
+    };
+    const res2 = GeminiUtils.mergeConversation(res1.merged, incomingDom, { source: 'dom-scrape' });
+    assert.strictEqual(res2.merged.title, '预约平台混淆： Tock与Resy的区别 (完整版)', 'DOM title must upgrade Takeout title');
+    assert.strictEqual(res2.merged.titleSource, 'dom');
+
+    // 4. Later incoming sniff still cannot downgrade DOM title
+    const res3 = GeminiUtils.mergeConversation(res2.merged, incomingSniff, { source: 'network-detail' });
+    assert.strictEqual(res3.merged.title, '预约平台混淆： Tock与Resy的区别 (完整版)', 'DOM title must NOT be downgraded by sniff');
+    assert.strictEqual(res3.merged.titleSource, 'dom');
+
+    // 5. Incoming authoritative RPC title upgrades DOM title
+    const incomingRpc = {
+        id: 'tock_resy',
+        title: '预约平台混淆： Tock与Resy的区别 (权威RPC)',
+        titleSource: 'rpc',
+        titles: { rpc: '预约平台混淆： Tock与Resy的区别 (权威RPC)' },
+        updatedAt: 1000
+    };
+    const res4 = GeminiUtils.mergeConversation(res3.merged, incomingRpc, { source: 'network-list' });
+    assert.strictEqual(res4.merged.title, '预约平台混淆： Tock与Resy的区别 (权威RPC)', 'RPC title must upgrade DOM title');
+    assert.strictEqual(res4.merged.titleSource, 'rpc');
+});
+
+test('Stale Takeout snapshot must not shrink messages/messageCount/lastSeen (CON-HF7 message dimension)', () => {
+    // Online record is richer (8 turns, recent lastSeen); Takeout export predates
+    // the last online turns, so its snapshot is smaller with an older lastSeen.
+    const online = {
+        id: 'stale_demo',
+        title: 'Online Title',
+        titleSource: 'rpc',
+        titles: { rpc: 'Online Title' },
+        messages: ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8'],
+        messageCount: 8,
+        updatedAt: 5000,
+        timestamp: 5000,
+        lastSeen: '2026-09-10T12:00:00.000Z'
+    };
+    const staleTakeout = {
+        id: 'stale_demo',
+        title: 'Takeout Prefix',
+        titleSource: 'takeout',
+        titles: { takeout: 'Takeout Prefix' },
+        messageCount: 2,
+        updatedAt: 1000,
+        timestamp: 1000,
+        lastSeen: '2026-09-01T12:00:00.000Z'
+    };
+
+    const res = GeminiUtils.mergeConversation(online, staleTakeout, { source: 'takeout-import' });
+    assert.strictEqual(res.merged.updatedAt, 5000, 'updatedAt guard keeps the newer timestamp');
+    assert.strictEqual(res.merged.messageCount, 8, 'stale snapshot must not shrink messageCount');
+    assert.deepStrictEqual(res.merged.messages, online.messages, 'stale snapshot must not replace messages');
+    assert.strictEqual(res.merged.lastSeen, online.lastSeen, 'stale snapshot must not rewind lastSeen');
+    assert.strictEqual(res.merged.titles.takeout, 'Takeout Prefix', 'takeout title slot is still seeded for the upgrade loop');
+    assert.strictEqual(res.merged.title, 'Online Title', 'rpc title stays authoritative');
+
+    // Growth direction still flows through and flags isChanged.
+    const growing = {
+        id: 'stale_demo',
+        title: 'Online Title',
+        titleSource: 'rpc',
+        titles: { rpc: 'Online Title' },
+        messageCount: 10,
+        updatedAt: 6000,
+        timestamp: 6000
+    };
+    const res2 = GeminiUtils.mergeConversation(
+        { id: 'stale_demo', title: 'Online Title', titleSource: 'rpc', titles: { rpc: 'Online Title' }, messageCount: 8, updatedAt: 5000, timestamp: 5000 },
+        growing,
+        { source: 'network-list' }
+    );
+    assert.strictEqual(res2.merged.messageCount, 10, 'richer incoming messageCount must flow through');
+    assert.strictEqual(res2.isChanged, true, 'message growth is a meaningful change');
 });
 
 

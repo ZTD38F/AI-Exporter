@@ -6,9 +6,14 @@ Gemini Exporter — 动态 20 题多模态测试场景池管理器。
 
 实现规范：
 1. 维护 20 个跨领域、多模态的高价值测试会话场景；
-2. 每次实跑测试消费 2 个（1 个包含 Imagen 生图，1 个深度长文本），并自动归档至 scripts/test_scenario_archive.json；
+2. 每次实跑测试消费 2 个（1 个包含 Imagen 生图，1 个深度长文本），并自动归档；
 3. 支持 status / validate / consume / topup / archive 等 CLI 指令；
 4. AI 助手参与协作或提交 PR 前，必须将场景池补齐至 20 题。
+
+状态模型：
+- scripts/test_scenario_pool.json 是 git 跟踪的静态 corpus；consume 永不修改它，
+  只有 topup 补充新场景时才会写入（有意的 content 变更，随 PR 提交）。
+- 运行时状态（已消费 id、归档）放在 temp/scenario_pool/（git-ignored，每个 checkout 独立）。
 """
 
 import sys
@@ -20,7 +25,62 @@ from datetime import datetime
 
 TARGET_POOL_SIZE = 20
 DEFAULT_POOL_PATH = os.path.join(os.path.dirname(__file__), "test_scenario_pool.json")
-DEFAULT_ARCHIVE_PATH = os.path.join(os.path.dirname(__file__), "test_scenario_archive.json")
+
+# 运行时状态位置：repo-local 的 temp/（.gitignore 已覆盖），每个 checkout 独立。
+# - consumed.json: 已消费场景 id 记录 [{id, consumed_at, consumed_by}]
+# - archive.json:  已消费场景完整归档
+# corpus 文件（DEFAULT_POOL_PATH）只在 topup 补充新场景时写入，consume 永不修改它。
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+RUNTIME_STATE_DIR = os.path.join(REPO_ROOT, "temp", "scenario_pool")
+CONSUMED_PATH = os.path.join(RUNTIME_STATE_DIR, "consumed.json")
+RUNTIME_ARCHIVE_PATH = os.path.join(RUNTIME_STATE_DIR, "archive.json")
+# 兼容旧名：默认归档路径即运行时归档（git-ignored）
+DEFAULT_ARCHIVE_PATH = RUNTIME_ARCHIVE_PATH
+
+
+def is_corpus_path(pool_path):
+    """判断给定路径是否为 git 跟踪的静态 corpus。corpus 走运行时状态语义，
+    其他显式路径（如测试用的临时文件）保持传统的直接改文件语义。"""
+    return os.path.abspath(pool_path) == os.path.abspath(DEFAULT_POOL_PATH)
+
+
+def _ensure_runtime_dir():
+    os.makedirs(RUNTIME_STATE_DIR, exist_ok=True)
+
+
+def load_consumed_records():
+    return load_json_file(CONSUMED_PATH, [])
+
+
+def load_consumed_ids():
+    return {r["id"] for r in load_consumed_records() if r.get("id")}
+
+
+def get_effective_pool(pool_path=DEFAULT_POOL_PATH):
+    """有效场景池 = corpus - 已消费（保持 corpus 顺序）。非 corpus 路径直接返回文件内容。"""
+    items = load_json_file(pool_path, [])
+    if not is_corpus_path(pool_path):
+        return items
+    consumed = load_consumed_ids()
+    if not consumed:
+        return items
+    return [s for s in items if s.get("id") not in consumed]
+
+
+def record_consumption(selected, consumed_by):
+    """记录消费：只写 git-ignored 的运行时状态，不碰 corpus 文件。"""
+    _ensure_runtime_dir()
+    iso_now = datetime.now().isoformat()
+    records = load_consumed_records()
+    archive = load_json_file(RUNTIME_ARCHIVE_PATH, [])
+    for s in selected:
+        records.append({"id": s.get("id"), "consumed_at": iso_now, "consumed_by": consumed_by})
+        item = dict(s)
+        item["consumed_at"] = iso_now
+        item["consumed_by"] = consumed_by
+        archive.append(item)
+    save_json_file(CONSUMED_PATH, records)
+    save_json_file(RUNTIME_ARCHIVE_PATH, archive)
 
 
 def load_json_file(path, default=None):
@@ -41,7 +101,7 @@ def save_json_file(path, data):
 
 
 def get_pool_status(pool_path=DEFAULT_POOL_PATH):
-    scenarios = load_json_file(pool_path, [])
+    scenarios = get_effective_pool(pool_path)
     domains = {}
     features = {}
     has_imagen = 0
@@ -110,11 +170,9 @@ def validate_pool(pool_path=DEFAULT_POOL_PATH, strict_count=True):
     return len(errors) == 0, errors, status
 
 
-def consume_scenarios(pool_path=DEFAULT_POOL_PATH, count=2, archive_path=DEFAULT_ARCHIVE_PATH, dry_run=False, require_imagen=True):
-    pool = load_json_file(pool_path, [])
-    if len(pool) < count:
-        raise ValueError(f"场景池数量不足！当前仅剩 {len(pool)} 个，请求消费 {count} 个。请先运行 manage_scenario_pool.py topup 进行补充！")
-
+def _select_scenarios(pool, count, require_imagen=True):
+    """从 pool 列表中按策略选取 count 个，返回 (selected, remaining)。不落盘。"""
+    pool = list(pool)
     selected = []
     # 策略：如果 require_imagen 且尚未选入，优先挑 1 个含 imagen 特性的场景
     if require_imagen:
@@ -125,21 +183,46 @@ def consume_scenarios(pool_path=DEFAULT_POOL_PATH, count=2, archive_path=DEFAULT
     # 其余名额按顺序从池中抽取
     while len(selected) < count and pool:
         selected.append(pool.pop(0))
-
-    if not dry_run:
-        save_json_file(pool_path, pool)
-        archive = load_json_file(archive_path, [])
-        iso_now = datetime.now().isoformat()
-        for s in selected:
-            archived_item = dict(s)
-            archived_item["consumed_at"] = iso_now
-            archive.append(archived_item)
-        save_json_file(archive_path, archive)
-
     return selected, pool
 
 
+def consume_scenarios(pool_path=DEFAULT_POOL_PATH, count=2, archive_path=DEFAULT_ARCHIVE_PATH, dry_run=False, require_imagen=True):
+    """消费场景。
+
+    corpus 路径（默认）：运行时状态语义——corpus 文件永不被修改，消费记录写入
+    temp/scenario_pool/（git-ignored）；archive_path 参数此时被忽略，归档走运行时归档。
+    显式路径（如测试临时文件）：传统语义——直接从该文件扣减并写入指定 archive 文件。
+    """
+    pool = get_effective_pool(pool_path)
+    if len(pool) < count:
+        raise ValueError(f"场景池数量不足！当前仅剩 {len(pool)} 个，请求消费 {count} 个。请先运行 manage_scenario_pool.py topup 进行补充！")
+
+    selected, remaining = _select_scenarios(pool, count, require_imagen)
+
+    if not dry_run:
+        if is_corpus_path(pool_path):
+            record_consumption(selected, consumed_by="manage_scenario_pool")
+        else:
+            save_json_file(pool_path, remaining)
+            archive = load_json_file(archive_path, [])
+            iso_now = datetime.now().isoformat()
+            for s in selected:
+                archived_item = dict(s)
+                archived_item["consumed_at"] = iso_now
+                archive.append(archived_item)
+            save_json_file(archive_path, archive)
+
+    return selected, remaining
+
+
 def topup_scenarios(new_scenarios, pool_path=DEFAULT_POOL_PATH):
+    """补充新场景。
+
+    corpus 路径（默认）：新场景写入被 git 跟踪的 corpus（有意的 content 变更，随 PR 提交）；
+    同时把已消费场景从 corpus 中修剪掉（其历史保留在运行时归档里），并清空已消费记录，
+    使 corpus 保持在 TARGET_POOL_SIZE 附近——与旧流程"消费扣减、补充回满"的稳态一致。
+    显式路径：传统语义，直接追加到该文件。
+    """
     pool = load_json_file(pool_path, [])
     seen_ids = {s["id"] for s in pool if "id" in s}
     added = []
@@ -153,6 +236,12 @@ def topup_scenarios(new_scenarios, pool_path=DEFAULT_POOL_PATH):
         seen_ids.add(s["id"])
         added.append(s)
 
+    if is_corpus_path(pool_path):
+        consumed_ids = load_consumed_ids()
+        if consumed_ids:
+            pool = [s for s in pool if s.get("id") not in consumed_ids]
+            save_json_file(CONSUMED_PATH, [])
+
     save_json_file(pool_path, pool)
     return added, pool
 
@@ -165,6 +254,10 @@ def print_status(pool_path=DEFAULT_POOL_PATH):
     status_icon = "🟢 正常" if status["is_healthy"] else "🟡 需补齐"
     print(f"池容量状态: {status['count']} / {status['target']} (状态: {status_icon})")
     print(f"Imagen 生图用例: {status['has_imagen']} 个")
+    if is_corpus_path(pool_path):
+        consumed = load_consumed_records()
+        print(f"运行时状态: {RUNTIME_STATE_DIR} (git-ignored)")
+        print(f"本轮已消费: {len(consumed)} 个")
     if status["deficit"] > 0:
         print(f"⚠️ 缺口提示: 尚需补齐 {status['deficit']} 个多模态场景至 20 题满额")
 
@@ -237,8 +330,8 @@ def main():
         added, pool = topup_scenarios(scenarios)
         print(f"✅ 成功补齐 {len(added)} 个场景！当前场景池总数: {len(pool)}/{TARGET_POOL_SIZE}")
     elif args.command == "archive":
-        archive = load_json_file(DEFAULT_ARCHIVE_PATH, [])
-        print(f"📚 历史归档场景总数: {len(archive)} 个")
+        archive = load_json_file(RUNTIME_ARCHIVE_PATH, [])
+        print(f"📚 历史归档场景总数: {len(archive)} 个 (运行时状态: {RUNTIME_STATE_DIR})")
         for idx, item in enumerate(archive[-10:]):
             print(f"  [{idx+1}] {item.get('consumed_at', '未知时间')}: {item.get('title')} ({item.get('id')})")
 

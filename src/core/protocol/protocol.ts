@@ -1,10 +1,3 @@
-// protocol/protocol.ts — protocol anti-corruption layer (Phase 1).
-//
-// Single source of truth for every piece of Google-side reverse-engineered
-// knowledge: RPC endpoint names, the batchexecute wrapper format, token
-// key names and extraction patterns, the fallback build number, sliding
-// window limits, and the request-id convention.
-
 export interface ProtocolRPCS {
     LIST: string;
     DETAIL: string;
@@ -45,6 +38,13 @@ export const CrossWorldEvents = {
 export const EVENTS = CrossWorldEvents;
 export type CrossWorldEventType = typeof CrossWorldEvents[keyof typeof CrossWorldEvents];
 
+export type DetailErrorCategory =
+    | 'confirmed_deleted'
+    | 'rate_limited'
+    | 'inaccessible'
+    | 'parse_error'
+    | 'unknown';
+
 export interface GeminiProtocolModule {
     PROTOCOL_VERSION: string;
     WRB: string;
@@ -56,11 +56,8 @@ export interface GeminiProtocolModule {
     BL_FALLBACK: string;
     LIMITS: ProtocolLimits;
     createReqidGenerator: () => () => string;
-}
-
-// @ts-ignore: suppress duplicate global var conflict
-declare global {
-    var GeminiProtocol: GeminiProtocolModule;
+    isConfirmedDeletedError: (errOrText: unknown, status?: number) => boolean;
+    classifyDetailError: (rawTextOrErr: unknown, status?: number) => DetailErrorCategory;
 }
 
 export const PROTOCOL_VERSION = '2026-09-07';
@@ -84,7 +81,6 @@ export const TOKENS: ProtocolTokens = {
     BL: 'cfb2h'   // frontend build label key (the "bl" request param)
 };
 
-// Extraction patterns for tokens from page HTML/scripts.
 export const TOKEN_PATTERNS: ProtocolTokenPatterns = {
     atFromScript: /"SNlM0e"\s*:\s*"([^"]+)"/,
     atGenericFromScript: /"at"\s*:\s*"([^"]{20,})"/,
@@ -96,11 +92,10 @@ export const TOKEN_PATTERNS: ProtocolTokenPatterns = {
 };
 
 // Deletion sniffing: the deleted conversation id must be anchored to the
-// GzXR5e payload context (#194) — never take the first hex token in the
-// response text.
+// GzXR5e payload context (#194).
 export const DELETION_ANCHORS: RegExp[] = [
     /["']GzXR5e["'][\s\S]{1,150}?c_([a-f0-9]{8,64})/i,
-    /GzXR5e[\s\S]{1,150}?(?:c_)?([a-f0-9]{8,64})/i
+    /GzXR5e[\s\S]{1,150}?c_([a-f0-9]{8,64})/i
 ];
 
 // Fallback frontend build label. WARNING: dated build numbers expire and
@@ -126,6 +121,45 @@ export function createReqidGenerator(): () => string {
     };
 }
 
+function extractErrorText(errOrText: unknown): string {
+    if (typeof errOrText === 'string') return errOrText;
+    if (errOrText instanceof Error) return errOrText.message;
+    if (typeof errOrText === 'object' && errOrText !== null && 'message' in errOrText) {
+        return String((errOrText as { message?: unknown }).message || '');
+    }
+    return String(errOrText || '');
+}
+
+/**
+ * Canonical decider for whether an RPC response / error text proves that a
+ * conversation was deleted on the server.
+ * Requires either HTTP 404 or a word-boundary BardErrorInfo 1167 marker (never bare '1167' or '11167').
+ */
+export function isConfirmedDeletedError(errOrText: unknown, status?: number): boolean {
+    if (status === 404) return true;
+    const text = extractErrorText(errOrText);
+    if (!text) return false;
+    if (text.includes('HTTP 404') || text.includes('BardErrorInfo: 1167')) return true;
+    return /(?:\[\s*["']BardErrorInfo["']\s*,\s*1167\b|BardErrorInfo\b[^\d]*?\b1167\b|\b1167\b[^\d]*?BardErrorInfo)/i.test(text);
+}
+
+export function classifyDetailError(rawTextOrErr: unknown, status?: number): DetailErrorCategory {
+    if (isConfirmedDeletedError(rawTextOrErr, status)) {
+        return 'confirmed_deleted';
+    }
+    const text = extractErrorText(rawTextOrErr);
+    if (status === 429 || /(?:\[\s*["']BardErrorInfo["']\s*,\s*1096\b|BardErrorInfo\b[^\d]*?\b1096\b|\b1096\b[^\d]*?BardErrorInfo)/i.test(text)) {
+        return 'rate_limited';
+    }
+    if (status === 401 || status === 403 || text.includes('BardErrorInfo')) {
+        return 'inaccessible';
+    }
+    if (text.length > 0) {
+        return 'parse_error';
+    }
+    return 'unknown';
+}
+
 export const GeminiProtocol: GeminiProtocolModule = {
     PROTOCOL_VERSION,
     WRB,
@@ -136,19 +170,21 @@ export const GeminiProtocol: GeminiProtocolModule = {
     DELETION_ANCHORS,
     BL_FALLBACK,
     LIMITS,
-    createReqidGenerator
+    createReqidGenerator,
+    isConfirmedDeletedError,
+    classifyDetailError
 };
 
-(GeminiProtocol as any).GeminiProtocol = GeminiProtocol;
-(GeminiProtocol as any).CrossWorldEvents = CrossWorldEvents;
-(GeminiProtocol as any).default = GeminiProtocol;
+interface GeminiProtocolModuleExports extends GeminiProtocolModule {
+    GeminiProtocol: GeminiProtocolModule;
+    CrossWorldEvents: typeof CrossWorldEvents;
+    default: GeminiProtocolModule;
+}
+const protocolExports = GeminiProtocol as GeminiProtocolModuleExports;
+protocolExports.GeminiProtocol = GeminiProtocol;
+protocolExports.CrossWorldEvents = CrossWorldEvents;
+protocolExports.default = GeminiProtocol;
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).GeminiProtocol = GeminiProtocol;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = GeminiProtocol;
-}
 
 export default GeminiProtocol;
 

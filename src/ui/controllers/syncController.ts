@@ -1,23 +1,11 @@
-// src/ui/controllers/syncController.ts - Synchronization & Background Scanning Controller
 import type { SyncControllerContract } from '../../types/ui.js';
-import GeminiProtocol, { LIMITS } from '../../core/protocol/protocol.js';
-
-const t = (key: string, ...args: any[]): string => {
-    if (typeof I18n !== 'undefined' && I18n.t) {
-        return I18n.t(key, ...args);
-    }
-    return key;
-};
-
-function hasI18n(): boolean {
-    return typeof I18n !== 'undefined' && typeof I18n.t === 'function';
-}
+import type { DeepScanMessage, StopDeepScanMessage } from '../../types/messages.js';
+import GeminiProtocol from '../../core/protocol/protocol.js';
+import { isRateLimited } from '../../core/engine/export/rateLimiter.js';
+import { $, t, hasI18n, setWorkbenchControlsDisabled } from '../uiCommon.js';
+import { sendTypedMessage } from '../../core/utils/messaging.js';
 
 let scanRunning = false;
-
-function $(id: string): HTMLElement | null {
-    return typeof document !== 'undefined' ? document.getElementById(id) : null;
-}
 
 export function isScanning(): boolean {
     return scanRunning;
@@ -25,23 +13,9 @@ export function isScanning(): boolean {
 
 export function setScanRunning(running: boolean): void {
     scanRunning = !!running;
-    const btnInc = $('btnIncrementalScan') as HTMLButtonElement | null;
-    const btnDeep = $('btnDeepScan') as HTMLButtonElement | null;
+    setWorkbenchControlsDisabled(running);
     const btnStop = $('btnStopScan');
-    const btnExport = $('btnExport') as HTMLButtonElement | null;
-    const btnImport = $('btnImportTakeout') as HTMLButtonElement | null;
-    const btnSetDir = $('btnSetDir') as HTMLButtonElement | null;
-    const btnClearExp = $('btnClearExported') as HTMLButtonElement | null;
-    const btnClearAll = $('btnClearAll') as HTMLButtonElement | null;
-
-    if (btnInc) btnInc.disabled = !!running;
-    if (btnDeep) btnDeep.disabled = !!running;
     if (btnStop) btnStop.style.display = running ? 'inline-flex' : 'none';
-    if (btnExport) btnExport.disabled = !!running;
-    if (btnImport) btnImport.disabled = !!running;
-    if (btnSetDir) btnSetDir.disabled = !!running;
-    if (btnClearExp) btnClearExp.disabled = !!running;
-    if (btnClearAll) btnClearAll.disabled = !!running;
 }
 
 function isConnectionError(err: string): boolean {
@@ -58,6 +32,11 @@ export function formatSyncErrorMessage(err: string): string {
     return hasI18n() ? t('syncFailed', errStr) : `同步失败: ${errStr}`;
 }
 
+// Detects HTTP 429 rate limits, quota exhaustion, and Google server limits via unified rateLimiter.
+export function isServerRateOrQuotaLimit(text?: string | null): boolean {
+    return isRateLimited(text);
+}
+
 function _runScan(
     mode: 'incremental' | 'full',
     slot: string,
@@ -69,36 +48,20 @@ function _runScan(
     setScanRunning(true);
     if (onStart) onStart();
 
-    chrome.runtime.sendMessage({ action: 'deepScan', mode, accountSlot: slot || 'u0' }, (res: any) => {
+    // UI-to-background timeout is buffered higher than the background tab RPC timeout
+    // (300s full, 90s incremental) to prevent scanRunning from getting permanently stuck.
+    const uiTimeoutMs = mode === 'full' ? 330000 : 120000;
+    const msg: DeepScanMessage = { action: 'deepScan', mode, accountSlot: slot || 'u0' };
+    sendTypedMessage(msg, uiTimeoutMs).then((res: any) => {
         setScanRunning(false);
 
-        if (chrome.runtime.lastError) {
-            const err = chrome.runtime.lastError.message || '';
-            const errMsg = formatSyncErrorMessage(err);
-            if (onLog) onLog(errMsg, 'error');
-            if (onError) onError(new Error(err), errMsg);
-            return;
-        }
-
-        const slidingLimit = (typeof GeminiProtocol !== 'undefined' && GeminiProtocol.LIMITS?.SLIDING_WINDOW) || 500;
+        const slidingLimit = (GeminiProtocol.LIMITS?.SLIDING_WINDOW) || 500;
         const hitGoogleLimit = !!(
             res?.hitGoogleLimit ||
             res?.diagnostics?.hitGoogleLimit ||
             (mode === 'full' && ((res?.count >= slidingLimit) || (res?.total >= slidingLimit))) ||
-            (res?.diagnostics?.stopReason && (
-                res.diagnostics.stopReason.includes('BardErrorInfo') ||
-                res.diagnostics.stopReason.includes('服务端上限') ||
-                res.diagnostics.stopReason.includes(GeminiProtocol?.LIMITS?.SERVER_LIMIT_TEXT || '') ||
-                res.diagnostics.stopReason.includes('1096') ||
-                res.diagnostics.stopReason.includes('429') ||
-                /quota|rate\s*limit|resource_exhausted/i.test(res.diagnostics.stopReason)
-            )) ||
-            (res?.error && (
-                String(res.error).includes('BardErrorInfo') ||
-                String(res.error).includes('1096') ||
-                String(res.error).includes('429') ||
-                /quota|rate\s*limit|resource_exhausted|too\s*many\s*requests/i.test(String(res.error))
-            ))
+            isServerRateOrQuotaLimit(res?.diagnostics?.stopReason) ||
+            isServerRateOrQuotaLimit(res?.error)
         );
 
         if (res && res.success) {
@@ -119,6 +82,11 @@ function _runScan(
             if (onLog) onLog(errMsg, 'error');
             if (onError) onError(new Error(err), errMsg, { hitGoogleLimit, res });
         }
+    }).catch((err: any) => {
+        setScanRunning(false);
+        const errMsg = formatSyncErrorMessage(err?.message || String(err));
+        if (onLog) onLog(errMsg, 'error');
+        if (onError) onError(err instanceof Error ? err : new Error(String(err)), errMsg);
     });
 }
 
@@ -131,7 +99,8 @@ export function startDeepScan(slot: string, callbacks: any = {}): void {
 }
 
 export function stopScan(slot: string, { onStopped, onLog }: any = {}): void {
-    chrome.runtime.sendMessage({ action: 'stopDeepScan', accountSlot: slot || 'u0' }, () => {
+    const msg: StopDeepScanMessage = { action: 'stopDeepScan', accountSlot: slot || 'u0' };
+    chrome.runtime.sendMessage(msg, () => {
         const stopMsg = typeof t === 'function' ? t('stoppingSync') : '正在终止同步...';
         if (onLog) onLog(stopMsg, 'warn');
         setScanRunning(false);
@@ -147,15 +116,5 @@ export const SyncController: SyncControllerContract & { formatSyncErrorMessage?:
     stopScan,
     formatSyncErrorMessage
 };
-
-(SyncController as any).SyncController = SyncController;
-(SyncController as any).default = SyncController;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).SyncController = SyncController;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = SyncController;
-}
 
 export default SyncController;

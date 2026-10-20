@@ -1,4 +1,3 @@
-// src/core/protocol/events.ts - Cross-World and Inter-process event constants and payload contracts
 import { CrossWorldEvents, type CrossWorldEventType } from './protocol.js';
 
 export { CrossWorldEvents, type CrossWorldEventType };
@@ -37,14 +36,6 @@ export interface GeminiStreamCompletePayload {
 export interface GeminiLiveSaveTriggerPayload {
     cid: string;
     reason?: string;
-    [key: string]: any;
+    mockMode?: boolean;
 }
 
-export interface CrossWorldEventMap {
-    [CrossWorldEvents.CREDENTIALS]: GeminiCredentialsPayload;
-    [CrossWorldEvents.CONVERSATION_DELETED]: GeminiConversationDeletedPayload;
-    [CrossWorldEvents.NETWORK_BATCHEXECUTE]: GeminiNetworkBatchexecutePayload;
-    [CrossWorldEvents.STREAM_START]: GeminiStreamStartPayload;
-    [CrossWorldEvents.STREAM_COMPLETE]: GeminiStreamCompletePayload;
-    [CrossWorldEvents.LIVE_SAVE_TRIGGER]: GeminiLiveSaveTriggerPayload;
-}

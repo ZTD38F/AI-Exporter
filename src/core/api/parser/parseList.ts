@@ -1,15 +1,12 @@
-// parseList.ts - MaZiqc conversation list RPC response parser
-import type { GeminiParserExtractorsModule, GeminiJspbSchema } from "./extractors.js";
-
 export interface ConversationListItem {
     id: string;
     title: string;
     titleSource: string;
     titles: { rpc: string };
-    createdAt: number;
-    updatedAt: number;
-    chatTime: number;
-    timestamp: number;
+    createdAt: number | null;
+    updatedAt: number | null;
+    chatTime: number | null;
+    timestamp: number | null;
     messageCount: number;
     url: string;
 }
@@ -26,14 +23,9 @@ export interface GeminiParserParseListModule {
     parseList: (text: string) => ListParseResult;
 }
 
-declare global {
-    var GeminiParserParseList: GeminiParserParseListModule;
-    var extractListItemTimestamp: (item: unknown) => number | null;
-    var parseList: (text: string) => ListParseResult;
-}
-
 import { GEMINI_JSPB_SCHEMA, robustFirstPayload, cleanTitle, isRealTitle, normId } from "./extractors.js";
 import { GeminiProtocol } from "../../protocol/protocol.js";
+import { payloadToMs, extractInnerPayload, extractNextPageToken, extractWithScan } from "./payload.js";
 
 const FALLBACK_SCHEMA = GEMINI_JSPB_SCHEMA;
 
@@ -45,9 +37,6 @@ function getProtocol(): any {
     return GeminiProtocol;
 }
 
-
-
-
     /**
      * Extracts official server-side last updated timestamp from a MaZiqc list item.
      * Google Gemini encodes timestamp as [seconds, nanos] at index 5.
@@ -58,77 +47,39 @@ function getProtocol(): any {
         const schema = getSchema();
         const listItemSchema = schema.LIST_ITEM || FALLBACK_SCHEMA.LIST_ITEM;
 
-        // 1. Primary candidate: index 5 (Google official server updatedAt [sec, nano])
-        const primary = item[listItemSchema.TIMESTAMP];
-        if (Array.isArray(primary) && typeof primary[0] === "number" && primary[0] > 1e9) {
-            return Math.round(primary[0] * 1000 + Math.floor((primary[1] || 0) / 1e6));
-        }
-        if (typeof primary === "number" && primary > 1e9) {
-            return primary > 1e11 ? Math.round(primary) : Math.round(primary * 1000);
-        }
-
-        // 2. Secondary candidates: index 2, 3, 4
-        const alts = [
-            item[listItemSchema.UPDATE_TIME_ALT],
-            item[listItemSchema.CREATE_TIME_ALT],
-            item[listItemSchema.COUNT_ALT1]
+        const candidateIndices = [
+            listItemSchema.TIMESTAMP,
+            listItemSchema.UPDATE_TIME_ALT,
+            listItemSchema.CREATE_TIME_ALT,
+            listItemSchema.COUNT_ALT1
         ];
-        for (const cand of alts) {
-            if (Array.isArray(cand) && typeof cand[0] === "number" && cand[0] > 1e9) {
-                return Math.round(cand[0] * 1000 + Math.floor((cand[1] || 0) / 1e6));
-            }
-            if (typeof cand === "number" && cand > 1e9) {
-                return cand > 1e11 ? Math.round(cand) : Math.round(cand * 1000);
-            }
-        }
 
-        // 3. Fallback: scan any element matching [seconds, nanos]
-        for (let i = 0; i < item.length; i++) {
-            const val = item[i];
-            if (Array.isArray(val) && typeof val[0] === "number" && val[0] > 1e9 && val.length <= 4) {
-                return Math.round(val[0] * 1000 + Math.floor((val[1] || 0) / 1e6));
+        return extractWithScan(
+            item,
+            candidateIndices,
+            (val, idx) => {
+                if (candidateIndices.includes(idx)) {
+                    return payloadToMs(val);
+                }
+                return (Array.isArray(val) && val.length <= 4) ? payloadToMs(val) : null;
             }
-        }
-        return null;
+        );
     }
 
     function parseList(text: string): ListParseResult {
         try {
             let top = robustFirstPayload(text);
-            let innerStr: string | null = null;
             const protocol = getProtocol();
             const wrb = protocol.WRB || "wrb.fr";
             const listRpc = protocol.RPCS ? protocol.RPCS.LIST : "MaZiqc";
 
-            if (Array.isArray(top)) {
-                for (let item of top) {
-                    if (Array.isArray(item) && item[0] === wrb && item[1] === listRpc && typeof item[2] === "string") {
-                        innerStr = item[2];
-                        break;
-                    }
-                }
-                if (!innerStr) {
-                    for (let item of top) {
-                        if (Array.isArray(item) && typeof item[2] === "string" && (item[2].startsWith("[") || item[2].startsWith('"[') || item[2].includes("c_"))) {
-                            innerStr = item[2];
-                            break;
-                        }
-                    }
-                }
-            }
-            if (!innerStr) {
-                let bardError: string | null = null;
-                if (Array.isArray(top)) {
-                    for (let item of top) {
-                        if (Array.isArray(item) && item[5]) {
-                            let str5 = JSON.stringify(item[5]);
-                            if (str5.includes("BardErrorInfo")) {
-                                bardError = str5;
-                                break;
-                            }
-                        }
-                    }
-                }
+            const { inner, innerStr, bardError } = extractInnerPayload(top, {
+                wrb,
+                rpcId: listRpc,
+                heuristicFilter: s => s.startsWith("[") || s.startsWith('"[') || /c_[a-zA-Z0-9_-]{8,64}/.test(s)
+            });
+
+            if (!innerStr || !inner) {
                 if (bardError) {
                     console.log("[Gemini Exporter] Google 服务端翻页到达极限 (BardErrorInfo):", bardError);
                 } else {
@@ -146,8 +97,8 @@ function getProtocol(): any {
                     }
                 };
             }
-            let inner = JSON.parse(innerStr);
-            let list = Array.isArray(inner[1]) ? inner[1] : (Array.isArray(inner[2]) ? inner[2] : []);
+            const innerSchema = GEMINI_JSPB_SCHEMA.INNER;
+            let list = Array.isArray(inner[innerSchema.LIST_SECONDARY]) ? inner[innerSchema.LIST_SECONDARY] : (Array.isArray(inner[innerSchema.METADATA_ONLY_LIST]) ? inner[innerSchema.METADATA_ONLY_LIST] : []);
             let convs: ConversationListItem[] = [];
             const schema = getSchema();
             const listItemSchema = schema.LIST_ITEM || FALLBACK_SCHEMA.LIST_ITEM;
@@ -164,26 +115,19 @@ function getProtocol(): any {
 
                 let createArr = item[listItemSchema.CREATE_TIME_ALT];
                 let updateArr = item[listItemSchema.UPDATE_TIME_ALT];
-                if (Array.isArray(createArr) && typeof createArr[0] === "number" && createArr[0] > 1e9) {
-                    createTs = Math.round(1000 * createArr[0] + Math.floor((createArr[1] || 0) / 1e6));
-                }
-                if (Array.isArray(updateArr) && typeof updateArr[0] === "number" && updateArr[0] > 1e9) {
-                    updateTs = Math.round(1000 * updateArr[0] + Math.floor((updateArr[1] || 0) / 1e6));
-                }
+                createTs = payloadToMs(createArr);
+                updateTs = payloadToMs(updateArr);
 
                 let effectiveTime = serverTs || updateTs || createTs;
-                let fallbackTime = effectiveTime || Date.now();
 
                 if (typeof item[listItemSchema.COUNT_ALT2] === "number") {
                     count = item[listItemSchema.COUNT_ALT2];
                 } else if (typeof item[listItemSchema.COUNT_ALT1] === "number") {
                     count = item[listItemSchema.COUNT_ALT1];
-                } else if (typeof item[5] === "number") {
-                    count = item[5];
                 }
 
                 if (id) {
-                    let cleanId = String(id).replace(/^c_/, "").trim();
+                    let cleanId = normId(id);
                     const cleanT = cleanTitle(title || cleanId);
                     const isReal = isRealTitle(cleanT, cleanId);
                     convs.push({
@@ -191,27 +135,16 @@ function getProtocol(): any {
                         title: cleanT,
                         titleSource: isReal ? "rpc" : "default",
                         titles: { rpc: cleanT },
-                        createdAt: createTs || effectiveTime || fallbackTime,
-                        updatedAt: effectiveTime || fallbackTime,
-                        chatTime: effectiveTime || fallbackTime,
-                        timestamp: effectiveTime || fallbackTime,
+                        createdAt: createTs || effectiveTime || null,
+                        updatedAt: effectiveTime || null,
+                        chatTime: effectiveTime || null,
+                        timestamp: effectiveTime || null,
                         messageCount: count,
                         url: `https://gemini.google.com/app/${cleanId}`
                     });
                 }
             }
-            let nextToken: string | null = null;
-            if (typeof inner[1] === "string" && inner[1].startsWith("tC")) nextToken = inner[1];
-            if (!nextToken && typeof inner[2] === "string" && inner[2].startsWith("tC")) nextToken = inner[2];
-            if (!nextToken && typeof inner[3] === "string" && inner[3].startsWith("tC")) nextToken = inner[3];
-            if (!nextToken && Array.isArray(inner)) {
-                for (let elem of inner) {
-                    if (typeof elem === "string" && elem.startsWith("tC")) {
-                        nextToken = elem;
-                        break;
-                    }
-                }
-            }
+            const nextToken = extractNextPageToken(inner, innerSchema.NEXT_TOKEN_CANDIDATES);
             return {
                 conversations: convs,
                 nextPageToken: nextToken,
@@ -233,11 +166,6 @@ export const GeminiParserParseList: GeminiParserParseListModule = {
     parseList
 };
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).GeminiParserParseList = GeminiParserParseList;
-    (globalThis as any).extractListItemTimestamp = extractListItemTimestamp;
-    (globalThis as any).parseList = parseList;
-}
 if (typeof module === 'object' && module.exports) module.exports = GeminiParserParseList;
 
 export default GeminiParserParseList;

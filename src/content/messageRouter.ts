@@ -1,10 +1,26 @@
-// src/content/messageRouter.ts - Content script runtime message dispatcher & RPC handlers
 import { SyncEngine } from './syncEngine.js';
 import { DomScraper } from './domScraper.js';
 import { AssetFetcher } from './assetFetcher.js';
 import { contentContext } from './contentContext.js';
 import { StorageService } from '../core/storage/storageService.js';
-import { GeminiUtils, getErrorMessage } from '../core/utils/utils.js';
+import { GeminiUtils, getErrorMessage, resolveDetailTitle as defaultResolveDetailTitle } from '../core/utils/utils.js';
+import { normId } from '../core/utils/pathUtils.js';
+import { isRateLimited } from '../core/engine/export/rateLimiter.js';
+import { isConfirmedDeletedError } from '../core/protocol/protocol.js';
+import { getExtensionVersion } from '../core/utils/constants.js';
+import { resolveProvider } from '../core/provider/providerResolver.js';
+import { registerCleanup } from './cleanupRegistry.js';
+import type { GetConversationDetailMessage } from '../types/messages.js';
+
+// Only allow HTTPS URLs on Google media/content hosts before fetching assets.
+function isAllowedAssetUrl(u: unknown): boolean {
+    if (typeof u !== 'string' || !u) return false;
+    let parsed: URL;
+    try { parsed = new URL(u); } catch { return false; }
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return /(^|\.)(googleusercontent\.com|gstatic\.com|googleapis\.com|google\.com)$/.test(host);
+}
 
 export interface MessageRouterDeps {
     syncEngine?: typeof SyncEngine;
@@ -18,8 +34,8 @@ export function init({
     syncEngine = SyncEngine,
     scraper = DomScraper,
     assets = AssetFetcher,
-    storage = (typeof StorageService !== 'undefined' ? StorageService : null),
-    utils = (typeof GeminiUtils !== 'undefined' ? GeminiUtils : null)
+    storage = StorageService,
+    utils = GeminiUtils
 }: MessageRouterDeps = {}): void {
     const Sync = syncEngine;
     const Scraper = scraper;
@@ -29,14 +45,29 @@ export function init({
 
     const cleanTitle = (t?: string | null) => (Utils?.cleanTitle ? Utils.cleanTitle(t || '') : (t || '').trim());
     const isRealTitle = (t?: string | null, id?: string) => (Utils?.isRealTitle ? Utils.isRealTitle(t || '', id) : !!(t && String(t).trim().length > 1));
-    const setTitleBySource = (it: any, src: string, val: string) => (Utils?.setTitleBySource ? Utils.setTitleBySource(it, src, val) : ((it.titles = it.titles || {})[src] = val));
+    const setTitleBySource = (it: any, src: string, val: string) => {
+        if (Utils?.setTitleBySource) return Utils.setTitleBySource(it, src, val);
+        const rel = Utils?.normalizeReliableTitleSource ? Utils.normalizeReliableTitleSource(src) : undefined;
+        if (rel && it) {
+            (it.titles = it.titles || {})[rel] = val;
+        }
+    };
+    const resolveDetailTitle = (msgs: any[], id?: string) => (Utils?.resolveDetailTitle ? Utils.resolveDetailTitle(msgs, id) : defaultResolveDetailTitle(msgs, id));
 
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.onMessage) return;
 
-    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    const dispatchMessage = (msg: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
+        // Exactly-once responder to avoid leaving message port open on failure.
+        let responded = false;
+        const respond = (response: any) => {
+            if (responded) return;
+            responded = true;
+            try { sendResponse(response); } catch { /* port may be gone */ }
+        };
+        try {
         if (msg.action === 'ping') {
-            const ver = (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || (typeof __EXT_VERSION__ !== 'undefined' ? __EXT_VERSION__ : '1.4.3');
-            sendResponse({
+            const ver = getExtensionVersion();
+            respond({
                 ok: true,
                 version: ver,
                 ver: ver
@@ -45,16 +76,23 @@ export function init({
         }
 
         if (msg.action === 'deepScan') {
-            (async () => {
+            void (async () => {
                 try {
                     let res: any = null;
                     if (Sync && Sync.tryBatchExecuteFull) {
                         res = await Sync.tryBatchExecuteFull({
-                            forceIncremental: msg.mode === 'incremental',
                             forceFull: msg.mode === 'full'
                         });
                     }
-                    sendResponse({
+                    if (!res) {
+                        respond({
+                            success: false,
+                            count: 0,
+                            error: 'deep scan did not produce a result (already running or provider unavailable)'
+                        });
+                        return;
+                    }
+                    respond({
                         success: true,
                         count: res?.count || 0,
                         diagnostics: res?.diagnostics,
@@ -62,11 +100,8 @@ export function init({
                     });
                 } catch (e: unknown) {
                     const errStr = getErrorMessage(e);
-                    const isLimit = errStr.includes('BardErrorInfo')
-                        || errStr.includes('1096')
-                        || errStr.includes('429')
-                        || /quota|rate\s*limit|resource_exhausted|too\s*many\s*requests/i.test(errStr);
-                    sendResponse({ success: false, error: errStr, hitGoogleLimit: isLimit });
+                    const isLimit = isRateLimited({ success: false, error: errStr });
+                    respond({ success: false, error: errStr, hitGoogleLimit: isLimit });
                 }
             })();
             return true;
@@ -74,19 +109,18 @@ export function init({
 
         if (msg.action === 'stopDeepScan' || msg.action === 'abortSync') {
             contentContext.abort();
-            // Static anchor for regression lock (tests/regression_p0.test.js)
             if (typeof window !== 'undefined') {
                 const w = window as any;
                 w.__gemExporterAborted = true;
                 try { w.__gemExporterActiveClient && w.__gemExporterActiveClient.abort(); } catch { /* intentional: best-effort cleanup */ }
             }
-            sendResponse({ ok: true, aborted: true });
+            respond({ ok: true, aborted: true });
             return true;
         }
 
         if (msg.action === 'getScrollContainer') {
             const c = Scraper ? Scraper.getScrollContainer() : null;
-            sendResponse({
+            respond({
                 found: !!c,
                 tag: c?.tagName || null,
                 id: c?.id || null,
@@ -96,38 +130,44 @@ export function init({
         }
 
         if (msg.action === 'getConversationDetail') {
-            const cid = msg.conversationId || msg.id;
+            const detailMsg = msg as GetConversationDetailMessage;
+            const cid = detailMsg.conversationId;
             if (!cid) {
-                sendResponse({ success: false, error: 'no id' });
+                respond({ success: false, error: 'no id' });
                 return true;
             }
-            (async () => {
+            void (async () => {
                 async function persistDetailTitle(chatObj: any): Promise<void> {
                     if (!chatObj) return;
-                    const normId = (id: string) => String(id || '').replace(/^c_/, '').trim();
                     const nid = normId(cid || chatObj.id);
                     chatObj.title = cleanTitle(chatObj.title);
                     let detectedSource = chatObj.titleSource || 'rpc';
                     if (!isRealTitle(chatObj.title, nid) && Array.isArray(chatObj.messages)) {
-                        const firstUser = chatObj.messages.find((m: any) => m.role === 'user' && m.content && m.content.trim());
-                        if (firstUser) {
-                            const candidate = cleanTitle(firstUser.content.trim().slice(0, 60).replace(/\n+/g, ' '));
-                            if (isRealTitle(candidate, nid)) {
-                                chatObj.title = candidate;
-                                detectedSource = 'sniff';
-                            }
+                        const sniffed = resolveDetailTitle(chatObj.messages, nid);
+                        if (sniffed) {
+                            chatObj.title = sniffed.title;
+                            detectedSource = sniffed.source;
                         }
                     }
                     if (!isRealTitle(chatObj.title, nid)) return;
-                    const slot = msg.accountSlot || (Sync && Sync.getAccountSlot ? Sync.getAccountSlot() : 'u0');
+                    const slot = detailMsg.accountSlot || (Sync && Sync.getAccountSlot ? Sync.getAccountSlot() : 'u0');
                     try {
-                        if (Storage) {
-                            const list = await Storage.getConversations(slot);
-                            const item = list.find((c: any) => normId(c.id) === nid);
-                            if (item) {
+                        // SSOT: single-item title update runs inside the cross-tab
+                        // conversation lock via updateConversation. The old shape
+                        // (read list outside the lock, mutate, blind setConversations)
+                        // could clobber a concurrent tab's sync (lost update), and
+                        // bypassed nothing here since setTitleBySource already
+                        // arbitrates through the title tiers.
+                        if (Storage && typeof Storage.updateConversation === 'function') {
+                            await Storage.updateConversation(slot, nid, (current: any) => {
+                                if (!current) return null;
+                                const item = { ...current, titles: { ...(current.titles || {}) } };
+                                const beforeTitle = item.title;
+                                const beforeSource = item.titleSource;
                                 setTitleBySource(item, detectedSource, chatObj.title);
-                                await Storage.setConversations(slot, list);
-                            }
+                                if (item.title === beforeTitle && item.titleSource === beforeSource) return null;
+                                return { title: item.title, titleSource: item.titleSource, titles: item.titles };
+                            });
                         }
                     } catch (err) {
                         console.warn('[Gemini Exporter] persistDetailTitle error', err);
@@ -136,13 +176,12 @@ export function init({
 
                 let batchexecuteEmptyDebug: any = null;
                 try {
-                    const ClientClass = (typeof GeminiAPIClient !== 'undefined' ? GeminiAPIClient : null) as any;
-                    if (ClientClass) {
-                        const client = new ClientClass();
-                        const detail = await client.getConversationDetail(cid, msg.targetSid || null);
+                    const provider = resolveProvider();
+                    if (provider) {
+                        const detail = await provider.fetchConversationDetail(cid, { targetSid: detailMsg.targetSid || null });
                         if (detail && Array.isArray(detail.messages) && detail.messages.length > 0) {
                             await persistDetailTitle(detail);
-                            sendResponse({ success: true, data: detail, source: 'batchexecute' });
+                            respond({ success: true, data: detail, source: 'batchexecute' });
                             return;
                         } else if (detail) {
                             const rawKeys = detail._raw ? Object.keys(detail._raw) : [];
@@ -160,33 +199,81 @@ export function init({
                     if (contentContext.isDevMode()) {
                         console.warn('[Gemini Exporter] batchexecute detail fail, fallback to DOM', errMsg);
                     }
+                    const isRpcDeleted = isConfirmedDeletedError(errMsg);
+                    if (isRpcDeleted) {
+                        const slot = detailMsg.accountSlot || (Sync && Sync.getAccountSlot ? Sync.getAccountSlot() : 'u0');
+                        try {
+                            if (Storage && typeof Storage.removeConversation === 'function') {
+                                await Storage.removeConversation(slot, cid);
+                                const syncMeta = (Storage.getLastSync && typeof Storage.getLastSync === 'function')
+                                    ? await Storage.getLastSync(slot)
+                                    : { count: (await Storage.getConversations(slot)).length };
+                                const count = syncMeta.count;
+                                if (Sync && Sync.updateBadge) {
+                                    Sync.updateBadge(count, 0);
+                                }
+                                try {
+                                    void chrome.runtime.sendMessage({
+                                        action: 'syncUpdate',
+                                        slot,
+                                        count,
+                                        from: 'prune-dead-chat'
+                                    });
+                                } catch (e) {
+                                    if (contentContext.isDevMode()) console.debug('[GemExporter:messageRouter]', e);
+                                }
+                            }
+                        } catch (e) {
+                            if (contentContext.isDevMode()) console.debug('[GemExporter:messageRouter]', e);
+                        }
+                        const errDeleted = contentContext.isZh() ? '云端会话已被删除或不存在' : 'Cloud conversation deleted or does not exist';
+                        respond({
+                            success: true,
+                            data: {
+                                id: cid,
+                                title: cid,
+                                messages: [],
+                                _empty: true,
+                                isDeleted: true,
+                                error: errDeleted,
+                                _debug: { batchexecuteEmptyDebug: { error: errMsg, isDeleted: true }, isDeleted: true }
+                            },
+                            source: 'batchexecute'
+                        });
+                        return;
+                    }
                 }
                 try {
                     if (Scraper) {
                         const chat = await Scraper.contentFetchChatDetail(cid);
                         if (chat && Array.isArray(chat.messages) && chat.messages.length > 0) {
                             await persistDetailTitle(chat);
-                            sendResponse({ success: true, data: chat, source: 'dom' });
+                            respond({ success: true, data: chat, source: 'dom' });
                             return;
                         } else {
                             if (contentContext.isDevMode()) {
                                 console.warn('[Gemini Exporter] DOM fallback returned empty messages', cid, 'messages', chat?.messages?.length, 'has _raw', !!chat?._raw);
                             }
-                            const isConfirmedDeleted = !!chat?.isDeleted || !!chat?._debug?.isNotFound;
+                            const isConfirmedDeleted = !!chat?.isDeleted
+                                || !!chat?._debug?.isNotFound
+                                || (typeof chat?.error === 'string' && (chat.error.includes('删除或不存在') || chat.error.includes('服务端删除')));
                             if (isConfirmedDeleted) {
-                                const slot = msg.accountSlot || (Sync && Sync.getAccountSlot ? Sync.getAccountSlot() : 'u0');
+                                const slot = detailMsg.accountSlot || (Sync && Sync.getAccountSlot ? Sync.getAccountSlot() : 'u0');
                                 try {
                                     if (Storage && typeof Storage.removeConversation === 'function') {
                                         await Storage.removeConversation(slot, cid);
-                                        const updatedList = await Storage.getConversations(slot);
+                                        const syncMeta = (Storage.getLastSync && typeof Storage.getLastSync === 'function')
+                                            ? await Storage.getLastSync(slot)
+                                            : { count: (await Storage.getConversations(slot)).length };
+                                        const count = syncMeta.count;
                                         if (Sync && Sync.updateBadge) {
-                                            Sync.updateBadge(updatedList.length, 0);
+                                            Sync.updateBadge(count, 0);
                                         }
                                         try {
-                                            chrome.runtime.sendMessage({
+                                            void chrome.runtime.sendMessage({
                                                 action: 'syncUpdate',
                                                 slot,
-                                                count: updatedList.length,
+                                                count,
                                                 from: 'prune-dead-chat'
                                             });
                                         } catch (e) {
@@ -198,55 +285,77 @@ export function init({
                                 }
                             }
                             const mergedDebug = { batchexecuteEmptyDebug, domDebug: chat?._debug || null, domHtmlLen: chat?._debug?.htmlLen || null, isDeleted: isConfirmedDeleted };
-                            sendResponse({ success: true, data: { ...chat, _empty: true, isDeleted: isConfirmedDeleted, error: isConfirmedDeleted ? '云端会话已被删除或不存在' : (chat?.error || 'DOM 返回内容为空'), _debug: mergedDebug, _debug_dom_empty: true }, source: 'dom' });
+                            const errDeleted = contentContext.isZh() ? '云端会话已被删除或不存在' : 'Cloud conversation deleted or does not exist';
+                            const errDomEmpty = contentContext.isZh() ? 'DOM 返回内容为空' : 'DOM returned empty content';
+                            respond({
+                                success: true,
+                                data: {
+                                    ...chat,
+                                    id: chat?.id || cid,
+                                    title: chat?.title || cid,
+                                    messages: [],
+                                    _empty: true,
+                                    isEmpty: !isConfirmedDeleted,
+                                    isDeleted: isConfirmedDeleted,
+                                    error: isConfirmedDeleted ? errDeleted : (chat?.error || errDomEmpty),
+                                    _debug: mergedDebug,
+                                    _debug_dom_empty: true
+                                },
+                                source: 'dom'
+                            });
                             return;
                         }
                     }
                 } catch (e: unknown) {
                     const errMsg = getErrorMessage(e);
                     const mergedDebug = { batchexecuteEmptyDebug, domError: errMsg };
-                    sendResponse({ success: false, error: errMsg, _debug: mergedDebug });
+                    respond({ success: false, error: errMsg, _debug: mergedDebug });
                 }
+                // S1: fail closed — every response path above returns, so
+                // reaching here means nothing was sent (e.g. no provider
+                // and no scraper). Never leave the port hanging. The
+                // exactly-once guard makes this a no-op when a response
+                // was already produced.
+                respond({ ok: false, success: false, error: 'conversation detail unavailable: no provider or scraper produced a result' });
             })();
             return true;
         }
 
         if (msg.action === 'getFileBlob') {
-            if (Assets) Assets.handleGetFileBlob(msg, sendResponse);
-            else sendResponse({ success: false, error: 'AssetFetcher not loaded' });
+            if (!isAllowedAssetUrl(msg.url)) { respond({ success: false, error: 'blocked: asset url not allowlisted (' + String(msg.url).split('?')[0].slice(0, 160) + ')'  }); return true; }
+            if (Assets) void Assets.handleGetFileBlob(msg, respond);
+            else respond({ success: false, error: 'AssetFetcher not loaded' });
             return true;
         }
 
         if (msg.action === 'getImageBlob') {
-            if (Assets) Assets.handleGetImageBlob(msg, sendResponse);
-            else sendResponse({ success: false, error: 'AssetFetcher not loaded' });
+            if (!isAllowedAssetUrl(msg.url)) { respond({ success: false, error: 'blocked: asset url not allowlisted (' + String(msg.url).split('?')[0].slice(0, 160) + ')'  }); return true; }
+            if (Assets) void Assets.handleGetImageBlob(msg, respond);
+            else respond({ success: false, error: 'AssetFetcher not loaded' });
             return true;
         }
 
         if (msg.action === 'downloadAssetDirect') {
-            if (Assets) Assets.downloadAssetDirect(msg, sendResponse);
-            else sendResponse({ success: false, error: 'AssetFetcher not loaded' });
+            if (!isAllowedAssetUrl(msg.url)) { respond({ success: false, error: 'blocked: asset url not allowlisted (' + String(msg.url).split('?')[0].slice(0, 160) + ')'  }); return true; }
+            if (Assets) void Assets.downloadAssetDirect(msg, respond);
+            else respond({ success: false, error: 'AssetFetcher not loaded' });
             return true;
         }
 
         // Unknown action: structured error instead of port closed
-        try { sendResponse({ ok: false, error: `unknown action: ${msg.action}` }); } catch {}
+        respond({ ok: false, success: false, error: `unknown action: ${msg.action}` });
+        } catch (e: unknown) {
+            respond({ ok: false, success: false, error: getErrorMessage(e) });
+        }
+    };
+    chrome.runtime.onMessage.addListener(dispatchMessage);
+    registerCleanup(() => {
+        try { chrome.runtime.onMessage.removeListener(dispatchMessage); } catch { /* already gone */ }
     });
 }
 
 export const MessageRouter = {
     init
 };
-
-
-(MessageRouter as any).MessageRouter = MessageRouter;
-(MessageRouter as any).default = MessageRouter;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).MessageRouter = MessageRouter;
-}
-if (typeof module !== 'undefined' && (module as any).exports) {
-    (module as any).exports = MessageRouter;
-}
 
 export default MessageRouter;

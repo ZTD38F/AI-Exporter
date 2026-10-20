@@ -4,7 +4,6 @@ import assert from 'node:assert';
 // 1. AbortManager unit tests
 test('abortManager - per-slot abort isolation and session storage persistence', async () => {
     const {
-        __bgAborts,
         isSlotAborted,
         setSlotAborted,
         restoreAbortFlags,
@@ -180,7 +179,7 @@ test('liveSaveHandler - directory missing and deletion detection', async () => {
 });
 
 test('liveSaveHandler - persists to gemini_export with cid6 filename and assets', async () => {
-    const { handleLiveSaveViaHandle, base64ToUint8Array } = require('../src/background/liveSaveHandler.js');
+    const { handleLiveSaveViaHandle } = require('../src/background/liveSaveHandler.js');
     const idbStore = require('../src/core/storage/idbHandleStore.js');
 
     let writtenFiles: Record<string, any> = {};
@@ -223,6 +222,14 @@ test('liveSaveHandler - persists to gemini_export with cid6 filename and assets'
     const origGetHandle = idbStore.getStoredDirHandle;
     idbStore.getStoredDirHandle = async () => mockHandle;
 
+    // Phase A (P1-2): 拦截 saveExportRecord，断言 partial 记录语义
+    const storageMod = require('../src/core/storage/storageService.js');
+    const origSaveExportRecord = storageMod.StorageService.saveExportRecord;
+    let savedRecord: any = null;
+    storageMod.StorageService.saveExportRecord = async (slot: string, nid: string, rec: any) => {
+        savedRecord = { slot, nid, rec };
+    };
+
     const origChrome = (global as any).chrome;
     (global as any).chrome = {
         storage: {
@@ -256,7 +263,12 @@ test('liveSaveHandler - persists to gemini_export with cid6 filename and assets'
         };
 
         const res = await handleLiveSaveViaHandle(payload, 'u0');
-        assert.strictEqual(res.ok, true);
+        // Phase A (P1-2): 空附件不再静默跳过 —— ok=false + failedAssets 累积，
+        // 主 md 照常落盘，导出记录标 partial 保证下次增量重试。
+        assert.strictEqual(res.ok, false, '附件失败后 ok 应为 false，不再静默标成功');
+        assert.ok(Array.isArray(res.failedAssets), '应返回 failedAssets 明细');
+        assert.strictEqual(res.failedAssets.length, 1);
+        assert.strictEqual(res.failedAssets[0].file, 'abcdef_t1_empty.jpg');
         assert.strictEqual(createdFolder, 'gemini_export', 'Must strictly use gemini_export folder');
         assert.strictEqual(res.targetFile, 'Quantum Teleportation_abcdef.md', 'Must use cid6 filename');
         assert.ok('Quantum Teleportation_abcdef.md' in writtenFiles);
@@ -264,7 +276,13 @@ test('liveSaveHandler - persists to gemini_export with cid6 filename and assets'
         assert.strictEqual(Buffer.from(writtenFiles['assets/abcdef_t1_img1.png']).toString(), 'png-bytes');
         // The empty asset with {} should be safely skipped and NOT written
         assert.strictEqual('assets/abcdef_t1_empty.jpg' in writtenFiles, false);
+
+        // partial 记录断言
+        assert.ok(savedRecord, '主 md 成功应照常写导出记录');
+        assert.strictEqual(savedRecord.rec.status, 'partial', '附件失败时记录应标 partial');
+        assert.strictEqual(savedRecord.rec.hasFailedAssets, true);
     } finally {
+        storageMod.StorageService.saveExportRecord = origSaveExportRecord;
         idbStore.getStoredDirHandle = origGetHandle;
         (global as any).chrome = origChrome;
     }

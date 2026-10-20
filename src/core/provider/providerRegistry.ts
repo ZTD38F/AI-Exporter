@@ -40,7 +40,7 @@ export class ProviderRegistryClass {
 
     setDefaultProviderId(id: ProviderId): void {
         if (!this.providers.has(id)) {
-            throw new Error(`Cannot set unregistered provider "${id}" as default`);
+            throw new Error(`Cannot set default provider: unregistered id "${id}"`);
         }
         this.defaultProviderId = id;
     }
@@ -51,7 +51,18 @@ export class ProviderRegistryClass {
 
     findByUrl(url: string): AIProvider | undefined {
         for (const provider of this.providers.values()) {
-            if (provider.matchesUrl(url)) return provider;
+            if (typeof provider.matchesUrl === 'function') {
+                if (provider.matchesUrl(url)) return provider;
+                continue; // explicit refusal is authoritative
+            }
+            const hostPatterns = provider.hostPatterns || [];
+            if (hostPatterns.some((p: string) => {
+                try {
+                    const u = new URL(url);
+                    const match = new URL(p.replace(/\*$/, ''));
+                    return u.origin === match.origin && u.pathname.startsWith(match.pathname);
+                } catch { return false; }
+            })) return provider;
         }
         return undefined;
     }

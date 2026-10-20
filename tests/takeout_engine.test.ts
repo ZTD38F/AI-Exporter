@@ -223,7 +223,7 @@ test('takeout_engine - stripHtmlTags removes nested HTML and script injections s
 
     const dirty = '<div class="outer"><p>Hello <b>World</b>!</p><script>alert(1)</script></div>';
     const clean = TakeoutParser.stripHtmlTags(dirty);
-    assert.strictEqual(clean, 'Hello World!alert(1)');
+    assert.strictEqual(clean, 'Hello World!');
 
     const nested = '<div><span>deep <i>text</i></span></div>';
     assert.strictEqual(TakeoutParser.stripHtmlTags(nested), 'deep text');
@@ -253,7 +253,9 @@ test('takeout_engine - parseTakeoutZip detects structure drift and throws descri
             await TakeoutEngine.parseTakeoutZip(zipBuffer);
         },
         (err: any) => {
-            return err && String(err.message).includes('Takeout');
+            return err instanceof Error &&
+                   err.name === 'TakeoutParseError' &&
+                   (err.message.includes('未能识别') || err.message.includes('导出结构') || err.message.includes('format') || err.message.includes('structure'));
         }
     );
 });
@@ -272,7 +274,8 @@ test('takeout_engine - takeoutHtmlParser parsing helpers', () => {
     // Timestamp extraction test
     const blockWithZhTime = '2026年3月15日 下午2:30:00';
     const ts = TakeoutHtmlParser.parseTakeoutTimestamp(blockWithZhTime);
-    assert.ok(typeof ts === 'number' && ts > 0, 'Parsed timestamp must be valid number');
+    const expectedTs = new Date(2026, 2, 15, 14, 30, 0).getTime();
+    assert.strictEqual(ts, expectedTs, 'Parsed timestamp must match exact expected Date value');
 });
 
 test('takeout_engine - parseTakeoutZip S-4 memory guardrail on oversized MyActivity.html', async () => {

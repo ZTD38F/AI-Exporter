@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "conversation": {
+    "key": {
+      "providerId": "gemini",
+      "accountId": "acct-demo",
+      "conversationId": "conv-unknown-001"
+    },
+    "messages": [
+      {
+        "id": "a1",
+        "role": "assistant",
+        "blocks": [
+          {
+            "id": "a1:b0",
+            "type": "unknown",
+            "sourceType": "gemini.future_rich_object",
+            "text": "Readable fallback preserved for unsupported future object."
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [],
+  "citations": []
+}

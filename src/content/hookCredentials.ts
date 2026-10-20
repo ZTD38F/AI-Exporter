@@ -1,16 +1,21 @@
-// src/content/hookCredentials.ts - MAIN world, captures Gemini credentials safely (no inline)
 import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
+import type {
+    GeminiCredentialsPayload,
+    GeminiConversationDeletedPayload,
+    GeminiStreamStartPayload,
+    GeminiStreamCompletePayload,
+    GeminiNetworkBatchexecutePayload
+} from '../core/protocol/events.js';
 
 (() => {
     if (typeof window === 'undefined') return;
 
-    // Protocol anti-corruption layer: globalThis / window fallback
-    const Proto = typeof GeminiProtocol !== 'undefined' ? GeminiProtocol : ((window as any).GeminiProtocol || null);
+    const Proto: any = GeminiProtocol;
     if (!Proto) {
         console.error('[HookCred] GeminiProtocol missing — check manifest content_scripts load order');
         return;
     }
-    const Events = (Proto && (Proto.EVENTS || Proto.CrossWorldEvents)) || (typeof CrossWorldEvents !== 'undefined' ? CrossWorldEvents : ((window as any).CrossWorldEvents || (window as any).GeminiProtocol?.EVENTS));
+    const Events = (Proto && (Proto.EVENTS || Proto.CrossWorldEvents)) || CrossWorldEvents;
 
     const origFetch = window.fetch;
     const origOpen = (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) ? XMLHttpRequest.prototype.open : null;
@@ -25,11 +30,9 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
             if (!url) return;
             const u = url.toString();
             if (!u.includes('batchexecute')) return;
-            // Extract at, f.sid, bl
             let atMatch = u.match(/[?&]at=([^&]+)/) || (body && typeof body === 'string' && body.match(/at=([^&]+)/));
             const sidMatch = u.match(/[?&]f\.sid=([^&]+)/) || u.match(/f\.sid=([^&]+)/);
             const blMatch = u.match(/[?&]bl=([^&]+)/);
-            // Also from body if URLSearchParams
             if (body && typeof body === 'string') {
                 try {
                     const params = new URLSearchParams(body);
@@ -42,15 +45,8 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
                 }
             }
             if (atMatch || sidMatch) {
-                // Infer account slot from URL path /u/1/
-                let slot = 'default';
-                const m = u.match(/\/u\/(\d+)\//);
-                if (m) slot = 'u' + m[1];
-                else {
-                    const m2 = location.pathname.match(/\/u\/(\d+)(?:\/|$)/);
-                    if (m2) slot = 'u' + m2[1];
-                }
-                const payload = {
+                const slot = getSlotFromUrl(u);
+                const payload: GeminiCredentialsPayload = {
                     at: atMatch ? decodeURIComponent(atMatch[1]) : '',
                     sid: sidMatch ? decodeURIComponent(sidMatch[1]) : '',
                     bl: blMatch ? decodeURIComponent(blMatch[1]) : '',
@@ -58,6 +54,7 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
                     lastUsed: Date.now(),
                     url: location.href
                 };
+                // broadcast, not a private channel; targetOrigin is locked to page origin.
                 window.postMessage({
                     type: Events.CREDENTIALS,
                     payload
@@ -75,14 +72,7 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
                           ((url || '').toString().includes(Proto.RPCS.DELETE));
             if (!hasGz) return;
 
-            let slot = 'default';
-            const uStr = (url || '').toString();
-            const m = uStr.match(/\/u\/(\d+)\//);
-            if (m) slot = 'u' + m[1];
-            else {
-                const m2 = location.pathname.match(/\/u\/(\d+)(?:\/|$)/);
-                if (m2) slot = 'u' + m2[1];
-            }
+            const slot = getSlotFromUrl(url);
 
             let targetText = (body || '') + ' ' + (responseText || '');
             try {
@@ -100,7 +90,7 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
                 const deletedId = idMatch[1];
                 window.postMessage({
                     type: Events.CONVERSATION_DELETED,
-                    payload: { id: deletedId, slot }
+                    payload: { id: deletedId, slot } as GeminiConversationDeletedPayload
                 }, location.origin);
             }
         } catch (e) {
@@ -154,9 +144,14 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
         try {
             const convId = extractConversationId(url, body);
             const slot = getSlotFromUrl(url);
+            try {
+                (window as any).__geminiIsStreaming = true;
+                (window as any).__geminiLastStreamStart = Date.now();
+                if (convId) (window as any).__geminiActiveStreamConvId = convId;
+            } catch {}
             window.postMessage({
                 type: Events.STREAM_START,
-                payload: { id: convId, slot }
+                payload: { id: convId, slot } as GeminiStreamStartPayload
             }, location.origin);
         } catch (e) {
             if (isDev()) console.debug('[GemExporter:hook]', e);
@@ -167,9 +162,14 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
         try {
             const convId = extractConversationId(url, body, responseText);
             const slot = getSlotFromUrl(url);
+            try {
+                (window as any).__geminiIsStreaming = false;
+                (window as any).__geminiLastStreamComplete = Date.now();
+                if (convId) (window as any).__geminiActiveStreamConvId = convId;
+            } catch {}
             window.postMessage({
                 type: Events.STREAM_COMPLETE,
-                payload: { id: convId, slot, url: (url || '').toString() }
+                payload: { id: convId, slot, url: (url || '').toString() } as GeminiStreamCompletePayload
             }, location.origin);
         } catch (e) {
             if (isDev()) console.debug('[GemExporter:hook]', e);
@@ -190,14 +190,61 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
                     text: text.slice(0, 3000000), // Protect against memory spikes
                     slot,
                     url: (url || '').toString()
-                }
+                } as GeminiNetworkBatchexecutePayload
             }, location.origin);
         } catch (e) {
             if (isDev()) console.debug('[GemExporter:hook]', e);
         }
     }
 
-    // Hook Fetch
+    const BATCHEXECUTE_SNIFF_CAP = 3 * 1024 * 1024;
+
+    async function readCappedText(response: Response, cap: number = BATCHEXECUTE_SNIFF_CAP): Promise<{ text: string; truncated: boolean }> {
+        try {
+            const body: any = (response as any).body;
+            if (body && typeof body.getReader === 'function') {
+                const reader = body.getReader();
+                const chunks: Uint8Array[] = [];
+                let received = 0;
+                let truncated = false;
+                try {
+                    for (;;) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        if (value && value.length) {
+                            const room = cap - received;
+                            if (room <= 0) { truncated = true; break; }
+                            if (value.length > room) {
+                                chunks.push(value.slice(0, room));
+                                received += room;
+                                truncated = true;
+                                break;
+                            }
+                            chunks.push(value);
+                            received += value.length;
+                        }
+                    }
+                } finally {
+                    try {
+                        if (truncated && typeof reader.cancel === 'function') await reader.cancel();
+                    } catch (_) { /* best effort */ }
+                    try { reader.releaseLock(); } catch (_) { /* best effort */ }
+                }
+                const merged = new Uint8Array(received);
+                let off = 0;
+                for (const c of chunks) { merged.set(c, off); off += c.length; }
+                const decoded = (typeof TextDecoder !== 'undefined')
+                    ? new TextDecoder().decode(merged)
+                    : String.fromCharCode.apply(null, Array.from(merged.slice(0, 65536)) as number[]);
+                return { text: decoded, truncated };
+            }
+        } catch (e) {
+            if (isDev()) console.debug('[GemExporter:hook]', e);
+        }
+        const txt = await response.text();
+        return txt.length > cap ? { text: txt.slice(0, cap), truncated: true } : { text: txt, truncated: false };
+    }
+
     if (origFetch) {
         window.fetch = async function(...args: any[]) {
             const url = args[0];
@@ -219,7 +266,7 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
                 const u = (url || '').toString();
                 if (u.includes('batchexecute')) {
                     const cloned = response.clone();
-                    cloned.text().then((txt: string) => {
+                    readCappedText(cloned).then(({ text: txt }) => {
                         try {
                             detectDeletedConversation(url, body, txt);
                             broadcastBatchexecute(url, txt);
@@ -232,7 +279,7 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
                 } else if (isStreamUrl(url)) {
                     try {
                         const cloned = response.clone();
-                        cloned.text().then((txt: string) => {
+                        readCappedText(cloned).then(({ text: txt }) => {
                             try {
                                 broadcastStreamComplete(url, body, txt);
                             } catch (e) {
@@ -253,7 +300,6 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
         };
     }
 
-    // Hook XHR
     if (origOpen && origSend) {
         XMLHttpRequest.prototype.open = function(...args: any[]) {
             try {
@@ -304,6 +350,22 @@ import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
     }
 
     if (isDev()) console.log('[Gemini Exporter] MAIN world credentials hook initialized');
+
+    // Playwright/e2e test hook (test-only, NOT for production use):
+    // exposes a syncOnce trigger on window so specs can drive a real DOM-tier
+    // sync against the live page. This script runs in the MAIN world, so the
+    // hook is callable from page.evaluate; it only dispatches a DOM event, and
+    // the ISOLATED-world content script listens for it and runs the real
+    // Sync.syncOnce(). Precedent: window.TakeoutController /
+    // window.SyncController in options.ts (documented Playwright/live-harness
+    // hooks, kept by user decision).
+    try {
+        (window as any).__geminiExporterSyncOnce = () => {
+            document.dispatchEvent(new CustomEvent('gemini-exporter:test-sync-once'));
+        };
+    } catch (e) {
+        if (isDev()) console.debug('[GemExporter:hook]', e);
+    }
 })();
 
 export {};

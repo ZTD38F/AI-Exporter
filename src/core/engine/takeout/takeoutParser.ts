@@ -1,19 +1,14 @@
-/**
- * src/core/engine/takeout/takeoutParser.ts
- * Google Takeout ZIP archive unpacker and orchestration coordinator.
- * Delegates HTML parsing and image correlation to takeoutHtmlParser.ts,
- * integrates ZipBombGuard and MediaIndex, and enforces memory guardrails (S-4).
- */
 
 import { normId as utilsNormId } from "../../utils/utils.js";
-import { ZipBombGuard, type ZipBombGuardModule } from "./zipBombGuard.js";
-import { MediaIndex, type MediaIndexModule } from "./mediaIndex.js";
+import { ZipBombGuard } from "./zipBombGuard.js";
+import { I18n as I18nStatic } from "../../utils/i18n.js";
+import { __resolveModule } from "../../utils/moduleOverrides.js";
+import { MediaIndex } from "./mediaIndex.js";
 import {
     stripHtmlTags as htmlStripTags,
     parseTakeoutHtmlBlocks,
     correlateGeneratedImages,
-    TakeoutHtmlParser as DefaultTakeoutHtmlParser,
-    type TakeoutHtmlParserModule
+    TakeoutHtmlParser as DefaultTakeoutHtmlParser
 } from "./takeoutHtmlParser.js";
 import { TakeoutParseError } from "../../../types/errors.js";
 import type { Conversation } from "../../../types/index.js";
@@ -32,53 +27,13 @@ export interface TakeoutParserModule {
 }
 
 declare global {
-    var TakeoutParser: TakeoutParserModule;
     var JSZip: any;
-    var I18n: any;
 }
 
-function getZipBombGuard(): ZipBombGuardModule {
-    if (typeof globalThis !== "undefined" && (globalThis as any).ZipBombGuard) return (globalThis as any).ZipBombGuard;
-    return ZipBombGuard;
-}
+const normId = utilsNormId;
 
-function getMediaIndex(): MediaIndexModule {
-    if (typeof globalThis !== "undefined" && (globalThis as any).MediaIndex) return (globalThis as any).MediaIndex;
-    return MediaIndex;
-}
+export const stripHtmlTags = htmlStripTags;
 
-function getHtmlParser(): TakeoutHtmlParserModule {
-    if (typeof globalThis !== "undefined" && (globalThis as any).TakeoutHtmlParser) return (globalThis as any).TakeoutHtmlParser;
-    return DefaultTakeoutHtmlParser;
-}
-
-function normId(id?: string | null): string {
-    try {
-        if (typeof globalThis !== "undefined" && (globalThis as any).GeminiUtils?.normId) {
-            return (globalThis as any).GeminiUtils.normId(id);
-        }
-        return utilsNormId(id);
-    } catch {
-        if (!id) return "";
-        return String(id).replace(/^c_/, "").trim();
-    }
-}
-
-/**
- * Strips HTML tags from input string (re-exported for 100% backward compatibility).
- */
-export function stripHtmlTags(html?: string | null | any): string {
-    const parser = getHtmlParser();
-    if (parser && typeof parser.stripHtmlTags === 'function') {
-        return parser.stripHtmlTags(html);
-    }
-    return htmlStripTags(html);
-}
-
-/**
- * Main coordinator: unpacks Google Takeout archive, scans structure,
- * enforces memory guardrails, parses conversations, and populates media indexes.
- */
 export async function parseTakeoutZip(
     file: any,
     onProgress?: ((pct: number, msg: string) => void) | null,
@@ -88,33 +43,27 @@ export async function parseTakeoutZip(
         throw new Error('JSZip 库未加载，无法解析 ZIP');
     }
 
-    const guard = getZipBombGuard();
-    if (guard && guard.validateZipFile) {
+    const guard = ZipBombGuard;
+    if (guard?.validateZipFile) {
         guard.validateZipFile(file);
-    } else {
-        const MAX_ZIP_SIZE = 500 * 1024 * 1024;
-        if (file && typeof file.size === 'number' && file.size > MAX_ZIP_SIZE) {
-            throw new Error(`Takeout ZIP 体积过大 (${(file.size / 1024 / 1024).toFixed(1)}MB)，超过 ${MAX_ZIP_SIZE / 1024 / 1024}MB 上限，请确认是否为完整 Takeout 归档`);
-        }
     }
 
-    if (onProgress) onProgress(15, '正在解压 Takeout 压缩包...');
+    const i18nInstance = __resolveModule('I18n', I18nStatic);
+    if (onProgress) {
+        const unzippingMsg = (i18nInstance && typeof i18nInstance.t === 'function')
+            ? i18nInstance.t('takeoutUnzipping')
+            : '正在解压 Takeout 压缩包...';
+        onProgress(15, unzippingMsg);
+    }
 
     const zip = (file && typeof file.file === 'function' && file.files)
         ? file
         : await (JSZip as any).loadAsync(file);
-    if (guard && guard.validateZipEntries) {
+    if (guard?.validateZipEntries) {
         guard.validateZipEntries(zip);
-    } else {
-        const MAX_ENTRY_COUNT = 10000;
-        const entryCount = Object.keys(zip.files).length;
-        if (entryCount > MAX_ENTRY_COUNT) {
-            throw new Error(`ZIP 条目数过多 (${entryCount})，超过 ${MAX_ENTRY_COUNT} 上限，疑似 ZipBomb，已中止`);
-        }
     }
 
-    const i18nInstance = typeof I18n !== 'undefined' ? I18n : (globalThis as any).I18n;
-    if (onProgress) onProgress(40, (i18nInstance && typeof i18nInstance.t === 'function') ? i18nInstance.t('takeoutParsingStructure') : '正在扫描 Takeout 目录结构...');
+    if (onProgress) onProgress(40, i18nInstance.t('takeoutParsingStructure'));
 
     let activityFile: any = null;
     for (const [path, fObj] of Object.entries<any>(zip.files)) {
@@ -149,7 +98,14 @@ export async function parseTakeoutZip(
     // S-4 Memory Guardrail: check uncompressed size before loading full text into memory
     const MAX_HTML_UNCOMPRESSED_SIZE = 250 * 1024 * 1024; // 250MB threshold
     const uncompressedSize = activityFile._data?.uncompressedSize;
-    if (typeof uncompressedSize === 'number' && uncompressedSize > MAX_HTML_UNCOMPRESSED_SIZE) {
+    // Fail closed if uncompressed size cannot be verified
+    if (typeof uncompressedSize !== 'number') {
+        const errNoSize = (i18nInstance && typeof i18nInstance.t === 'function')
+            ? i18nInstance.t('takeoutHtmlSizeUnknown')
+            : '无法确认 Takeout 活动记录的解压体积，已中止以防内存溢出。';
+        throw new TakeoutParseError(errNoSize, false, activityFile.name);
+    }
+    if (uncompressedSize > MAX_HTML_UNCOMPRESSED_SIZE) {
         const sizeMb = (uncompressedSize / 1024 / 1024).toFixed(1);
         const limitMb = (MAX_HTML_UNCOMPRESSED_SIZE / 1024 / 1024).toFixed(0);
         const err = (i18nInstance && typeof i18nInstance.t === 'function')
@@ -161,7 +117,7 @@ export async function parseTakeoutZip(
     const htmlText = await activityFile.async('text');
     if (onProgress) onProgress(70, (i18nInstance && typeof i18nInstance.t === 'function') ? i18nInstance.t('takeoutParsingDetail') : '正在解析对话并建立离线媒体索引...');
 
-    const mediaIdx = getMediaIndex();
+    const mediaIdx = MediaIndex;
     const extractC2PATime = mediaIdx?.extractC2PATimestamp || (() => null);
 
     const localGlobalMedia: Record<string, any> = {};
@@ -179,6 +135,8 @@ export async function parseTakeoutZip(
         totalMediaCount++;
 
         if (/watermarked_img_/i.test(filename)) {
+            const hexMatch = stem.match(/-([0-9a-fA-F]{16})$/i);
+            const providerRequestId = hexMatch ? hexMatch[1].toLowerCase() : undefined;
             try {
                 const bin = await fObj.async('uint8array');
                 const c2paTime = extractC2PATime(bin) || (fObj.date ? fObj.date.getTime() : null);
@@ -187,7 +145,8 @@ export async function parseTakeoutZip(
                     stem,
                     cleanStem,
                     fileObj: fObj,
-                    time: c2paTime
+                    time: c2paTime,
+                    providerRequestId
                 });
             } catch {
                 watermarkedImages.push({
@@ -195,13 +154,14 @@ export async function parseTakeoutZip(
                     stem,
                     cleanStem,
                     fileObj: fObj,
-                    time: fObj.date ? fObj.date.getTime() : null
+                    time: fObj.date ? fObj.date.getTime() : null,
+                    providerRequestId
                 });
             }
         }
     }
 
-    const parser = getHtmlParser();
+    const parser = DefaultTakeoutHtmlParser;
     const parseFn = parser?.parseTakeoutHtmlBlocks || parseTakeoutHtmlBlocks;
     const { extractedMap, localConvCache, localMediaMap, genBlocks } = await parseFn({
         htmlText,
@@ -210,12 +170,16 @@ export async function parseTakeoutZip(
         onProgress
     });
 
-    // Correlate watermarked generated images with conversations
     const correlateFn = parser?.correlateGeneratedImages || correlateGeneratedImages;
     correlateFn(watermarkedImages, genBlocks, localMediaMap, localConvCache, extractedMap);
 
     const conversations: Conversation[] = Object.values(extractedMap);
-    if (onProgress) onProgress(100, `Takeout 解析完成，共发现 ${conversations.length} 条对话与 ${totalMediaCount} 个离线资源`);
+    if (onProgress) {
+        const doneMsg = (i18nInstance && typeof i18nInstance.t === 'function')
+            ? i18nInstance.t('takeoutSuccessSummary', conversations.length, totalMediaCount)
+            : `Takeout 解析完成，共发现 ${conversations.length} 条对话与 ${totalMediaCount} 个离线资源`;
+        onProgress(100, doneMsg);
+    }
 
     if (mediaIdx && mediaIdx.commitTakeoutData) {
         mediaIdx.commitTakeoutData(slot, {
@@ -239,13 +203,4 @@ export const TakeoutParser: TakeoutParserModule = {
     parseTakeoutZip
 };
 
-(TakeoutParser as any).TakeoutParser = TakeoutParser;
-(TakeoutParser as any).default = TakeoutParser;
-
-if (typeof globalThis !== 'undefined' && !(globalThis as any).TakeoutParser) {
-    (globalThis as any).TakeoutParser = TakeoutParser;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = TakeoutParser;
-}
 export default TakeoutParser;

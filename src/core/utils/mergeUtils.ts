@@ -1,11 +1,7 @@
-// mergeUtils.ts - Conversation merging and deduplication utilities
-
 import { normId, isReservedRoute } from './pathUtils.js';
-import { cleanTitle, isRealTitle, resolveTitle, compareConversations } from './titleUtils.js';
+import { cleanTitle, isRealTitle, resolveTitle, compareConversations, toTimestampMs, isBrandPlaceholderTitle as isBadTitle, normalizeReliableTitleSource } from './titleUtils.js';
 
 export interface MergeConversationOptions {
-    isRpcSource?: boolean;
-    now?: number | string;
     source?: string;
     targetSlot?: string;
 }
@@ -22,71 +18,103 @@ export interface DeduplicateResult {
     hasDirtyTitles: boolean;
 }
 
-const cleanForBad = (t: any) => String(t || '').replace(/[\u200E\u200B\uFEFF\u00A0]/g, '').trim();
-const isBadTitle = (t: any) => !t || /^(Google\s+)?(Gemini|Bard|Google\s+AI|Google\s+Account)$/i.test(cleanForBad(t));
-
 /**
- * SSoT: Merge an incoming conversation into an existing conversation.
- * Accurately arbitrates multi-tier titles, dates/timestamps, message counts, and dirty title status.
+ * SSoT: "any authoritative title slot already holds a title" guard.
+ * The legacy fallback below must not fabricate a zombie `legacy` slot when a
+ * real source slot (rpc / api-detail / dom / takeout / sniff) already has a
+ * title. `legacy` itself is excluded (the guard checks it separately) and
+ * rank-0 `default` is intentionally not authoritative.
  */
+function hasAuthoritativeTitleSlot(titles: Record<string, string | undefined>): boolean {
+    return Boolean(
+        titles.rpc ||
+        titles['api-detail'] ||
+        titles.dom ||
+        titles.takeout ||
+        titles.sniff
+    );
+}
+
 export function mergeConversation(
     old: any,
     incoming: any,
     options?: MergeConversationOptions
 ): MergeConversationResult {
     const id = normId(incoming?.id || old?.id || '');
-    const mergedTitles: Record<string, string> = { ...(old?.titles || {}) };
-
-    // 1. Merge incoming.titles if provided
-    if (incoming?.titles && typeof incoming.titles === 'object') {
-        for (const [k, v] of Object.entries(incoming.titles)) {
-            if (typeof v === 'string') {
-                const cleanV = cleanTitle(v);
-                if (cleanV && (isRealTitle(cleanV, id) || k === 'takeout')) {
-                    mergedTitles[k] = cleanV;
-                }
+    const mergedTitles: Record<string, string> = {};
+    if (old?.titles && typeof old.titles === 'object') {
+        for (const [k, v] of Object.entries(old.titles)) {
+            const relK = normalizeReliableTitleSource(k);
+            if (relK && typeof v === 'string' && v) {
+                mergedTitles[relK] = v;
+            } else if (k === 'legacy' && typeof v === 'string' && v) {
+                mergedTitles.legacy = v;
             }
         }
     }
 
-    // 2. Merge incoming title + titleSource
-    if (incoming?.titleSource && incoming?.title) {
-        const cleanT = cleanTitle(incoming.title);
-        if (cleanT && (isRealTitle(cleanT, id) || incoming.titleSource === 'takeout')) {
-            mergedTitles[incoming.titleSource] = cleanT;
-        }
-    } else if (incoming?.title && !mergedTitles.legacy && !mergedTitles.rpc && !mergedTitles.dom && !mergedTitles.takeout) {
-        const cleanT = cleanTitle(incoming.title);
-        if (cleanT && isRealTitle(cleanT, id)) {
-            mergedTitles.legacy = cleanT;
-        }
-    }
-
-    // 3. Preserve old title if real and not yet in titles
-    if (old && old.titleSource && old.title && !mergedTitles[old.titleSource]) {
+    const reliableOldSource = normalizeReliableTitleSource(old?.titleSource);
+    if (reliableOldSource && old.title && !mergedTitles[reliableOldSource]) {
         const cleanOldT = cleanTitle(old.title);
-        if (cleanOldT && (isRealTitle(cleanOldT, id) || old.titleSource === 'takeout')) {
-            mergedTitles[old.titleSource] = cleanOldT;
+        if (cleanOldT && (isRealTitle(cleanOldT, id) || reliableOldSource === 'takeout')) {
+            mergedTitles[reliableOldSource] = cleanOldT;
         }
-    } else if (old && old.title && !mergedTitles.legacy && !mergedTitles.rpc && !mergedTitles.dom && !mergedTitles.takeout) {
+    } else if (old && old.title && !mergedTitles.legacy && !hasAuthoritativeTitleSlot(mergedTitles)) {
         const cleanOldT = cleanTitle(old.title);
         if (cleanOldT && isRealTitle(cleanOldT, id)) {
             mergedTitles.legacy = cleanOldT;
         }
     }
 
-    // 4. Resolve authoritative title
+    if (incoming?.titles && typeof incoming.titles === 'object') {
+        for (const [k, v] of Object.entries(incoming.titles)) {
+            const relK = normalizeReliableTitleSource(k);
+            if (relK && typeof v === 'string') {
+                const cleanV = cleanTitle(v);
+                if (cleanV && (isRealTitle(cleanV, id) || relK === 'takeout')) {
+                    if (relK === 'sniff' && mergedTitles.sniff && mergedTitles.sniff !== cleanV) {
+                        if (mergedTitles.sniff.startsWith(cleanV) && cleanV.length < mergedTitles.sniff.length) {
+                            continue;
+                        }
+                    }
+                    mergedTitles[relK] = cleanV;
+                }
+            }
+        }
+    }
+
+    // 2. Merge incoming title + titleSource
+    const reliableInSrc = normalizeReliableTitleSource(incoming?.titleSource);
+    if (reliableInSrc && incoming?.title) {
+        const cleanT = cleanTitle(incoming.title);
+        if (cleanT && (isRealTitle(cleanT, id) || reliableInSrc === 'takeout')) {
+            if (reliableInSrc === 'sniff' && mergedTitles.sniff && mergedTitles.sniff !== cleanT) {
+                if (mergedTitles.sniff.startsWith(cleanT) && cleanT.length < mergedTitles.sniff.length) {
+                    // Do not overwrite longer sniff with truncated prefix
+                } else {
+                    mergedTitles.sniff = cleanT;
+                }
+            } else {
+                mergedTitles[reliableInSrc] = cleanT;
+            }
+        }
+    } else if (incoming?.title && !mergedTitles.legacy && !hasAuthoritativeTitleSlot(mergedTitles)) {
+        const cleanT = cleanTitle(incoming.title);
+        if (cleanT && isRealTitle(cleanT, id)) {
+            mergedTitles.legacy = cleanT;
+        }
+    }
+
     const tempChat = {
         id,
         titles: mergedTitles,
         title: incoming?.title || old?.title,
-        titleSource: incoming?.titleSource || old?.titleSource
+        titleSource: reliableInSrc || reliableOldSource || 'legacy'
     };
     const resolved = resolveTitle(tempChat);
     const resolvedTitle = resolved.title;
     const resolvedSource = resolved.source;
 
-    // 5. Detect dirty title
     let hasDirtyTitles = false;
     if (!old) {
         if (isBadTitle(incoming?.title) || incoming?.title !== resolvedTitle) {
@@ -98,58 +126,83 @@ export function mergeConversation(
         }
     }
 
-    // 6. Timestamps arbitration
-    let cUpdated: any = incoming?.updatedAt || incoming?.timestamp || null;
-    if (typeof cUpdated === 'string') cUpdated = new Date(cUpdated).getTime();
-    if (!Number.isFinite(cUpdated) || cUpdated <= 0) cUpdated = null;
+    let cUpdated: any = toTimestampMs(incoming?.updatedAt ?? incoming?.timestamp);
+    if (cUpdated !== null && cUpdated <= 0) cUpdated = null;
 
-    let oldUpdated: any = old?.updatedAt || old?.timestamp || null;
-    if (typeof oldUpdated === 'string') oldUpdated = new Date(oldUpdated).getTime();
-    if (!Number.isFinite(oldUpdated) || oldUpdated <= 0) oldUpdated = null;
+    let oldUpdated: any = toTimestampMs(old?.updatedAt ?? old?.timestamp);
+    if (oldUpdated !== null && oldUpdated <= 0) oldUpdated = null;
 
-    const isRpcSource = options?.isRpcSource ?? (
-        options?.source === 'network-list' ||
-        options?.source === 'network-detail' ||
-        (typeof options?.source === 'string' && options.source.startsWith('stream-')) ||
-        incoming?.titleSource === 'rpc' ||
-        incoming?.source === 'network-list'
-    );
-
-    let bestUpdatedAt = oldUpdated;
-    if (cUpdated && (isRpcSource || !bestUpdatedAt || cUpdated > bestUpdatedAt)) {
-        bestUpdatedAt = cUpdated;
+    let bestUpdatedAt: number | null = null;
+    if (cUpdated && oldUpdated) {
+        bestUpdatedAt = Math.max(oldUpdated, cUpdated);
+    } else {
+        bestUpdatedAt = cUpdated || oldUpdated || null;
     }
 
-    let cCreated: any = incoming?.createdAt || null;
-    if (typeof cCreated === 'string') cCreated = new Date(cCreated).getTime();
-    if (!Number.isFinite(cCreated) || cCreated <= 0) cCreated = null;
+    let cCreated: any = toTimestampMs(incoming?.createdAt);
+    if (cCreated !== null && cCreated <= 0) cCreated = null;
 
-    let oldCreated: any = old?.createdAt || null;
-    if (typeof oldCreated === 'string') oldCreated = new Date(oldCreated).getTime();
-    if (!Number.isFinite(oldCreated) || oldCreated <= 0) oldCreated = null;
+    let oldCreated: any = toTimestampMs(old?.createdAt);
+    if (oldCreated !== null && oldCreated <= 0) oldCreated = null;
 
-    let bestCreatedAt = oldCreated || cCreated || null;
-    if (cCreated && oldCreated && cCreated < oldCreated) {
-        bestCreatedAt = cCreated;
+    // createdAt must never advance into the future; take the earliest timestamp.
+    let bestCreatedAt: number | null = null;
+    if (cCreated && oldCreated) {
+        bestCreatedAt = Math.min(oldCreated, cCreated);
+    } else {
+        bestCreatedAt = cCreated || oldCreated || null;
     }
 
-    const bestTimestamp = isRpcSource
-        ? (cUpdated || bestUpdatedAt)
-        : (bestUpdatedAt || old?.timestamp || incoming?.timestamp || null);
+    // Route raw .timestamp fallbacks through toTimestampMs to prevent legacy invalid strings from persisting
+    const bestTimestamp = bestUpdatedAt || toTimestampMs(old?.timestamp) || toTimestampMs(incoming?.timestamp) || null;
 
-    // 7. Check if meaningful change occurred
+    const effectiveMessageCount = (c: any): number => {
+        if (!c || typeof c !== 'object') return 0;
+        const n = Number(c.messageCount);
+        const m = Array.isArray(c.messages) ? c.messages.length : 0;
+        const t = Array.isArray(c.turns) ? c.turns.length : 0;
+        return Math.max(Number.isFinite(n) && n > 0 ? n : 0, m, t);
+    };
+    const oldMsgLen = effectiveMessageCount(old);
+    const inMsgLen = effectiveMessageCount(incoming);
+    const bestMsgLen = Math.max(oldMsgLen, inMsgLen);
+    const incomingShrinksMessages = !!old && oldMsgLen > inMsgLen;
+
+    const toMs = (v: any): number | null => {
+        if (v === null || v === undefined || v === '') return null;
+        const ms = typeof v === 'string' ? new Date(v).getTime() : Number(v);
+        return Number.isFinite(ms) && ms > 0 ? ms : null;
+    };
+    const oldSeenMs = toMs(old?.lastSeen);
+    const inSeenMs = toMs(incoming?.lastSeen);
+    let bestLastSeen: any = null;
+    if (oldSeenMs !== null && inSeenMs !== null) {
+        bestLastSeen = oldSeenMs >= inSeenMs ? old.lastSeen : incoming.lastSeen;
+    } else {
+        bestLastSeen = oldSeenMs !== null ? old.lastSeen : (inSeenMs !== null ? incoming.lastSeen : null);
+    }
+
+    const oldMsgCount = typeof old?.messageCount === 'number' ? old.messageCount : null;
+    const inMsgCount = typeof incoming?.messageCount === 'number' ? incoming.messageCount : null;
+    const oldBodyLen = Array.isArray(old?.messages) ? old.messages.length : null;
+    const inBodyLen = Array.isArray(incoming?.messages) ? incoming.messages.length : null;
+    const oldAttCount = typeof (old as any)?.attachmentCount === 'number' ? (old as any).attachmentCount : null;
+    const inAttCount = typeof (incoming as any)?.attachmentCount === 'number' ? (incoming as any).attachmentCount : null;
     let isChanged = false;
     if (!old) {
         isChanged = true;
     } else if (
         old.title !== resolvedTitle ||
         (!old.timestamp && bestTimestamp) ||
-        (bestUpdatedAt && bestUpdatedAt !== oldUpdated)
+        (bestUpdatedAt && bestUpdatedAt !== oldUpdated) ||
+        (inMsgCount !== null && (oldMsgCount === null || inMsgCount > oldMsgCount)) ||
+        (inBodyLen !== null && (oldBodyLen === null ? (oldMsgLen === 0 && inBodyLen > 0) : inBodyLen > oldBodyLen)) ||
+        (oldAttCount !== null && inAttCount !== null && oldAttCount !== inAttCount) ||
+        bestMsgLen > oldMsgLen
     ) {
         isChanged = true;
     }
 
-    // 8. Assemble merged conversation
     const merged: any = {
         ...(old || {}),
         ...(incoming || {}),
@@ -165,8 +218,41 @@ export function mergeConversation(
             : old?.sidebarIndex
     };
 
-    if (options?.now) {
-        merged.lastSeen = options.now;
+    const oldBodyLen2 = Array.isArray(old?.messages) ? old.messages.length : 0;
+    const inBodyLen2 = Array.isArray(incoming?.messages) ? incoming.messages.length : 0;
+    if (oldBodyLen2 > 0 && inBodyLen2 < oldBodyLen2) {
+        merged.messages = old.messages;
+    }
+    const oldTurnsLen2 = Array.isArray(old?.turns) ? old.turns.length : 0;
+    const inTurnsLen2 = Array.isArray(incoming?.turns) ? incoming.turns.length : 0;
+    if (oldTurnsLen2 > 0 && inTurnsLen2 < oldTurnsLen2) {
+        merged.turns = old.turns;
+    }
+    if (oldMsgCount !== null && inMsgCount !== null) {
+        merged.messageCount = Math.max(oldMsgCount, inMsgCount);
+    }
+
+    if (bestLastSeen !== null) {
+        merged.lastSeen = bestLastSeen;
+    }
+    if (incomingShrinksMessages) {
+        if (Array.isArray(old.messages)) {
+            merged.messages = old.messages;
+        } else {
+            // CRITICAL: old was slimmed (messages stored in IndexedDB).
+            // incoming has fewer messages than old's recorded messageCount/turns.
+            // Under no circumstances should incoming's shorter/partial messages
+            // attach to merged, as that would cause _setConversationsRaw to
+            // overwrite IndexedDB's fuller detail with incoming's truncated body!
+            delete merged.messages;
+        }
+        if (Array.isArray(old.turns)) {
+            merged.turns = old.turns;
+        } else {
+            delete merged.turns;
+        }
+        if (typeof old.messageCount === 'number') merged.messageCount = old.messageCount;
+        else if (bestMsgLen > 0) merged.messageCount = bestMsgLen;
     }
     if (options?.source) {
         merged.source = options.source || old?.source || 'unknown';
@@ -178,10 +264,6 @@ export function mergeConversation(
     return { merged, isChanged, hasDirtyTitles };
 }
 
-/**
- * SSoT: Deduplicate an array of conversations, merging items with identical normId
- * and sorting by authoritative compareConversations.
- */
 export function deduplicateConversations(
     list: any[],
     options?: MergeConversationOptions
@@ -197,7 +279,9 @@ export function deduplicateConversations(
         if (/accounts\.google\.com|SignOutOptions/i.test(u)) continue;
 
         const nid = normId(item.id);
-        if (isReservedRoute(nid) || isReservedRoute(item.id) || /\/app\/(download|settings|prompts|archive|trash|share|activity|help|feedback|gems|explore|privacy|terms|updates|faq)($|\/|\?)/i.test(u)) {
+        const uRouteMatch = u.match(/\/app\/([A-Za-z0-9_-]+)/);
+        const uRoute = uRouteMatch ? uRouteMatch[1] : '';
+        if (isReservedRoute(nid) || isReservedRoute(item.id) || isReservedRoute(uRoute)) {
             changedCount++;
             hasDirtyTitles = true;
             continue;
@@ -213,4 +297,28 @@ export function deduplicateConversations(
     const processed = Array.from(dedupMap.values());
     processed.sort(compareConversations);
     return { processed, changedCount, hasDirtyTitles };
+}
+
+export interface TakeoutMergePlan {
+    processed: any[];
+    addedCount: number;
+    changed: number;
+}
+
+export function planTakeoutMerge(
+    existing: any[],
+    incoming: any[],
+    dedupeFn: (list: any[]) => DeduplicateResult = deduplicateConversations
+): TakeoutMergePlan | null {
+    const existingList = existing || [];
+    const incomingList = incoming || [];
+    const existingIds = new Set(existingList.map((c: any) => normId(c?.id)));
+    const addedCount = incomingList.filter((tc: any) => tc?.id && !existingIds.has(normId(tc.id))).length;
+    const { processed, changedCount } = dedupeFn([...existingList, ...incomingList]);
+
+    const trivialFirstSeen = processed.length;
+    const hasChangeSignal = typeof changedCount === 'number';
+    const repeatMods = hasChangeSignal ? changedCount - trivialFirstSeen : (incomingList.length > 0 ? 1 : 0);
+    if (!(addedCount > 0 || repeatMods > 0)) return null;
+    return { processed, addedCount, changed: hasChangeSignal ? changedCount : 0 };
 }

@@ -41,6 +41,8 @@ echo "=================================================="
 echo "🚀 正在启动 Gemini Exporter 专属持久化测试浏览器"
 echo "📁 测试 Profile 目录: $PROFILE_DIR"
 echo "🧩 自动挂载扩展源码: $REPO_DIR"
+echo "🔨 确保扩展最新生产构建 (node build.js)..."
+(cd "$REPO_DIR" && node build.js)
 echo "💡 提示: 首次打开请在弹出的窗口中登录 Google 账号，后续将永远保持登录与插件就绪状态！"
 echo "=================================================="
 

@@ -1,0 +1,826 @@
+{
+  "schemaVersion": 1,
+  "conversation": {
+    "key": {
+      "providerId": "gemini",
+      "accountId": "acct-parity-001",
+      "conversationId": "conv-long-table-001"
+    },
+    "title": "长表格：模型指标对比",
+    "createdAt": "2026-09-26T10:00:00-07:00",
+    "updatedAt": "2026-09-26T10:02:00-07:00",
+    "messages": [
+      {
+        "id": "u1",
+        "role": "user",
+        "createdAt": "2026-09-26T10:00:00-07:00",
+        "blocks": [
+          {
+            "id": "u1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "整理一份各家大模型的对比表，要包含"
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中文列"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "、数字列和不同对齐方式。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a1",
+        "role": "assistant",
+        "createdAt": "2026-09-26T10:02:00-07:00",
+        "author": {
+          "model": "Gemini 2.5 Pro",
+          "rawRole": "model"
+        },
+        "blocks": [
+          {
+            "id": "a1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "以下是包含 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "15 行"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 数据的长表格，注意数字列为右对齐："
+              }
+            ]
+          },
+          {
+            "id": "a1:b1",
+            "type": "table",
+            "caption": [
+              {
+                "type": "text",
+                "text": "表 1：各模型关键指标对比（含中文列、数字列与混合对齐）"
+              }
+            ],
+            "columns": [
+              {
+                "align": "left"
+              },
+              {
+                "align": "center"
+              },
+              {
+                "align": "right"
+              },
+              {
+                "align": "right"
+              },
+              {
+                "align": "center"
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "模型"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "上下文窗口"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "综合评分"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "价格"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "状态"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "中文大模型 A"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "128K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "92.4"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.42/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "中文大模型 B"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "200K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "89.1"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.18/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "英文模型 X"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "1M"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "94.7"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "$1.25/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "内测中"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "多模态模型 M"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "64K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "88.3"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.66/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "代码模型 C"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "128K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "91.0"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.30/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "轻量模型 L"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "32K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "81.5"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.05/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "推理模型 R1"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "160K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "95.2"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.90/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "限流"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "推理模型 R2"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "160K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "95.8"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥1.10/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "内测中"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "嵌入模型 E"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "8K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.02/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "语音模型 V"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.60/分钟"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "图像模型 I"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.35/张"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "视频模型 D"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥2.40/分钟"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "内测中"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "中文大模型 C2"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "256K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "93.1"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "¥0.55/千token"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "开源模型 O1"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "128K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "86.9"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "自托管"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "开源模型 O2"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "64K"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "84.2"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "自托管"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "生产可用"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b2",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "表格渲染时请注意：表头加粗、斑马纹行、以及超宽表格的横向分页处理。"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [],
+  "citations": []
+}

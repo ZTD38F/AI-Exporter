@@ -1,27 +1,20 @@
-// src/background/liveSaveHandler.ts - Live Save via File System Handle execution and disk state probing
-
 import { getStoredDirHandle, clearStoredDirHandle } from '../core/storage/idbHandleStore.js';
-import { FsWriter } from '../core/engine/writers/fsWriter.js';
-import { ChatFormatter } from '../core/engine/chatFormatter.js';
-import { GeminiUtils } from '../core/utils/utils.js';
+import { setLiveConfig, isLiveSaveFormatSupported } from '../core/storage/liveStorageManager.js';
+import { createLiveSaveWriter, writeLiveSaveMarkdown, formatLiveSaveMarkdown } from '../core/engine/liveSaveWriter.js';
 import { StorageService } from '../core/storage/storageService.js';
+import { completeConversationExport } from '../core/engine/export/exportCompletion.js';
+import { getEffectiveTimestamp, toTimestampMs } from '../core/utils/utils.js';
+import { sanitizeFileName, sanitizeRelativePath, normId } from '../core/utils/pathUtils.js';
 
 export async function markDirDeletedInConfig(): Promise<void> {
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        try {
-            const data = await chrome.storage.local.get('live_save_config');
-            const cur = data?.live_save_config || {};
-            await chrome.storage.local.set({
-                live_save_config: {
-                    ...cur,
-                    enabledDisk: false,
-                    dirName: '',
-                    dirError: 'not_found'
-                }
-            });
-        } catch {
-            /* ignore */
-        }
+    try {
+        await setLiveConfig({
+            enabledDisk: false,
+            dirName: '',
+            dirError: 'not_found'
+        });
+    } catch {
+        /* ignore */
     }
 }
 
@@ -31,6 +24,9 @@ export interface LiveSaveResult {
     targetFile?: string;
     error?: string;
     details?: string;
+    // Phase A (P1-2): 附件失败明细。ok=false + failedAssets 非空 = 主 md 已落盘、
+    // 部分附件失败（partial），调用方应打 badge 警告而非静默标成功。
+    failedAssets?: Array<{ file: string; error: string }>;
 }
 
 export function base64ToUint8Array(base64: string): Uint8Array {
@@ -48,18 +44,46 @@ export function base64ToUint8Array(base64: string): Uint8Array {
     return bytes;
 }
 
+const _liveWriteLocks = new Map<string, Promise<any>>();
+
+export function withLiveSaveLock<T>(key: string, op: () => Promise<T>): Promise<T> {
+    const prev = _liveWriteLocks.get(key) || Promise.resolve();
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((res) => { releaseGate = res; });
+    _liveWriteLocks.set(key, gate);
+
+    return prev.then(
+        () => op(),
+        () => op()
+    ).finally(() => {
+        releaseGate();
+        if (_liveWriteLocks.get(key) === gate) {
+            _liveWriteLocks.delete(key);
+        }
+    });
+}
+
 export async function handleLiveSaveViaHandle(payload: any, accountSlot: string = 'u0'): Promise<LiveSaveResult> {
     try {
-        const { chat, safeTitle, nid, fileName, assets } = payload || {};
+        if (!await isLiveSaveFormatSupported()) return { ok: false, error: 'live_save_requires_markdown' };
+        const { chat, safeTitle, nid, fileName, assets, failedAssets: upstreamFailures } = payload || {};
         const handle = await getStoredDirHandle();
         if (!handle) {
             return { ok: false, error: 'no_dir_handle' };
         }
 
         if (handle.queryPermission) {
-            const perm = await handle.queryPermission({ mode: 'readwrite' });
-            if (perm !== 'granted') {
-                return { ok: false, error: 'permission_not_granted' };
+            try {
+                const perm = await handle.queryPermission({ mode: 'readwrite' });
+                if (perm !== 'granted') {
+                    console.info('[Background:liveSave] Handle permission not granted (prompt needed)');
+                    await setLiveConfig({ dirError: 'permission_prompt_needed' });
+                    return { ok: false, error: 'permission_prompt_needed' };
+                }
+            } catch (permErr: any) {
+                console.warn('[Background:liveSave] queryPermission threw, prompt needed:', permErr);
+                await setLiveConfig({ dirError: 'permission_prompt_needed' });
+                return { ok: false, error: 'permission_prompt_needed' };
             }
         }
 
@@ -73,98 +97,133 @@ export async function handleLiveSaveViaHandle(payload: any, accountSlot: string 
                 await markDirDeletedInConfig();
                 return { ok: false, error: 'dir_not_found', details: probeErr?.message };
             }
+            if (probeErr?.name === 'NotAllowedError' || probeErr?.name === 'SecurityError') {
+                console.info('[Background:liveSave] Directory probe threw NotAllowedError, prompt needed');
+                await setLiveConfig({ dirError: 'permission_prompt_needed' });
+                return { ok: false, error: 'permission_prompt_needed' };
+            }
         }
 
-        const FsWriterCls = (typeof FsWriter !== 'undefined' && FsWriter)
-            ? ((FsWriter as any).FsWriter || FsWriter)
-            : null;
-        if (!FsWriterCls) {
-            return { ok: false, error: 'no_fswriter' };
-        }
+        // Shared live-save writer: filename format + markdown formatting + write.
+        // Serialized through withLiveSaveLock per file to prevent concurrent createWritable
+        // collisions (NoModificationAllowedError) when multiple tabs write simultaneously.
+        const fileLockKey = String(fileName || nid || safeTitle || chat?.id || 'live_save');
 
-        const writer = new FsWriterCls(handle, 'gemini_export');
-        await writer.init();
+        const { targetFile, failedAssets } = await withLiveSaveLock(fileLockKey, async () => {
+            const writer = await createLiveSaveWriter(handle);
 
-        const sanitizedTitle = GeminiUtils?.sanitizeFileName
-            ? GeminiUtils.sanitizeFileName(safeTitle)
-            : safeTitle.replace(/[\\/:*?"<>|]/g, '_');
-        const cid6 = String(nid || '').replace(/^c_/, '').slice(-6);
-        const targetFile = fileName || `${sanitizedTitle}_${cid6}.md`;
+            const target = await writeLiveSaveMarkdown(
+                writer,
+                { chat, safeTitle, nid },
+                {},
+                { fileName }
+            );
 
-        const FormatterCls = (typeof ChatFormatter !== 'undefined' && ChatFormatter)
-            ? ChatFormatter
-            : null;
-        const markdown = FormatterCls?.toMarkdown
-            ? FormatterCls.toMarkdown({ ...chat, title: safeTitle, id: nid })
-            : `# ${safeTitle}\n\n${JSON.stringify(chat?.messages || [], null, 2)}`;
-
-        await writer.writeFile('', targetFile, markdown);
-
-        if (Array.isArray(assets) && assets.length > 0) {
-            for (const asset of assets) {
-                if (asset && asset.fileName) {
-                    let fileData: Uint8Array | null = null;
-                    if (asset.base64 && typeof asset.base64 === 'string') {
-                        try {
-                            fileData = base64ToUint8Array(asset.base64);
-                        } catch (b64Err) {
-                            console.warn('[Background:liveSave] Failed to decode base64 for asset:', asset.fileName, b64Err);
+            const failures: Array<{ file: string; error: string }> = Array.isArray(upstreamFailures)
+                ? upstreamFailures.filter(f => typeof f?.file === 'string' && typeof f?.error === 'string').map(f => ({ file: f.file, error: f.error }))
+                : [];
+            if (Array.isArray(assets) && assets.length > 0) {
+                for (const asset of assets) {
+                    if (asset && asset.fileName) {
+                        let fileData: Uint8Array | null = null;
+                        if (asset.base64 && typeof asset.base64 === 'string') {
+                            try {
+                                fileData = base64ToUint8Array(asset.base64);
+                            } catch (b64Err) {
+                                const msg = b64Err instanceof Error ? b64Err.message : String(b64Err);
+                                console.warn('[Background:liveSave] Failed to decode base64 for asset:', asset.fileName, b64Err);
+                                failures.push({ file: asset.fileName, error: `base64 decode failed: ${msg}` });
+                            }
+                        } else if (asset.buffer instanceof ArrayBuffer) {
+                            fileData = new Uint8Array(asset.buffer);
+                        } else if (ArrayBuffer.isView(asset.buffer)) {
+                            fileData = new Uint8Array(asset.buffer.buffer, asset.buffer.byteOffset, asset.buffer.byteLength);
+                        } else if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(asset.buffer)) {
+                            fileData = new Uint8Array(asset.buffer.buffer, asset.buffer.byteOffset, asset.buffer.byteLength);
                         }
-                    } else if (asset.buffer instanceof ArrayBuffer) {
-                        fileData = new Uint8Array(asset.buffer);
-                    } else if (ArrayBuffer.isView(asset.buffer)) {
-                        fileData = new Uint8Array(asset.buffer.buffer, asset.buffer.byteOffset, asset.buffer.byteLength);
-                    } else if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(asset.buffer)) {
-                        fileData = new Uint8Array(asset.buffer.buffer, asset.buffer.byteOffset, asset.buffer.byteLength);
-                    }
 
-                    if (!fileData || fileData.byteLength === 0) {
-                        console.warn('[Background:liveSave] Skipping asset with no valid binary data:', asset.fileName);
-                        continue;
-                    }
+                        if (!fileData || fileData.byteLength === 0) {
+                            console.warn('[Background:liveSave] Skipping asset with no valid binary data:', asset.fileName);
+                            failures.push({ file: asset.fileName, error: 'no valid binary data' });
+                            continue;
+                        }
 
-                    try {
-                        await writer.writeFile(asset.subDir || 'assets', asset.fileName, fileData);
-                    } catch (assetErr) {
-                        console.warn('[Background:liveSave] Failed to write asset:', asset.fileName, assetErr);
+                        try {
+                            const safeSubDir = sanitizeRelativePath(asset.subDir || 'assets', 'assets');
+                            const safeAssetFileName = sanitizeFileName(asset.fileName, 'attachment');
+                            await writer.writeFile(safeSubDir, safeAssetFileName, fileData);
+                        } catch (assetErr) {
+                            const msg = assetErr instanceof Error ? assetErr.message : String(assetErr);
+                            console.warn('[Background:liveSave] Failed to write asset:', asset.fileName, assetErr);
+                            failures.push({ file: asset.fileName, error: msg });
+                        }
                     }
                 }
             }
-        }
+            return { targetFile: target, failedAssets: failures };
+        });
 
         const now = Date.now();
-        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-            try {
-                const data = await chrome.storage.local.get('live_save_config');
-                const cur = data?.live_save_config || {};
-                await chrome.storage.local.set({
-                    live_save_config: {
-                        ...cur,
-                        lastSavedAt: now,
-                        lastSavedTitle: safeTitle,
-                        dirError: null
-                    }
-                });
-            } catch {
-                /* best-effort storage update */
-            }
+        try {
+            await setLiveConfig({
+                lastSavedAt: now,
+                lastSavedTitle: safeTitle,
+                dirError: null
+            });
+        } catch {
+            /* best-effort storage update */
         }
 
-        // Mark conversation as exported in exportedIds SSoT
+        // Shared export completion: builds standardized ExportRecord and promotes title in gemini_conversations.
+        // Phase A (P1-2): 主 md 成功即写记录；附件有失败则标 partial（与导出管线
+        // sessionRecovery 的 partial 惯例对齐），保证下次增量不跳过、可重试。
         try {
-            const slot = accountSlot || 'u0';
-            if (typeof StorageService !== 'undefined' && StorageService?.saveExportRecord) {
-                await StorageService.saveExportRecord(slot, nid, {
-                    exportedAt: new Date(now).toISOString(),
-                    title: safeTitle,
-                    format: 'markdown'
-                });
+            let convInStore: any = null;
+            try {
+                const list = await StorageService.getConversations(accountSlot || 'u0');
+                convInStore = list.find((c: any) => normId(c.id) === nid);
+            } catch {}
+
+            let turnTsFromMsgs = 0;
+            if (Array.isArray(chat?.messages)) {
+                for (const m of chat.messages) {
+                    const mt = toTimestampMs(m?.timestamp);
+                    if (mt && mt > turnTsFromMsgs) turnTsFromMsgs = mt;
+                }
             }
+            const effectiveChatTime = (chat as any)?.chatTime || turnTsFromMsgs || (chat as any)?.updatedAt || (chat as any)?.timestamp || convInStore?.updatedAt || convInStore?.timestamp || null;
+            const effectiveMsgCount = (Array.isArray(chat?.messages) ? chat.messages.length : 0) || convInStore?.messageCount || (chat as any)?.messageCount || 0;
+
+            await completeConversationExport(
+                StorageService,
+                accountSlot || 'u0',
+                {
+                    conversation: {
+                        ...convInStore,
+                        ...chat,
+                        messageCount: effectiveMsgCount,
+                        ...(effectiveChatTime ? {
+                            chatTime: effectiveChatTime,
+                            updatedAt: effectiveChatTime,
+                            timestamp: effectiveChatTime
+                        } : {})
+                    },
+                    conversationId: nid,
+                    format: 'markdown',
+                    exportedAt: now,
+                    failedAssets,
+                    titleCandidate: safeTitle,
+                    titleProvenance: (chat as any)?.titleSource || convInStore?.titleSource,
+                    titles: (chat as any)?.titles || convInStore?.titles,
+                    messageCount: effectiveMsgCount,
+                    chatTime: effectiveChatTime
+                }
+            );
         } catch (e) {
             console.warn('[Background:liveSave] Failed to mark conversation as exported:', e);
         }
 
-        return { ok: true, handleName: handle.name, targetFile };
+        return { ok: failedAssets.length === 0, failedAssets, handleName: handle.name, targetFile };
     } catch (err: any) {
         console.warn('[Background:liveSave] liveSaveViaHandle error:', err);
         const isNotFound = err?.name === 'NotFoundError' || err?.message?.includes('could not be found') || err?.message?.includes('NotFoundError');
@@ -172,6 +231,11 @@ export async function handleLiveSaveViaHandle(payload: any, accountSlot: string 
             await clearStoredDirHandle();
             await markDirDeletedInConfig();
             return { ok: false, error: 'dir_not_found', details: err?.message };
+        }
+        if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
+            console.info('[Background:liveSave] liveSaveViaHandle caught permission error, prompt needed');
+            await setLiveConfig({ dirError: 'permission_prompt_needed' });
+            return { ok: false, error: 'permission_prompt_needed' };
         }
         return { ok: false, error: err?.message || String(err) };
     }

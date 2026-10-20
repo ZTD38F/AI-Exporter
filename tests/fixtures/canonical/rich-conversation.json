@@ -1,0 +1,344 @@
+{
+  "schemaVersion": 1,
+  "conversation": {
+    "key": {
+      "providerId": "gemini",
+      "accountId": "acct-demo",
+      "conversationId": "conv-rich-001"
+    },
+    "title": "Canonical AST rich fixture",
+    "messages": [
+      {
+        "id": "u1",
+        "role": "user",
+        "blocks": [
+          {
+            "id": "u1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "请同时演示代码、公式、表格、图片、附件和引用。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a1",
+        "role": "assistant",
+        "citationIds": [
+          "cite-1"
+        ],
+        "author": {
+          "model": "Gemini 2.5 Pro",
+          "rawRole": "model"
+        },
+        "blocks": [
+          {
+            "id": "a1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "这是 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "canonical"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 内容，链接见 "
+              },
+              {
+                "type": "link",
+                "href": "https://example.com",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "example"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "，行内公式 "
+              },
+              {
+                "type": "inlineMath",
+                "source": "a^2+b^2=c^2"
+              },
+              {
+                "type": "text",
+                "text": "。"
+              },
+              {
+                "type": "citationRef",
+                "citationId": "cite-1",
+                "label": "1"
+              }
+            ]
+          },
+          {
+            "id": "a1:b1",
+            "type": "heading",
+            "level": 2,
+            "children": [
+              {
+                "type": "text",
+                "text": "Rich blocks"
+              }
+            ]
+          },
+          {
+            "id": "a1:b2",
+            "type": "list",
+            "ordered": false,
+            "items": [
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b2:i0:p0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "普通列表项"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b2:i1:p0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "带嵌套列表"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "a1:b2:i1:l0",
+                    "type": "list",
+                    "ordered": true,
+                    "start": 1,
+                    "items": [
+                      {
+                        "blocks": [
+                          {
+                            "id": "a1:b2:i1:l0:i0:p0",
+                            "type": "paragraph",
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "nested"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b3",
+            "type": "code",
+            "language": "python",
+            "code": "from dataclasses import dataclass\n\n@dataclass\nclass Block:\n    kind: str\n"
+          },
+          {
+            "id": "a1:b4",
+            "type": "math",
+            "source": "\\frac{P(B\\mid A)P(A)}{P(B)}"
+          },
+          {
+            "id": "a1:b5",
+            "type": "table",
+            "columns": [
+              {
+                "align": "left"
+              },
+              {
+                "align": "right"
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "能力"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "延迟"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "HTML"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "27 ms"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Typst PDF"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "104 ms"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b6",
+            "type": "image",
+            "assetId": "asset-image",
+            "alt": "pipeline diagram",
+            "caption": [
+              {
+                "type": "text",
+                "text": "Block AST 到多格式 renderer"
+              }
+            ]
+          },
+          {
+            "id": "a1:b7",
+            "type": "file",
+            "assetId": "asset-data",
+            "label": "telemetry_data.json"
+          },
+          {
+            "id": "a1:b9",
+            "type": "unknown",
+            "sourceType": "gemini.ast_composable_future",
+            "text": "Future provider block fallback."
+          }
+        ]
+      },
+      {
+        "id": "u2",
+        "role": "user",
+        "blocks": [
+          {
+            "id": "u2:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "工具和思考呢？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a2",
+        "role": "assistant",
+        "blocks": [
+          {
+            "id": "a2:b0",
+            "type": "thought",
+            "disclosure": "providerExposed",
+            "kind": "summary",
+            "blocks": [
+              {
+                "id": "a2:b0:p0",
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Provider-exposed thought summary only."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "id": "asset-image",
+      "kind": "image",
+      "name": "pipeline.svg",
+      "mimeType": "image/svg+xml",
+      "sizeBytes": 2048,
+      "dimensions": {
+        "widthPx": 1600,
+        "heightPx": 900
+      },
+      "storageRef": "assets/pipeline.svg",
+      "status": "available"
+    },
+    {
+      "id": "asset-data",
+      "kind": "file",
+      "name": "telemetry_data.json",
+      "mimeType": "application/json",
+      "sizeBytes": 2936012,
+      "storageRef": "assets/telemetry_data.json",
+      "status": "available"
+    }
+  ],
+  "citations": [
+    {
+      "id": "cite-1",
+      "kind": "web",
+      "url": "https://example.com",
+      "title": "Example source",
+      "publisher": "Example"
+    }
+  ]
+}

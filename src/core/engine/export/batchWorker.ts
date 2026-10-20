@@ -1,5 +1,5 @@
-// batchWorker.ts - Single-chat remote fetching, exponential rate-limit backoff, and title/media resolution
-import type { GeminiUtilsModule } from "../../utils/utils.js";
+import { findGenerationModelMessage, hasGenerationImage } from '../generatedMediaIdentity.js';
+import type { FetchBatchMessage } from '../../../types/messages.js';
 
 export interface FetchChatDetailOptions {
     messageSender?: any;
@@ -14,6 +14,8 @@ export interface FetchChatDetailResult {
     skipped?: number;
     error?: string;
     status?: number;
+    rawResponse?: any;
+    [key: string]: any;
 }
 
 export interface ResolveChatResult {
@@ -24,6 +26,10 @@ export interface ResolveChatResult {
     isError: boolean;
     errMsg: string | null;
     convsNeedSave: boolean;
+}
+
+export interface SupplementTakeoutMediaOptions {
+    appendMarkdownRef?: boolean;
 }
 
 export interface BatchWorkerModule {
@@ -47,45 +53,109 @@ export interface BatchWorkerModule {
         onLog?: (msg: string, level?: string) => void,
         options?: any
     ) => Promise<ResolveChatResult>;
+    supplementTakeoutGeneratedMedia: (
+        chat: any,
+        nid: string,
+        slot?: string,
+        takeoutEngine?: any,
+        options?: SupplementTakeoutMediaOptions
+    ) => void;
+    formatDebugInfo?: (debug: any) => string;
 }
 
-declare global {
-    var BatchWorker: BatchWorkerModule;
-}
-
-import GeminiUtils, {
+import {
     normId as utilsNormId,
+    shortScope as utilsShortScope,
     cleanTitle as utilsCleanTitle,
+    unescapeHtml as utilsUnescapeHtml,
+    stripHtmlTags as utilsStripHtmlTags,
     isRealTitle as utilsIsRealTitle,
-    resolveTitle as utilsResolveTitle
+    resolveTitle as utilsResolveTitle,
+    cleanZeroWidth as utilsCleanZeroWidth,
+    isBrandPlaceholderTitle as utilsIsBrandPlaceholderTitle,
+    sanitizeFileName as utilsSanitizeFileName,
+    normalizeReliableTitleSource as utilsNormalizeReliableTitleSource
 } from "../../utils/utils.js";
+import type { GeminiUtilsModule } from "../../utils/utils.js";
+import { __resolveModule } from "../../utils/moduleOverrides.js";
+import { I18n as I18nStatic } from "../../utils/i18n.js";
+import { ChatFormatter } from "../chatFormatter.js";
+import TabService from "../../utils/tabService.js";
+import { getConversationDetail } from "../../storage/conversationDetailStore.js";
+import { isConfirmedDeletedError } from "../../protocol/protocol.js";
+
+const injectedUtils = (): GeminiUtilsModule | null => __resolveModule('GeminiUtils', null);
 
 const normId = (id?: string | number | null): string => {
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils?.normId) {
-        return (globalThis as any).GeminiUtils.normId(id);
+    const injected = injectedUtils();
+    if (injected?.normId) {
+        return injected.normId(id);
     }
     return utilsNormId(id);
 };
 
+const shortScope = (id?: string | number | null): string => {
+    const injected = injectedUtils();
+    if (injected?.shortScope) {
+        return injected.shortScope(id);
+    }
+    return utilsShortScope(id as any);
+};
+
 const cleanTitle = (t?: string | null): string => {
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils?.cleanTitle) {
-        return (globalThis as any).GeminiUtils.cleanTitle(t);
+    const injected = injectedUtils();
+    if (injected?.cleanTitle) {
+        return injected.cleanTitle(t);
     }
     return utilsCleanTitle(t);
 };
 
+const unescapeHtml = (t?: string | null): string => {
+    const injected = injectedUtils();
+    if (injected?.unescapeHtml) {
+        return injected.unescapeHtml(t);
+    }
+    return utilsUnescapeHtml(t);
+};
+
+const stripHtmlTags = (t?: string | null): string => {
+    const injected = injectedUtils();
+    if (injected?.stripHtmlTags) {
+        return injected.stripHtmlTags(t);
+    }
+    return utilsStripHtmlTags(t);
+};
+
 const isRealTitle = (t?: string | null, fallbackId?: string | number): boolean => {
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils?.isRealTitle) {
-        return (globalThis as any).GeminiUtils.isRealTitle(t, fallbackId);
+    const injected = injectedUtils();
+    if (injected?.isRealTitle) {
+        return injected.isRealTitle(t, fallbackId);
     }
     return utilsIsRealTitle(t, fallbackId);
 };
 
 const resolveTitle = (chat?: any) => {
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils?.resolveTitle) {
-        return (globalThis as any).GeminiUtils.resolveTitle(chat);
+    const injected = injectedUtils();
+    if (injected?.resolveTitle) {
+        return injected.resolveTitle(chat);
     }
     return utilsResolveTitle(chat);
+};
+
+const cleanZeroWidth = (t?: any): string => {
+    const injected = injectedUtils();
+    if (injected?.cleanZeroWidth) {
+        return injected.cleanZeroWidth(t);
+    }
+    return utilsCleanZeroWidth(t);
+};
+
+const isBrandPlaceholderTitle = (t?: any): boolean => {
+    const injected = injectedUtils();
+    if (injected?.isBrandPlaceholderTitle) {
+        return injected.isBrandPlaceholderTitle(t);
+    }
+    return utilsIsBrandPlaceholderTitle(t);
 };
 
     async function fetchChatDetail(
@@ -100,7 +170,7 @@ const resolveTitle = (chat?: any) => {
     ): Promise<FetchChatDetailResult> {
         const nid = normId(requestedItem.id);
         const messageSender = options.messageSender || null;
-        const tabService = options.tabService || (typeof (globalThis as any).TabService !== 'undefined' ? (globalThis as any).TabService : null);
+        const tabService = options.tabService || __resolveModule('TabService', TabService);
 
         return new Promise<FetchChatDetailResult>(async (resolve) => {
             let settled = false;
@@ -124,13 +194,18 @@ const resolveTitle = (chat?: any) => {
                     }, currentSlot);
                     if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
                     if (!settled) {
-                        settled = true;
                         if (directRes && directRes.success) {
+                            settled = true;
                             const chat = directRes.data || directRes.chat || directRes;
                             resolve({ success: true, results: [chat], skipped: 0 });
                             return;
                         } else if (directRes && directRes.error) {
+                            settled = true;
                             resolve(directRes);
+                            return;
+                        } else if (directRes !== null && directRes !== undefined) {
+                            settled = true;
+                            resolve({ success: false, error: 'Malformed direct response envelope', rawResponse: directRes });
                             return;
                         }
                     }
@@ -146,7 +221,7 @@ const resolveTitle = (chat?: any) => {
             const sender = messageSender || (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage ? chrome.runtime.sendMessage.bind(chrome.runtime) : null);
 
             if (sender) {
-                sender({
+                const msg: FetchBatchMessage = {
                     action: 'fetchBatch',
                     ids: [requestedItem],
                     format,
@@ -154,17 +229,26 @@ const resolveTitle = (chat?: any) => {
                     globalOffset: currentIndex,
                     globalTotal: totalChats,
                     accountSlot: currentSlot
-                }, (response: any) => {
+                };
+                try {
+                    sender(msg, (response: any) => {
+                        if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
+                        if (!settled) {
+                            settled = true;
+                            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.lastError) {
+                                resolve({ success: false, error: chrome.runtime.lastError.message });
+                            } else {
+                                resolve(response);
+                            }
+                        }
+                    });
+                } catch (sendErr: any) {
                     if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
                     if (!settled) {
                         settled = true;
-                        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.lastError) {
-                            resolve({ success: false, error: chrome.runtime.lastError.message });
-                        } else {
-                            resolve(response);
-                        }
+                        resolve({ success: false, error: sendErr?.message || String(sendErr) });
                     }
-                });
+                }
             } else {
                 if (abortSignal) abortSignal.removeEventListener('abort', onAbort);
                 if (!settled) {
@@ -173,6 +257,123 @@ const resolveTitle = (chat?: any) => {
                 }
             }
         });
+    }
+
+    function supplementTakeoutGeneratedMedia(
+        chat: any,
+        nid: string,
+        slot: string = 'u0',
+        takeoutEngine?: any,
+        options: SupplementTakeoutMediaOptions = {}
+    ): void {
+        const appendMarkdownRef = options.appendMarkdownRef ?? true;
+        if (takeoutEngine && typeof takeoutEngine.getTakeoutMediaForChat === 'function' && Array.isArray(chat?.messages) && chat.messages.length > 0) {
+            const takeoutMedia = takeoutEngine.getTakeoutMediaForChat(nid, slot);
+            if (takeoutMedia && takeoutMedia.length > 0) {
+                for (const tm of takeoutMedia) {
+                    if (!tm?.isGenerated || !tm?.filename) continue;
+                    const generation = tm.generation || (tm.providerRequestId ? {
+                        chatId: nid,
+                        providerRequestId: tm.providerRequestId,
+                        generationOrdinal: 0,
+                        imageOrdinal: tm.imageOrdinal ?? 0,
+                    } : null);
+                    const eventTarget = generation ? findGenerationModelMessage(chat, generation) : null;
+                    if (eventTarget && generation && hasGenerationImage(eventTarget, generation)) continue;
+                    const candidates = generation ? (eventTarget ? [eventTarget] : []) : chat.messages;
+                    const alreadyHas = candidates.some((m: any) =>
+                        (m.images && m.images.some((im: any) => im.fileName === tm.filename || (im.localName && im.localName.includes(tm.filename)))) ||
+                        (m.attachments && m.attachments.some((at: any) => at.fileName === tm.filename || (at.localName && at.localName.includes(tm.filename)))) ||
+                        (typeof m.content === 'string' && m.content.includes(tm.filename))
+                    );
+                    if (!alreadyHas) {
+                        const imgObj = {
+                            url: tm.filename,
+                            name: tm.filename,
+                            fileName: tm.filename,
+                            localName: `assets/${tm.filename}`,
+                            source: 'takeout',
+                            isGenerated: true,
+                            providerRequestId: tm.providerRequestId || generation?.providerRequestId,
+                            imageOrdinal: tm.imageOrdinal ?? generation?.imageOrdinal,
+                            ...(generation ? { generation } : {})
+                        };
+                        const targetModelMsg = generation ? eventTarget : chat.messages.slice().reverse().find((m: any) => m.role === 'model' || m.role === 'assistant');
+                        if (targetModelMsg) {
+                            targetModelMsg.images = targetModelMsg.images || [];
+                            targetModelMsg.attachments = targetModelMsg.attachments || [];
+                            targetModelMsg.images.push(imgObj);
+                            targetModelMsg.attachments.push(imgObj);
+                            if (appendMarkdownRef) {
+                                if (typeof targetModelMsg.content !== 'string') targetModelMsg.content = '';
+                                if (!targetModelMsg.content.includes(tm.filename)) {
+                                    targetModelMsg.content = (targetModelMsg.content ? targetModelMsg.content + '\n\n' : '') + `![Generated Image](assets/${tm.filename})`;
+                                }
+                            }
+                        } else {
+                            chat.messages.push({
+                                role: 'model',
+                                content: appendMarkdownRef ? `![Generated Image](assets/${tm.filename})` : '',
+                                timestamp: generation?.time ?? null,
+                                providerRequestId: tm.providerRequestId || generation?.providerRequestId,
+                                ...(generation ? { generation } : {}),
+                                images: [imgObj],
+                                attachments: [imgObj]
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Shared acquisition policy: usable online data, then Takeout, then stored detail. */
+    export async function resolveConversationData(
+        chat: any,
+        nid: string,
+        listConversation?: any,
+        takeoutEngine?: any,
+        slot: string = 'u0',
+        onLog: (msg: string, level?: string) => void = (() => {}),
+    ): Promise<any> {
+        if ((chat.error || chat._empty || !chat.messages || chat.messages.length === 0)) {
+            if (takeoutEngine) {
+                const fbChat = takeoutEngine.getTakeoutOfflineChat(nid, slot);
+                if (fbChat && fbChat.messages && fbChat.messages.length > 0) {
+                    chat = {
+                        ...fbChat,
+                        id: nid,
+                        title: isRealTitle(chat.title, nid) ? chat.title : fbChat.title,
+                        url: `https://gemini.google.com/app/${nid}`
+                    };
+                    delete chat.error;
+                    delete chat._empty;
+                    const I18n = __resolveModule('I18n', I18nStatic);
+                    onLog(I18n.t('logTakeoutChatRecovered', chat.title || nid), 'info');
+                }
+            }
+            if (chat.error || chat._empty || !chat.messages || chat.messages.length === 0) {
+                try {
+                    const detail = await getConversationDetail(nid);
+                    if (detail && Array.isArray(detail.messages) && detail.messages.length > 0) {
+                        chat = {
+                            ...(listConversation || {}),
+                            id: nid,
+                            title: isRealTitle(chat.title, nid) ? chat.title : (listConversation?.title || nid),
+                            messages: detail.messages,
+                            turns: detail.turns,
+                            url: (listConversation && listConversation.url) || `https://gemini.google.com/app/${nid}`
+                        };
+                        delete chat.error;
+                        delete chat._empty;
+                        const I18n = __resolveModule('I18n', I18nStatic);
+                        onLog(I18n.t('logTakeoutChatRecovered', chat.title || nid), 'info');
+                    }
+                } catch { /* intentional */ }
+            }
+        }
+
+        return chat;
     }
 
     async function resolveChat(
@@ -189,69 +390,12 @@ const resolveTitle = (chat?: any) => {
         const slot = currentSlot || 'u0';
         let convsNeedSave = false;
 
-        // 1. Takeout offline chat fallback
-        if ((chat.error || chat._empty || !chat.messages || chat.messages.length === 0) && takeoutEngine) {
-            const fbChat = takeoutEngine.getTakeoutOfflineChat(nid, slot);
-            if (fbChat && fbChat.messages && fbChat.messages.length > 0) {
-                chat = {
-                    ...fbChat,
-                    id: nid,
-                    title: isRealTitle(chat.title, nid) ? chat.title : fbChat.title,
-                    url: `https://gemini.google.com/app/${nid}`
-                };
-                delete chat.error;
-                delete chat._empty;
-                const I18n = (globalThis as any).I18n;
-                onLog(typeof I18n !== 'undefined' ? I18n.t('logTakeoutChatRecovered', chat.title || nid) : `[${chat.title || nid}] ⚡ 已自动从 Takeout 离线记录恢复问答并导出`, 'info');
-            }
-        }
+        chat = await resolveConversationData(chat, nid, listConversation, takeoutEngine, slot, onLog);
 
-        // 2. Supplement missing offline generated media from Takeout
-        if (takeoutEngine && typeof takeoutEngine.getTakeoutMediaForChat === 'function' && Array.isArray(chat.messages) && chat.messages.length > 0) {
-            const takeoutMedia = takeoutEngine.getTakeoutMediaForChat(nid, slot);
-            if (takeoutMedia && takeoutMedia.length > 0) {
-                for (const tm of takeoutMedia) {
-                    if (!tm.isGenerated) continue;
-                    const alreadyHas = chat.messages.some((m: any) =>
-                        (m.images && m.images.some((im: any) => im.fileName === tm.filename || (im.localName && im.localName.includes(tm.filename)))) ||
-                        (m.attachments && m.attachments.some((at: any) => at.fileName === tm.filename || (at.localName && at.localName.includes(tm.filename)))) ||
-                        (m.content && m.content.includes(tm.filename))
-                    );
-                    if (!alreadyHas) {
-                        const imgObj = {
-                            url: tm.filename,
-                            name: tm.filename,
-                            fileName: tm.filename,
-                            localName: `assets/${tm.filename}`,
-                            source: 'takeout',
-                            isGenerated: true
-                        };
-                        let targetModelMsg = chat.messages.slice().reverse().find((m: any) => m.role === 'model');
-                        if (targetModelMsg) {
-                            targetModelMsg.images = targetModelMsg.images || [];
-                            targetModelMsg.attachments = targetModelMsg.attachments || [];
-                            targetModelMsg.images.push(imgObj);
-                            targetModelMsg.attachments.push(imgObj);
-                            if (!targetModelMsg.content.includes(tm.filename)) {
-                                targetModelMsg.content = (targetModelMsg.content ? targetModelMsg.content + '\n\n' : '') + `![Generated Image](assets/${tm.filename})`;
-                            }
-                        } else {
-                            chat.messages.push({
-                                role: 'model',
-                                content: `![Generated Image](assets/${tm.filename})`,
-                                timestamp: Date.now(),
-                                images: [imgObj],
-                                attachments: [imgObj]
-                            });
-                        }
-                    }
-                }
-            }
-        }
+        supplementTakeoutGeneratedMedia(chat, nid, slot, takeoutEngine);
 
-        // 2b. Extract or synthesize Deep Research document entities
         if (Array.isArray(chat.messages) && chat.messages.length > 0) {
-            const shortScope = nid ? `${nid.slice(-6)}_` : '';
+            const scope = shortScope(nid);
             for (let mi = 0; mi < chat.messages.length; mi++) {
                 const m = chat.messages[mi];
                 if (m.role !== 'model' || !m.content || typeof m.content !== 'string') continue;
@@ -270,9 +414,9 @@ const resolveTitle = (chat?: any) => {
                     if (isHtmlReport) {
                         const h1Match = m.content.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
                         if (h1Match) {
-                            docTitle = cleanTitle(h1Match[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'));
+                            docTitle = cleanTitle(stripHtmlTags(unescapeHtml(h1Match[1])));
                         }
-                        const convHtml = (globalThis as any).ChatFormatter?.convertHtmlToMarkdown;
+                        const convHtml = ChatFormatter.convertHtmlToMarkdown;
                         docMarkdown = convHtml ? convHtml(m.content) : m.content.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_match: string, lvl: string, txt: string) => `\n${'#'.repeat(parseInt(lvl, 10))} ${txt.trim()}\n`);
                     } else {
                         const h1Match = m.content.match(/(?:^|\n)#\s+([^\n]+)/);
@@ -283,8 +427,8 @@ const resolveTitle = (chat?: any) => {
                     }
 
                     if (!docTitle) docTitle = 'Deep Research Report';
-                    const safeDocTitle = docTitle.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
-                    const localName = `files/${shortScope}${safeDocTitle}.md`;
+                    const safeDocTitle = utilsSanitizeFileName(docTitle, 'report').slice(0, 60);
+                    const localName = `files/${scope}${safeDocTitle}.md`;
 
                     if (!docMarkdown.trim().startsWith('#')) {
                         docMarkdown = `# ${docTitle}\n\n${docMarkdown.trim()}`;
@@ -308,19 +452,22 @@ const resolveTitle = (chat?: any) => {
             }
         }
 
-        // 3. Error or empty handling
         if (chat.error || chat._empty) {
-            const isConfirmedDeleted = !!chat.isDeleted || !!chat._debug?.isNotFound || !!chat._debug?.domDebug?.isNotFound;
-            const cleanForLog = (t: any) => String(t || '').replace(/[\u200E\u200B\uFEFF\u00A0]/g, '').trim();
-            const rawTitle = chat.title || nid;
-            const displayTitle = cleanForLog(rawTitle) && !/^(Google\s+)?(Gemini|Bard|Google\s+AI|Google\s+Account)$/i.test(cleanForLog(rawTitle)) ? cleanForLog(rawTitle) : nid;
-            const debugInfo = chat._debug ? ` _debug=${String(chat._debug).slice(0, 200)}` : (chat._raw ? ` _raw_len=${JSON.stringify(chat._raw).length}` : '');
-            const errMsg = (isConfirmedDeleted ? '云端会话已被删除或不存在' : (chat.error || '云端返回内容为空（服务端未返回任何消息，可能为限频、对话已被清空/归档或新格式未兼容）')) + debugInfo;
+            const isConfirmedDeleted = !!chat.isDeleted
+                || !!chat._debug?.isNotFound
+                || !!chat._debug?.domDebug?.isNotFound
+                || !!chat._debug?.batchexecuteEmptyDebug?.isDeleted
+                || isConfirmedDeletedError(chat.error)
+                || isConfirmedDeletedError(chat._debug?.batchexecuteEmptyDebug?.error);
 
-            const I18n = (globalThis as any).I18n;
+            const rawTitle = chat.title || nid;
+            const cleanedTitle = cleanZeroWidth(rawTitle);
+            const displayTitle = !isBrandPlaceholderTitle(rawTitle) && cleanedTitle ? cleanedTitle : nid;
+            const I18n = __resolveModule('I18n', I18nStatic);
+
             if (isConfirmedDeleted) {
                 try {
-                    const storage = typeof (globalThis as any).StorageService !== 'undefined' ? (globalThis as any).StorageService : (typeof window !== 'undefined' && (window as any).StorageService);
+                    const storage = __resolveModule('StorageService', (typeof window !== 'undefined' && (window as any).StorageService) || null);
                     if (storage && typeof storage.removeConversation === 'function') {
                         await storage.removeConversation(currentSlot || 'u0', nid);
                         const sender = options.messageSender || (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage ? chrome.runtime.sendMessage.bind(chrome.runtime) : null);
@@ -332,22 +479,55 @@ const resolveTitle = (chat?: any) => {
                 } catch (e) {
                     if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:batchWorker.ts]', e);
                 }
-                onLog(typeof I18n !== 'undefined' ? I18n.t('logChatDeletedAndPruned', displayTitle) : `[${displayTitle}] ⚡ 云端已确认该会话不存在或已被删除，已自动从本地列表中移除`, 'warn');
-            } else {
-                onLog(typeof I18n !== 'undefined' ? I18n.t('logExportSkipped', displayTitle, errMsg) : `[${displayTitle}] 导出跳过: ${errMsg}`, 'error');
+                onLog(I18n.t('logChatDeletedAndPruned', displayTitle), 'warn');
+
+                return {
+                    chat,
+                    displayTitle,
+                    isConfirmedDeleted: true,
+                    isError: true,
+                    errMsg: I18n.t('logChatDeletedAndPruned', displayTitle),
+                    convsNeedSave: false
+                };
             }
 
-            return {
-                chat,
-                displayTitle,
-                isConfirmedDeleted,
-                isError: true,
-                errMsg,
-                convsNeedSave: false
-            };
+            const hasNoMessages = !chat.messages || (Array.isArray(chat.messages) && chat.messages.length === 0);
+            const isFatalError = typeof chat.error === 'string' && (
+                chat.error.includes('429') ||
+                chat.error.includes('401') ||
+                chat.error.includes('403') ||
+                chat.error.includes('500') ||
+                chat.error.includes('502') ||
+                chat.error.includes('503') ||
+                chat.error.includes('NetworkError') ||
+                chat.error.includes('Failed to fetch') ||
+                chat.error.includes('超时') ||
+                chat.error.includes('timeout') ||
+                chat.error.includes('抓取异常')
+            );
+
+            if (!isFatalError && hasNoMessages) {
+                delete chat.error;
+                delete chat._empty;
+                chat.messages = [];
+                chat.isEmpty = true;
+                onLog(I18n.t('logEmptyChatExported', displayTitle), 'info');
+            } else {
+                const debugInfo = formatDebugInfo(chat._debug) || (chat._raw ? ` _raw_len=${JSON.stringify(chat._raw).length}` : '');
+                const errMsg = (chat.error || '云端返回内容为空（服务端未返回任何消息，可能为限频、对话已被清空/归档或新格式未兼容）') + debugInfo;
+                onLog(I18n.t('logExportSkipped', displayTitle, errMsg), 'error');
+
+                return {
+                    chat,
+                    displayTitle,
+                    isConfirmedDeleted: false,
+                    isError: true,
+                    errMsg,
+                    convsNeedSave: false
+                };
+            }
         }
 
-        // 4. Sniff title from first user query if needed
         if (!isRealTitle(chat.title, chat.id) && Array.isArray(chat.messages)) {
             const firstUser = chat.messages.find((m: any) => m.role === 'user' && m.content && m.content.trim());
             if (firstUser) {
@@ -368,27 +548,29 @@ const resolveTitle = (chat?: any) => {
             }
         }
 
-        // 5. Brand scrub and multi-source title resolution
         let finalTitle = chat.title || listConversation?.title || chat.id;
 
         if (listConversation) {
-            const cleanForBad = (t: any) => String(t || '').replace(/[\u200E\u200B\uFEFF\u00A0]/g, '').trim();
-            const isBadBrand = (t: any) => !t || /^(Google\s+)?(Gemini|Bard|Google\s+AI|Google\s+Account)$/i.test(cleanForBad(t));
             listConversation.titles = listConversation.titles || {};
             for (const [k, v] of Object.entries(listConversation.titles)) {
-                if (isBadBrand(v)) delete listConversation.titles[k];
+                if (isBrandPlaceholderTitle(v) || (!utilsNormalizeReliableTitleSource(k) && k !== 'legacy')) {
+                    delete listConversation.titles[k];
+                }
             }
             if (chat.titles && typeof chat.titles === 'object') {
                 for (const [k, v] of Object.entries(chat.titles)) {
-                    if (isBadBrand(v)) delete chat.titles[k];
+                    const reliableK = utilsNormalizeReliableTitleSource(k);
+                    if (reliableK && typeof v === 'string' && !isBrandPlaceholderTitle(v)) {
+                        listConversation.titles[reliableK] = v;
+                    }
                 }
-                Object.assign(listConversation.titles, chat.titles);
             }
-            if (chat.titleSource && isRealTitle(chat.title, chat.id) && chat.title !== chat.id) {
-                listConversation.titles[chat.titleSource] = cleanTitle(chat.title);
+            const reliableChatSource = utilsNormalizeReliableTitleSource(chat.titleSource);
+            if (reliableChatSource && isRealTitle(chat.title, chat.id) && chat.title !== chat.id) {
+                listConversation.titles[reliableChatSource] = cleanTitle(chat.title);
             }
             const resolved = resolveTitle(listConversation);
-            const cleanResolved = String(resolved.title || '').replace(/[\u200E\u200B\uFEFF\u00A0]/g, '').trim();
+            const cleanResolved = cleanZeroWidth(resolved.title);
             if (resolved.title && /^(Google\s+)?(Gemini|Bard|Google\s+AI)$/i.test(cleanResolved)) {
                 if (typeof console !== 'undefined' && console.warn) {
                     console.warn('[Export] skip bad brand resolved title', nid, resolved.title);
@@ -415,23 +597,44 @@ const resolveTitle = (chat?: any) => {
         };
     }
 
+    function formatDebugInfo(debug: any): string {
+        if (!debug) return '';
+        if (typeof debug === 'string') return ` ${debug.slice(0, 300)}`;
+        try {
+            if (debug.batchexecuteEmptyDebug?.error) {
+                return ` (RPC: ${debug.batchexecuteEmptyDebug.error})`;
+            }
+            if (debug.error) {
+                return ` (${debug.error})`;
+            }
+            if (debug.domDebug?.error) {
+                return ` (DOM: ${debug.domDebug.error})`;
+            }
+            const simplified: Record<string, any> = {};
+            for (const k of Object.keys(debug)) {
+                if (k === 'rawPreview' || k === 'topPreview') continue;
+                simplified[k] = debug[k];
+            }
+            const str = JSON.stringify(simplified);
+            return str && str !== '{}' ? ` ${str.slice(0, 300)}` : '';
+        } catch {
+            return '';
+        }
+    }
+
 export {
     fetchChatDetail,
-    resolveChat
+    resolveChat,
+    supplementTakeoutGeneratedMedia,
+    formatDebugInfo
 };
 
 export const BatchWorker: BatchWorkerModule = {
     fetchChatDetail,
-    resolveChat
+    resolveChat,
+    supplementTakeoutGeneratedMedia,
+    formatDebugInfo
 };
 
-(BatchWorker as any).BatchWorker = BatchWorker;
-(BatchWorker as any).default = BatchWorker;
-
-if (typeof globalThis !== 'undefined' && !(globalThis as any).BatchWorker) {
-    (globalThis as any).BatchWorker = BatchWorker;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = BatchWorker;
-}
 export default BatchWorker;
+

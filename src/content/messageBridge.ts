@@ -1,8 +1,17 @@
-// src/content/messageBridge.ts - Inter-world message bridge between MAIN world hooks and content script
 import { contentContext } from './contentContext.js';
 import { GeminiResponseParserClass } from '../core/api/geminiParser.js';
 import { GeminiProtocol, CrossWorldEvents } from '../core/protocol/protocol.js';
-import { StorageService } from '../core/storage/storageService.js';
+import { LiveSaveObserver } from './liveSaveObserver.js';
+import { extractConversationIdFromUrl, normId } from '../core/utils/pathUtils.js';
+import { TITLE_TIER_RANK, resolveDetailTitle, normalizeReliableTitleSource } from '../core/utils/titleUtils.js';
+import type { TitleSource } from '../types/index.js';
+import { registerCleanup } from './cleanupRegistry.js';
+import type {
+    GeminiNetworkBatchexecutePayload,
+    GeminiConversationDeletedPayload,
+    GeminiStreamStartPayload,
+    GeminiStreamCompletePayload
+} from '../core/protocol/events.js';
 
 export interface MessageBridgeDeps {
     upsertConversations?: (items: any[], source: string, forceWrite?: boolean, targetSlot?: string) => Promise<number>;
@@ -20,13 +29,20 @@ export interface MessageBridgeDeps {
 }
 
 let _deps: MessageBridgeDeps | null = null;
-let _listening = false;
 
 export function init(dependencies: MessageBridgeDeps = {}): { handleWindowMessage: (event: MessageEvent) => Promise<void> } {
     _deps = dependencies;
-    if (!_listening && typeof window !== 'undefined' && window.addEventListener) {
-        window.addEventListener('message', handleWindowMessage);
-        _listening = true;
+    if (typeof window !== 'undefined' && window.addEventListener) {
+        const w = window as any;
+        // Guard on window to survive re-injection and register removal on cleanup
+        if (!w.__gemExporterBridgeListening) {
+            window.addEventListener('message', handleWindowMessage);
+            w.__gemExporterBridgeListening = true;
+        }
+        registerCleanup(() => {
+            try { window.removeEventListener('message', handleWindowMessage); } catch { /* already gone */ }
+            w.__gemExporterBridgeListening = false;
+        });
     }
     return { handleWindowMessage };
 }
@@ -34,9 +50,7 @@ export function init(dependencies: MessageBridgeDeps = {}): { handleWindowMessag
 export async function handleWindowMessage(event: MessageEvent): Promise<void> {
     if (!event || !_deps) return;
     if (typeof location !== 'undefined' && event.origin !== location.origin) return;
-    // Same-origin iframes can postMessage forged payloads (e.g. conversation
-    // deletion) into this window; only accept events raised by this window
-    // itself. Synthetic dispatches (unit tests) carry no source and still pass.
+    // Restrict to same-window messages (does NOT authenticate the sender against page scripts).
     if (event.source && (typeof window === 'undefined' || event.source !== window)) return;
     const d = event.data;
     if (!d || typeof d !== 'object') return;
@@ -45,58 +59,53 @@ export async function handleWindowMessage(event: MessageEvent): Promise<void> {
         upsertConversations,
         getAccountSlot,
         isRealTitle = () => true,
-        cleanTitle = (t: string) => (t || '').trim(),
-        updateBadge,
-        ensureBadge,
-        Storage = (typeof StorageService !== 'undefined' ? StorageService : null)
+        cleanTitle = (t: string) => (t || '').trim()
     } = _deps;
 
-    // 1. Captured batchexecute response (Sidebar scroll, search, page load, opening any chat)
     if (d.type === CrossWorldEvents.NETWORK_BATCHEXECUTE) {
-        const { text, slot } = d.payload || {};
+        const { text, slot } = (d.payload || {}) as Partial<GeminiNetworkBatchexecutePayload>;
         if (!text) return;
         try {
-            const parser = (typeof GeminiResponseParserClass !== 'undefined' ? GeminiResponseParserClass : null)
-                || ((typeof globalThis !== 'undefined' ? (globalThis as any).GeminiResponseParserClass : null) || null);
+            const parser = GeminiResponseParserClass;
             if (!parser) return;
-            const Proto = (_deps && _deps.protocol) || (typeof GeminiProtocol !== 'undefined' ? GeminiProtocol : ((typeof window !== 'undefined' && (window as any).GeminiProtocol) || null));
+            const Proto = (_deps && _deps.protocol) || GeminiProtocol;
             if (!Proto) return;
 
-            // If response contains conversation list (sidebar scroll or search)
-            if (text.includes(Proto.RPCS.LIST) && typeof upsertConversations === 'function') {
+            if (text.includes(Proto.RPCS.LIST)) {
                 try {
                     const listRes = parser.parseList(text);
                     if (listRes && listRes.conversations && listRes.conversations.length) {
                         const targetSlot = slot || (getAccountSlot ? getAccountSlot() : 'u0');
-                        await upsertConversations(listRes.conversations, 'network-list', false, targetSlot);
+                        // Phase A (P1-3): 嗅探是数据面 —— 直写存储，不进 scan slice、不推进
+                        // checkpoint。forceWrite=true 沿用此前经 ingestListBatch 的实际写语义。
+                        if (typeof upsertConversations === 'function') {
+                            await upsertConversations(listRes.conversations, 'network-list', true, targetSlot);
+                        }
                     }
                 } catch (e) {
                     if (contentContext.isDevMode()) console.debug('[MessageBridge] parseList err', e);
                 }
             }
 
-            // If response contains conversation detail (opening any chat)
             if (text.includes(Proto.RPCS.DETAIL) && typeof upsertConversations === 'function') {
                 try {
                     const detailRes = parser.parseDetail(text);
                     if (detailRes && detailRes.id) {
-                        const nid = String(detailRes.id).replace(/^c_/, '').trim();
+                        const nid = normId(detailRes.id);
                         let title = cleanTitle(detailRes.title);
                         let sourceTier = detailRes.titleSource || 'rpc';
                         if (!isRealTitle(title, nid) && Array.isArray(detailRes.messages)) {
-                            const firstUser = detailRes.messages.find((m: any) => m.role === 'user' && m.content && m.content.trim());
-                            if (firstUser) {
-                                const candidate = cleanTitle(firstUser.content.trim().slice(0, 60).replace(/\n+/g, ' '));
-                                if (isRealTitle(candidate, nid)) {
-                                    title = candidate;
-                                    sourceTier = 'sniff';
-                                }
+                            const sniffed = resolveDetailTitle(detailRes.messages, nid);
+                            if (sniffed) {
+                                title = sniffed.title;
+                                sourceTier = sniffed.source;
                             }
                         }
+                        let titlesObj = detailRes.titles || {};
+                        const targetSlot = slot || (getAccountSlot ? getAccountSlot() : 'u0');
+
                         if (isRealTitle(title, nid)) {
-                            const titlesObj = detailRes.titles || {};
                             titlesObj[sourceTier] = title;
-                            const targetSlot = slot || (getAccountSlot ? getAccountSlot() : 'u0');
                             await upsertConversations([{
                                 id: nid,
                                 title: title,
@@ -121,83 +130,60 @@ export async function handleWindowMessage(event: MessageEvent): Promise<void> {
         return;
     }
 
-    // 2. Real-time conversation deletion hook listener (GzXR5e)
     if (d.type === CrossWorldEvents.CONVERSATION_DELETED) {
-        const { id, slot } = d.payload || {};
-        if (id) {
+        const { id } = (d.payload || {}) as Partial<GeminiConversationDeletedPayload>;
+        const isValidConvId = typeof id === 'string' && id.trim().length > 0 && id.trim().length <= 128 && /^[a-zA-Z0-9_\-]+$/.test(id.trim());
+        if (id && isValidConvId) {
+            const cleanId = id.trim();
             try {
-                const targetSlot = slot || (getAccountSlot ? getAccountSlot() : 'u0') || 'u0';
-                if (Storage && typeof Storage.removeConversation === 'function') {
-                    const removed = await Storage.removeConversation(targetSlot, id);
-                    if (removed) {
-                        const updatedList = await Storage.getConversations(targetSlot);
-                        if (updateBadge) updateBadge(updatedList.length, 0);
+                // Route verification through the account of this content tab,
+                // never through a slot supplied by page-world JavaScript.
+                const targetSlot = (getAccountSlot ? getAccountSlot() : 'u0') || 'u0';
+                // Page-world postMessage is untrusted. The detail route only
+                // prunes after an authoritative server "confirmed_deleted" RPC.
+                if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+                    for (const delayMs of [0, 500, 1500]) {
+                        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
                         try {
-                            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-                                chrome.runtime.sendMessage({
-                                    action: 'syncUpdate',
-                                    slot: targetSlot,
-                                    count: updatedList.length,
-                                    from: 'delete-event'
-                                });
-                            }
-                        } catch (e) {
-                            if (contentContext.isDevMode()) console.debug('[MessageBridge]', e);
-                        }
-                        if (contentContext.isDevMode()) {
-                            console.log(`[MessageBridge] Realtime pruned deleted conversation ${id} from slot ${targetSlot}`);
+                            const result = await chrome.runtime.sendMessage({ action: 'fetchChat', conversationId: cleanId, accountSlot: targetSlot });
+                            if (result?.data?.isDeleted === true) break;
+                        } catch (err) {
+                            if (contentContext.isDevMode()) console.debug('[MessageBridge] delete verification attempt failed', err);
                         }
                     }
                 }
             } catch (err) {
-                if (contentContext.isDevMode()) console.debug('[MessageBridge] remove deleted conversation err', err);
+                if (contentContext.isDevMode()) console.debug('[MessageBridge] verify deleted conversation err', err);
             }
         }
         return;
     }
 
-    // 3. In-page live auto-save trigger
-    if (d.type === CrossWorldEvents.LIVE_SAVE_TRIGGER) {
-        const { cid, reason, ...options } = d.payload || {};
-        if (cid) {
-            try {
-                const coordinator = (typeof globalThis !== 'undefined' && (globalThis as any).LiveSaveCoordinator);
-                if (coordinator && typeof coordinator.executeLiveSave === 'function') {
-                    await coordinator.executeLiveSave(cid, reason || 'turn_complete', options);
-                }
-            } catch (err) {
-                if (contentContext.isDevMode()) console.debug('[MessageBridge] live save trigger err', err);
-            }
-        }
-        return;
-    }
-
-    // 4. Streaming generation lifecycle hooks (RPC / StreamGenerate)
     if (d.type === CrossWorldEvents.STREAM_START) {
-        const { id, slot } = d.payload || {};
+        const { id, slot } = (d.payload || {}) as Partial<GeminiStreamStartPayload>;
         if (typeof (_deps as any)?.onStreamStart === 'function') {
             (_deps as any).onStreamStart(id, slot);
         } else {
-            const obs = (typeof globalThis !== 'undefined' && (globalThis as any).LiveSaveObserver);
+            const obs = LiveSaveObserver;
             if (obs && typeof obs.notifyStreamStart === 'function') {
                 obs.notifyStreamStart(id);
             }
         }
-        const activeId = id || (typeof location !== 'undefined' && location.pathname.match(/\/app\/(c_)?([A-Za-z0-9_-]{8,})/)?.[2]) || null;
+        const activeId = id ? normId(id) : (typeof location !== 'undefined' ? extractConversationIdFromUrl(location.pathname) : null);
         if (activeId) {
-            const nid = String(activeId).replace(/^c_/, '').trim();
+            const nid = activeId;
             const targetSlot = slot || (getAccountSlot ? getAccountSlot() : 'u0') || 'u0';
             try {
                 if (typeof (_deps as any)?.touchActiveConversation === 'function') {
                     await (_deps as any).touchActiveConversation(nid, targetSlot, { source: 'stream-start' });
                 } else if (typeof upsertConversations === 'function') {
-                    const now = Date.now();
+                    // SSOT timestamp authority: no client-clock timestamp here;
+                    // timestamp/updatedAt are server-authoritative (see
+                    // touchActiveConversation in syncEngine.ts).
                     await upsertConversations([{
                         id: nid,
                         url: `https://gemini.google.com/app/${nid}`,
                         href: `https://gemini.google.com/app/${nid}`,
-                        timestamp: now,
-                        updatedAt: now,
                         sidebarIndex: 0
                     }], 'stream-start', true, targetSlot);
                 }
@@ -209,38 +195,39 @@ export async function handleWindowMessage(event: MessageEvent): Promise<void> {
     }
 
     if (d.type === CrossWorldEvents.STREAM_COMPLETE) {
-        const { id, slot } = d.payload || {};
+        const { id, slot } = (d.payload || {}) as Partial<GeminiStreamCompletePayload>;
         if (typeof (_deps as any)?.onStreamComplete === 'function') {
             (_deps as any).onStreamComplete(id, slot);
         } else {
-            const obs = (typeof globalThis !== 'undefined' && (globalThis as any).LiveSaveObserver);
+            const obs = LiveSaveObserver;
             if (obs && typeof obs.notifyStreamComplete === 'function') {
                 obs.notifyStreamComplete(id);
             }
         }
-        const activeId = id || (typeof location !== 'undefined' && location.pathname.match(/\/app\/(c_)?([A-Za-z0-9_-]{8,})/)?.[2]) || null;
+        const activeId = id ? normId(id) : (typeof location !== 'undefined' ? extractConversationIdFromUrl(location.pathname) : null);
         if (activeId) {
-            const nid = String(activeId).replace(/^c_/, '').trim();
+            const nid = activeId;
             const targetSlot = slot || (getAccountSlot ? getAccountSlot() : 'u0') || 'u0';
             try {
                 if (typeof (_deps as any)?.touchActiveConversation === 'function') {
                     await (_deps as any).touchActiveConversation(nid, targetSlot, { source: 'stream-complete' });
                 } else if (typeof upsertConversations === 'function') {
-                    const now = Date.now();
+                    // SSOT timestamp authority: no client-clock timestamp here;
+                    // timestamp/updatedAt are server-authoritative (see
+                    // touchActiveConversation in syncEngine.ts).
                     const item: any = {
                         id: nid,
                         url: `https://gemini.google.com/app/${nid}`,
                         href: `https://gemini.google.com/app/${nid}`,
-                        timestamp: now,
-                        updatedAt: now,
                         sidebarIndex: 0
                     };
                     if (typeof (_deps as any)?.extractActiveChatTitle === 'function') {
                         const titleObj = (_deps as any).extractActiveChatTitle(nid);
                         if (titleObj && titleObj.title && isRealTitle(titleObj.title, nid)) {
                             item.title = cleanTitle(titleObj.title);
-                            item.titleSource = titleObj.source || 'dom';
-                            item.titles = { [item.titleSource]: item.title };
+                            const sourceTier = normalizeReliableTitleSource(titleObj.source) || 'dom';
+                            item.titleSource = sourceTier;
+                            item.titles = { [sourceTier]: item.title };
                         }
                     }
                     await upsertConversations([item], 'stream-complete', true, targetSlot);
@@ -257,15 +244,5 @@ export const MessageBridge = {
     init,
     handleWindowMessage
 };
-
-(MessageBridge as any).MessageBridge = MessageBridge;
-(MessageBridge as any).default = MessageBridge;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).MessageBridge = MessageBridge;
-}
-if (typeof module !== 'undefined' && (module as any).exports) {
-    (module as any).exports = MessageBridge;
-}
 
 export default MessageBridge;

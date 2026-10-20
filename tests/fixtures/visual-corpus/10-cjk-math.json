@@ -1,0 +1,173 @@
+{
+ "id": "10-cjk-math",
+ "title": "中文+数学公式",
+ "description": "中文段落 + 行内公式 + 独立公式块 + 中英混排：检查 CJK 字体覆盖与公式可选择性。",
+ "bundle": {
+  "schemaVersion": 1,
+  "conversation": {
+   "key": {
+    "providerId": "gemini",
+    "conversationId": "vc-10"
+   },
+   "title": {
+    "value": "质能方程解释"
+   },
+   "createdAt": "2026-09-26T10:00:00Z",
+   "updatedAt": "2026-09-26T11:00:00Z",
+   "messages": [
+    {
+     "id": "m1",
+     "role": "user",
+     "blocks": [
+      {
+       "id": "p10-b107",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "请用中文解释质能方程，并给出推导中的关键公式。"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "m2",
+     "role": "assistant",
+     "blocks": [
+      {
+       "id": "p10-b100",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "质能方程是狭义相对论最著名的结论之一：质量是能量的另一种表现形式。"
+        }
+       ]
+      },
+      {
+       "id": "p10-b101",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "行内公式 "
+        },
+        {
+         "type": "inlineMath",
+         "source": "E=mc^2"
+        },
+        {
+         "type": "text",
+         "text": " 表明，即使是静止的物体也蕴含着巨大的能量。"
+        },
+        {
+         "type": "text",
+         "text": "其中 "
+        },
+        {
+         "type": "inlineMath",
+         "source": "c"
+        },
+        {
+         "type": "text",
+         "text": " 是真空中的光速，约为 "
+        },
+        {
+         "type": "inlineMath",
+         "source": "3\\times 10^8"
+        },
+        {
+         "type": "text",
+         "text": " 米每秒。"
+        }
+       ]
+      },
+      {
+       "id": "p10-b102",
+       "type": "math",
+       "source": "\\alpha^2 + \\beta^2 = \\gamma^2",
+       "notation": "latex"
+      },
+      {
+       "id": "p10-b103",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "上面的希腊字母恒等式在推导中经常出现。勾股定理 "
+        },
+        {
+         "type": "inlineMath",
+         "source": "a^2+b^2=c^2"
+        },
+        {
+         "type": "text",
+         "text": " 则是欧氏几何的基础。"
+        }
+       ]
+      },
+      {
+       "id": "p10-b104",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "无穷级数求和 "
+        },
+        {
+         "type": "inlineMath",
+         "source": "\\sum_{k=1}^{n} k"
+        },
+        {
+         "type": "text",
+         "text": " 是离散数学的基本工具。"
+        }
+       ]
+      },
+      {
+       "id": "p10-b105",
+       "type": "math",
+       "source": "\\sum_{k=1}^{n} k^2 = \\frac{n(n+1)(2n+1)}{6}",
+       "notation": "latex"
+      },
+      {
+       "id": "p10-b106",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "中英文混排测试：The quick brown fox 跳过 lazy dog，人工智能 AI 正在改变世界。"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "assets": [],
+  "citations": []
+ },
+ "binaries": {},
+ "expect": {
+  "minPages": 1,
+  "noToufu": true,
+  "needsCjk": true,
+  "phrases": [
+   "质能方程是狭义相对论最著名的结论之一",
+   "上面的希腊字母恒等式在推导中经常出现",
+   "人工智能 AI 正在改变世界"
+  ],
+  "mathNeedles": [
+   "𝐸",
+   "𝑚",
+   "𝑐",
+   "𝑎",
+   "𝑏",
+   "="
+  ],
+  "exactlyOnce": [
+   "质能方程是狭义相对论最著名的结论之一"
+  ]
+ }
+}

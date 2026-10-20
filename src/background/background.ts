@@ -1,11 +1,11 @@
-// src/background/background.ts - Manifest V3 Background Service Worker for Gemini Exporter
-
 import type { BackgroundMessage, BackgroundResponse } from '../types/entrypoints.js';
+import type { AbortSyncMessage, DeepScanMessage, StopDeepScanMessage } from '../types/messages.js';
 import { initSessionAccessLevel, initUninstallUrl, initLifecycleListeners } from './lifecycle.js';
 import {
     __bgAborts,
     restoreAbortFlags,
     isSlotAborted,
+    getSlotCancelEpoch,
     setSlotAborted,
     clearAllAborts
 } from './abortManager.js';
@@ -19,59 +19,25 @@ import {
 } from './tabAction.js';
 import { handleLiveSaveViaHandle, markDirDeletedInConfig } from './liveSaveHandler.js';
 import { fetchBatch, sendToGeminiTab, getGeminiTab } from './batchFetcher.js';
-import { getStoredDirHandle, clearStoredDirHandle } from '../core/storage/idbHandleStore.js';
-import { FsWriter } from '../core/engine/writers/fsWriter.js';
-import { ChatFormatter } from '../core/engine/chatFormatter.js';
+import { ensureStorageReady } from '../core/storage/schemaMigration.js';
 
-// Re-export modular components for architectural backward-compatibility and diagnostic inspection
-export {
-    initSessionAccessLevel,
-    initUninstallUrl,
-    initLifecycleListeners,
-    __bgAborts,
-    restoreAbortFlags,
-    isSlotAborted,
-    setSlotAborted,
-    clearAllAborts,
-    startKeepAlive,
-    initTabActionListeners,
-    updateTabActionState,
-    isGeminiTabUrl,
-    ACTION_COLOR_ICONS,
-    ACTION_GRAY_ICONS,
-    handleLiveSaveViaHandle,
-    markDirDeletedInConfig,
-    fetchBatch,
-    sendToGeminiTab,
-    getGeminiTab,
-    FsWriter,
-    ChatFormatter
-};
+const fetchBatchChains = new Map<string, Promise<void>>();
+import { getExtensionVersion } from '../core/utils/constants.js';
 
-// Backwards-compatible handle store aliases
-export const getStoredExportDirHandle = getStoredDirHandle;
-export const clearStoredExportDirHandle = clearStoredDirHandle;
-
-// Preserves _debug in failed chats via batchFetcher module
-export const PRESERVE_DEBUG_NOTE = '_debug';
-
-// 1. Initialize session storage access level for content script credentials
 initSessionAccessLevel();
-
-// 2. Initialize lifecycle listeners (install welcome page, uninstall feedback URL)
 initLifecycleListeners();
 initUninstallUrl();
-
-// 3. Restore persisted slot abort flags from session storage
 restoreAbortFlags().catch(() => {});
-
-// 4. Initialize tab action dynamic icon status listeners
 initTabActionListeners();
 
-// 5. Central Message Router
+// Establish storage readiness boundary at background startup.
+void ensureStorageReady().catch((err) => {
+    console.error('[Background] Storage readiness initialization failed:', err);
+});
+
 chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.runtime.MessageSender, sendResponse: (response?: BackgroundResponse) => void) => {
     if (msg.action === 'openOptions') {
-        chrome.runtime.openOptionsPage();
+        void chrome.runtime.openOptionsPage();
         sendResponse({ ok: true });
         return;
     }
@@ -85,7 +51,18 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
 
     if (msg.action === 'reloadGeminiTab') {
         if (msg.tabId) {
-            chrome.tabs.reload(msg.tabId, () => sendResponse({ ok: true }));
+            chrome.tabs.get(msg.tabId, (tab) => {
+                if (chrome.runtime.lastError || !tab) {
+                    sendResponse({ ok: false, error: 'no such tab' });
+                    return;
+                }
+                const url = tab.url || '';
+                if (url.startsWith('https://gemini.google.com/')) {
+                    chrome.tabs.reload(msg.tabId, () => sendResponse({ ok: true }));
+                } else {
+                    sendResponse({ ok: false, error: 'not a gemini tab' });
+                }
+            });
         } else {
             chrome.tabs.query({ url: 'https://gemini.google.com/*' }, (tabs) => {
                 if (tabs && tabs.length > 0 && tabs[0].id != null) {
@@ -103,35 +80,75 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
             action: 'getConversationDetail',
             conversationId: msg.id || msg.conversationId
         }, msg.accountSlot)
-            .then(r => sendResponse(r))
+            .then(r => sendResponse(r == null
+                ? { ok: false, success: false, error: 'empty response from gemini tab' }
+                : r))
             .catch(e => sendResponse({ success: false, error: e?.message }));
         return true;
     }
 
     if (msg.action === 'fetchBatch') {
         const slot = msg.accountSlot || 'u0';
-        setSlotAborted(slot, false);
-        fetchBatch(msg.ids, msg.format, msg.skipExported, sendResponse, msg.globalOffset, msg.globalTotal, slot);
+        const ids = msg.ids;
+        const format = msg.format;
+        const skipExported = msg.skipExported;
+        const globalOffset = msg.globalOffset;
+        const globalTotal = msg.globalTotal;
+        const prev = fetchBatchChains.get(slot) || Promise.resolve();
+        const queuedCancelEpoch = getSlotCancelEpoch(slot);
+        const run = prev.then(async () => {
+            let responded = false;
+            const guardedResponse = (response: any) => {
+                if (responded) return;
+                responded = true;
+                try { sendResponse(response); } catch (_) { /* port may be gone */ }
+            };
+            // A batch queued before cancellation belongs to the cancelled
+            // generation. Only a fresh request submitted afterward may reset it.
+            if (getSlotCancelEpoch(slot) !== queuedCancelEpoch) {
+                guardedResponse({ success: false, aborted: true, error: 'aborted' });
+                return;
+            }
+            await setSlotAborted(slot, false);
+            if (getSlotCancelEpoch(slot) !== queuedCancelEpoch) {
+                guardedResponse({ success: false, aborted: true, error: 'aborted' });
+                return;
+            }
+            try {
+                await ensureStorageReady();
+                await fetchBatch(ids, format, skipExported, guardedResponse, globalOffset, globalTotal, slot);
+                if (!responded) {
+                    // Fail closed: a batch that produced no response is a
+                    // failure, never a silent success.
+                    guardedResponse({ success: false, error: 'fetchBatch completed without a response' });
+                }
+            } catch (e: any) {
+                guardedResponse({ success: false, error: e?.message || String(e) });
+            }
+        });
+        // Keep the chain alive for later batches regardless of outcome.
+        fetchBatchChains.set(slot, run.then(() => undefined, () => undefined));
         return true;
     }
 
     if (msg.action === 'cancelExport') {
         const slot = msg.accountSlot || 'u0';
-        setSlotAborted(slot, true);
+        void setSlotAborted(slot, true);
         sendResponse({ ok: true, aborted: true });
         return true;
     }
 
     if (msg.action === 'abortSync') {
         const slot = msg.accountSlot || 'u0';
-        setSlotAborted(slot, true);
-        sendToGeminiTab({ action: 'abortSync' }, slot).catch(() => {});
+        void setSlotAborted(slot, true);
+        const abortMsg: AbortSyncMessage = { action: 'abortSync' };
+        sendToGeminiTab(abortMsg, slot).catch(() => {});
         sendResponse({ ok: true, aborted: true });
         return true;
     }
 
     if (msg.action === 'ping') {
-        const ver = (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || (typeof __EXT_VERSION__ !== 'undefined' ? __EXT_VERSION__ : '1.5.0');
+        const ver = getExtensionVersion();
         sendResponse({
             ok: true,
             version: ver,
@@ -141,15 +158,16 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
     }
 
     if (msg.action === 'deepScan') {
-        (async () => {
+        void (async () => {
             const stopKeepAlive = startKeepAlive();
             try {
                 const timeoutMs = (msg.mode === 'full' || msg.mode === 'auto') ? 300000 : 90000;
-                const res = await sendToGeminiTab({
+                const deepScanMsg: DeepScanMessage = {
                     action: 'deepScan',
                     maxIter: msg.maxIter || 150,
                     mode: msg.mode || 'auto'
-                }, msg.accountSlot, timeoutMs);
+                };
+                const res = await sendToGeminiTab(deepScanMsg, msg.accountSlot, timeoutMs);
                 sendResponse(res);
             } catch (e: any) {
                 sendResponse({ success: false, error: e?.message });
@@ -162,8 +180,9 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
 
     if (msg.action === 'stopDeepScan') {
         const slot = msg.accountSlot || 'u0';
-        setSlotAborted(slot, true);
-        sendToGeminiTab({ action: 'stopDeepScan' }, slot)
+        void setSlotAborted(slot, true);
+        const stopMsg: StopDeepScanMessage = { action: 'stopDeepScan' };
+        sendToGeminiTab(stopMsg, slot)
             .then(r => sendResponse(r || { ok: true, aborted: true }))
             .catch(() => sendResponse({ ok: true, aborted: true }));
         return true;
@@ -176,7 +195,10 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
     }
 
     if (msg.action === 'liveSaveViaHandle' && msg.payload) {
-        handleLiveSaveViaHandle(msg.payload, msg.accountSlot || 'u0')
+        (async () => {
+            await ensureStorageReady();
+            return handleLiveSaveViaHandle(msg.payload, msg.accountSlot || 'u0');
+        })()
             .then(res => sendResponse(res))
             .catch(err => sendResponse({ ok: false, error: err?.message || String(err) }));
         return true;

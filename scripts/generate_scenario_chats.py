@@ -31,9 +31,9 @@ import urllib.request
 import urllib.error
 
 try:
-    from scripts.cdp_client import CDPConnection, get_tabs, CDP_DEFAULT_PORT
+    from scripts.cdp_client import CDPConnection, get_tabs, CDP_DEFAULT_PORT, is_gemini_url
 except ImportError:
-    from cdp_client import CDPConnection, get_tabs, CDP_DEFAULT_PORT
+    from cdp_client import CDPConnection, get_tabs, CDP_DEFAULT_PORT, is_gemini_url
 
 try:
     sys.stdout.reconfigure(line_buffering=True)
@@ -49,7 +49,7 @@ def get_gemini_tab(port=CDP_DEFAULT_PORT):
         sys.exit(1)
 
     for tab in tabs:
-        if "gemini.google.com" in tab.get("url", ""):
+        if tab.get("type", "page") == "page" and is_gemini_url(tab.get("url", "")):
             return tab
 
     # 未找到则尝试新开一个
@@ -61,102 +61,19 @@ def get_gemini_tab(port=CDP_DEFAULT_PORT):
 
 
 def wait_for_ready(cdp, max_wait=30):
-    start = time.time()
-    while time.time() - start < max_wait:
-        ready = cdp.eval("""
-        (() => {
-          const editor = document.querySelector('rich-textarea div.ql-editor') || document.querySelector('div[contenteditable="true"]');
-          return !!editor;
-        })()
-        """)
-        if ready:
-            return True
-        time.sleep(1)
-    return False
+    from scripts.framework.actions import CDPActions
+    return CDPActions.wait_for_gemini_ready(cdp, max_wait=max_wait)
 
 
-def send_turn(cdp, prompt_text, max_wait=180):
-    # 1. 聚焦输入框并清空原有占位符
-    cdp.eval("""
-    (() => {
-      const editor = document.querySelector('rich-textarea div.ql-editor') || document.querySelector('div[contenteditable="true"]');
-      if (editor) {
-        editor.focus();
-        editor.innerHTML = '<p><br></p>';
-      }
-    })()
-    """)
-    time.sleep(0.3)
-
-    # 2. 使用原生 CDP 插入文本 (触发 Quill change detection)
-    cdp.call("Input.insertText", {"text": prompt_text})
-    time.sleep(0.5)
-
-    # 3. 等待并点击发送按钮
-    sent = False
-    for _ in range(10):
-        sent = cdp.eval("""
-        (() => {
-          const sendBtn = document.querySelector('button[aria-label="Send message"], button[aria-label*="Send"], button[aria-label*="发送"]');
-          if (sendBtn && !sendBtn.disabled) {
-            sendBtn.click();
-            return true;
-          }
-          return false;
-        })()
-        """)
-        if sent:
-            break
-        time.sleep(0.5)
-
-    if not sent:
-        return False, "无法点击发送按钮"
-
-    # 4. 等待生成开始 (最多等待 10 秒)
-    for _ in range(20):
-        started = cdp.eval("""
-        (() => {
-          const stopBtn = document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"]');
-          const isStreaming = !!document.querySelector('.streaming-text, .loading-dots, [data-is-streaming="true"]');
-          return !!stopBtn || isStreaming;
-        })()
-        """)
-        if started:
-            break
-        time.sleep(0.5)
-
-    # 5. 等待生成完成 (Stop 按钮消失且没有流式标记)
-    start_time = time.time()
-    while time.time() - start_time < max_wait:
-        time.sleep(1.5)
-        state = cdp.eval("""
-        (() => {
-          const stopBtn = document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"]');
-          const isStreaming = !!document.querySelector('.streaming-text, .loading-dots, [data-is-streaming="true"]');
-          const hasResponse = document.querySelectorAll('.model-response-text, model-response, .response-content').length > 0;
-          return {
-            hasStop: !!stopBtn,
-            isStreaming: isStreaming,
-            hasResponse: hasResponse
-          };
-        })()
-        """)
-        if not state:
-            continue
-
-        if not state.get("hasStop") and not state.get("isStreaming") and state.get("hasResponse"):
-            # 缓冲 2 秒确保代码块高亮或图片渲染落盘
-            time.sleep(2)
-            return True, "生成完毕"
-
-    return False, "等待生成超时"
+def send_turn(cdp, prompt_text, max_wait=180, is_image=False):
+    from scripts.framework.driver.gemini_driver import GeminiPlatformDriver
+    driver = GeminiPlatformDriver(cdp)
+    return driver.execute_turn_pipeline(prompt_text, max_wait=max_wait, is_image=is_image)
 
 
 def get_current_chat_id(cdp):
-    url = cdp.eval("location.href") or ""
-    if "/app/" in url:
-        return url.split("/app/")[-1].split("?")[0].strip()
-    return None
+    from scripts.framework.actions import CDPActions
+    return CDPActions.get_current_chat_id(cdp)
 
 
 def run_scenarios(dataset_path, port=CDP_DEFAULT_PORT, delay=2, only_id=None):
@@ -183,9 +100,16 @@ def run_scenarios(dataset_path, port=CDP_DEFAULT_PORT, delay=2, only_id=None):
     ws_url = tab["webSocketDebuggerUrl"]
     cdp = CDPConnection(ws_url)
 
+    from scripts.framework.driver.gemini_driver import GeminiPlatformDriver
+    driver = GeminiPlatformDriver(cdp)
+
     results = []
 
     try:
+        # 严格校验并锁定模型为 3.8 Flash + Extended thinking
+        print("🔒 校验锁定模型环境 (3.8 Flash + Extended thinking)...")
+        driver.ensure_model(target_model="3.8 Flash", target_thinking=True)
+
         for idx, sc in enumerate(scenarios, 1):
             sc_id = sc.get("id", f"sc_{idx}")
             title = sc.get("title", f"场景 {idx}")
@@ -199,7 +123,7 @@ def run_scenarios(dataset_path, port=CDP_DEFAULT_PORT, delay=2, only_id=None):
 
             # 开启新会话: 导航至 /app
             cdp.eval("location.href = 'https://gemini.google.com/app'")
-            if not wait_for_ready(cdp):
+            if not driver.ensure_ready(timeout=30.0):
                 print(f"    ❌ 页面加载就绪超时，跳过此场景")
                 continue
 
@@ -212,10 +136,11 @@ def run_scenarios(dataset_path, port=CDP_DEFAULT_PORT, delay=2, only_id=None):
                 preview = (prompt[:45] + "...") if len(prompt) > 45 else prompt
                 print(f"    ▶️ 轮次 {turn_idx}/{len(turns)}: \"{preview}\"")
 
-                ok, msg = send_turn(cdp, prompt)
+                is_img = any(kw in prompt.lower() for kw in ["生成一张", "绘制一张", "画一张", "generate an image", "draw an image", "create an image"])
+                ok, msg = driver.execute_turn_pipeline(prompt, max_wait=180, is_image=is_img)
                 if ok:
                     successful_turns += 1
-                    chat_id = get_current_chat_id(cdp) or chat_id
+                    chat_id = driver.get_current_chat_id() or chat_id
                     print(f"       ✅ 完成 (当前会话 ID: {chat_id or '生成中'})")
                 else:
                     print(f"       ⚠️ {msg}")
@@ -251,7 +176,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gemini 数据驱动测试对话生成器")
     parser.add_argument("--pool", action="store_true", help="从动态场景池 (test_scenario_pool.json) 消费场景")
     parser.add_argument("--count", type=int, default=2, help="场景池消费数量 (默认 2)")
-    parser.add_argument("--dataset", default=os.path.join(os.path.dirname(__file__), "test_chats_dataset.json"), help="测试场景数据集 JSON 路径")
+    parser.add_argument("--dataset", default=os.path.join(os.path.dirname(__file__), "test_scenario_pool.json"), help="测试场景数据集 JSON 路径")
     parser.add_argument("--port", type=int, default=CDP_DEFAULT_PORT, help="Chrome CDP 远程调试端口")
     parser.add_argument("--delay", type=int, default=2, help="轮次之间的间隔秒数")
     parser.add_argument("--only", default=None, help="仅运行指定 ID 的场景")

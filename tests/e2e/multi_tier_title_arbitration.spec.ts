@@ -4,7 +4,7 @@ test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitrat
   test('should arbitrate titles strictly by source tier and never allow low tier to corrupt high tier', async ({ context, extensionId }) => {
     // 1. Open options workbench and seed with Takeout imported chat
     const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await optionsPage.waitForLoadState('domcontentloaded');
 
     await optionsPage.evaluate(async () => {
@@ -17,7 +17,12 @@ test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitrat
           timestamp: 1670000000000
         }
       ];
-      await chrome.storage.local.set({ gemini_conversations: initialConvs, exportedIds: {} });
+      await chrome.storage.local.set({
+        gemini_conversations: initialConvs,
+        exportedIds: {},
+        has_completed_tour: true,
+        last_seen_feature_version: '999.0.0'
+      });
       if (typeof window.__workbenchLoadStore === 'function') {
         await window.__workbenchLoadStore(true);
       }
@@ -46,7 +51,7 @@ test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitrat
 
     await geminiPage.goto('https://gemini.google.com/app/arbitration_chat_999');
     await geminiPage.waitForLoadState('domcontentloaded');
-    await geminiPage.waitForTimeout(600); // Allow content.js syncOnce to run
+    await expect(geminiPage.locator('#geminiExportBadge')).toBeVisible();
 
     // Verify workbench title did NOT become "Google Gemini" and remained Takeout prompt
     await optionsPage.bringToFront();
@@ -67,12 +72,20 @@ test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitrat
       document.body.appendChild(h1);
     });
 
-    // Trigger sync
+    // Trigger a REAL DOM-tier sync via the test hook (__geminiExporterSyncOnce
+    // is mounted by the MAIN-world content script; previously this step was a
+    // silent no-op). Poll storage until the DOM title lands, proving the step
+    // actually executed before the authoritative RPC arrives.
     await geminiPage.evaluate(async () => {
-      if (typeof window.__geminiExporterSyncOnce === 'function') {
-        await window.__geminiExporterSyncOnce();
-      }
+      await (window as any).__geminiExporterSyncOnce();
     });
+    await expect.poll(async () => {
+      const data = await optionsPage.evaluate(async () => {
+        return await chrome.storage.local.get(['gemini_conversations']);
+      }) as Record<string, any>;
+      const c = (data.gemini_conversations || []).find((x: any) => x.id === 'arbitration_chat_999');
+      return c && c.titles ? c.titles.dom : undefined;
+    }, { timeout: 10000 }).toBe('页面显式渲染的DOM标题');
 
     // 4. Simulate authoritative RPC arriving (Tier: rpc)
     await geminiPage.evaluate(async () => {
@@ -89,13 +102,15 @@ test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitrat
       }, location.origin);
     });
 
-    await geminiPage.waitForTimeout(600);
-
     // 5. Verify final resolved state in storage and options page
-    const storageData = await optionsPage.evaluate(async () => {
-      return await chrome.storage.local.get(['gemini_conversations']);
-    }) as Record<string, any>;
-    const chat = (storageData.gemini_conversations || []).find((c: any) => c.id === 'arbitration_chat_999');
+    let chat: any = null;
+    await expect.poll(async () => {
+      const storageData = await optionsPage.evaluate(async () => {
+        return await chrome.storage.local.get(['gemini_conversations']);
+      }) as Record<string, any>;
+      chat = (storageData.gemini_conversations || []).find((c: any) => c.id === 'arbitration_chat_999');
+      return chat?.titles?.rpc;
+    }, { timeout: 10000 }).toBe('官方服务端RPC最终权威标题');
 
     expect(chat).toBeTruthy();
     expect(chat.titles.takeout).toBe('Takeout Prompt 原始提问');
@@ -165,7 +180,7 @@ test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitrat
 
     // 2. Open options workbench and seed with untitled conversation
     const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await optionsPage.waitForLoadState('domcontentloaded');
 
     await optionsPage.evaluate(async () => {
@@ -178,7 +193,12 @@ test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitrat
           timestamp: 1670000000000
         }
       ];
-      await chrome.storage.local.set({ gemini_conversations: initialConvs, exportedIds: {} });
+      await chrome.storage.local.set({
+        gemini_conversations: initialConvs,
+        exportedIds: {},
+        has_completed_tour: true,
+        last_seen_feature_version: '999.0.0'
+      });
       if (typeof window.__workbenchLoadStore === 'function') {
         await window.__workbenchLoadStore(true);
       }

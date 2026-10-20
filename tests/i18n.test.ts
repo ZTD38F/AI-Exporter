@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as I18n from '../src/core/utils/i18n.js';
+import { applyI18n, applyLangToggleUI } from '../src/ui/utils/domI18n.js';
 import zh from '../src/core/utils/locales/zh.js';
 import en from '../src/core/utils/locales/en.js';
 
@@ -30,6 +31,28 @@ test('i18n - check all HTML data-i18n attributes are present in i18n.js', () => 
             const key = m[1];
             assert.ok(key in I18n.LOCALES.zh, `Key '${key}' used in ${htmlFile} missing in zh locale`);
             assert.ok(key in I18n.LOCALES.en, `Key '${key}' used in ${htmlFile} missing in en locale`);
+        }
+    }
+});
+
+test('i18n - check all HTML title and placeholder attributes have data-i18n attributes', () => {
+    for (const htmlFile of ['src/ui/options/options.html', 'src/ui/popup/popup.html']) {
+        const htmlPath = path.join(__dirname, '..', htmlFile);
+        const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+        const titleRegex = /<([a-zA-Z0-9]+)\s+([^>]*?\s)title=["']([^"']+)["']([^>]*)>/g;
+        let m;
+        while ((m = titleRegex.exec(htmlContent)) !== null) {
+            const [, tag, pre, titleVal, post] = m;
+            const attrs = pre + ' ' + post;
+            if (titleVal.includes('Switch Language') || titleVal.includes('Developer Mode')) continue;
+            assert.ok(attrs.includes('data-i18n-title'), `Missing data-i18n-title on <${tag}> in ${htmlFile} with title="${titleVal}"`);
+        }
+
+        const phRegex = /<([a-zA-Z0-9]+)\s+([^>]*?\s)placeholder=["']([^"']+)["']([^>]*)>/g;
+        while ((m = phRegex.exec(htmlContent)) !== null) {
+            const [, tag, pre, phVal, post] = m;
+            const attrs = pre + ' ' + post;
+            assert.ok(attrs.includes('data-i18n-placeholder'), `Missing data-i18n-placeholder on <${tag}> in ${htmlFile} with placeholder="${phVal}"`);
         }
     }
 });
@@ -132,7 +155,7 @@ test('i18n - applyI18n translates root element and descendants safely', async ()
     };
 
     try {
-        I18n.applyI18n(rootEl as any);
+        applyI18n(rootEl as any);
         assert.strictEqual(rootEl.textContent, 'AI Exporter', 'Root element data-i18n should be translated');
         assert.strictEqual(childEl.title, '设置目录...', 'Child element data-i18n-title should be translated');
         assert.strictEqual(childEl.placeholder, '搜索标题 / ID...', 'Child element data-i18n-placeholder should be translated');
@@ -148,7 +171,7 @@ test('i18n - applyLangToggleUI operates with injected elements without DOM coupl
     const mockZh = { style: { opacity: '' } };
     const mockEn = { style: { opacity: '' } };
 
-    I18n.applyLangToggleUI({
+    applyLangToggleUI({
         toggle: mockToggle as any,
         labelZh: mockZh as any,
         labelEn: mockEn as any
@@ -159,7 +182,7 @@ test('i18n - applyLangToggleUI operates with injected elements without DOM coupl
     assert.strictEqual(mockEn.style.opacity, '0.6', 'en label should be muted opacity');
 
     await I18n.setLang('en');
-    I18n.applyLangToggleUI({
+    applyLangToggleUI({
         toggle: mockToggle as any,
         labelZh: mockZh as any,
         labelEn: mockEn as any
@@ -167,6 +190,11 @@ test('i18n - applyLangToggleUI operates with injected elements without DOM coupl
     assert.strictEqual(mockToggle.checked, true, 'en language should have toggle checked');
     assert.strictEqual(mockEn.style.opacity, '1', 'en label should be full opacity');
     assert.strictEqual(mockZh.style.opacity, '0.6', 'zh label should be muted opacity');
+});
+
+test('i18n - core module must remain zero DOM without leaked UI methods', () => {
+    assert.strictEqual((I18n as any).applyI18n, undefined, 'Core I18n should not contain applyI18n');
+    assert.strictEqual((I18n as any).applyLangToggleUI, undefined, 'Core I18n should not contain applyLangToggleUI');
 });
 
 

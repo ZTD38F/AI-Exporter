@@ -1,31 +1,43 @@
-/**
- * src/types/conversation.ts
- * Single source of truth for Conversation, Turn, Attachment, and Title data models.
- */
-
 export type TitleSource =
-    | 'sniff'
+    | 'rpc'
     | 'dom'
-    | 'user-edit'
     | 'takeout'
+    | 'openai'
+    | 'sniff'
     | 'api-detail'
-    | 'api-list'
-    | 'url';
+    | 'legacy'
+    | 'default';
 
 export interface TitleSources {
-    sniff?: string;
+    rpc?: string;
     dom?: string;
-    'user-edit'?: string;
     takeout?: string;
+    sniff?: string;
     'api-detail'?: string;
-    'api-list'?: string;
-    url?: string;
+    legacy?: string;
     [key: string]: string | undefined;
 }
 
 export type AttachmentType = 'image' | 'file' | 'doc' | 'grounding' | 'code';
 
+export interface GeneratedMediaIdentity {
+    chatId: string;
+    providerRequestId?: string;
+    time?: number | null;
+    prompt?: string;
+    generationOrdinal: number;
+    imageCount?: number;
+    /** Present only when the source establishes a stable ordinal (single image => 0). */
+    imageOrdinal?: number;
+    turnId?: string;
+}
+
 export interface Attachment {
+    provider?: string;
+    providerMetadata?: unknown;
+    assetPointer?: string;
+    fileId?: string;
+    providerRole?: string;
     type: AttachmentType | string;
     url?: string;
     sourceUrl?: string;
@@ -33,65 +45,77 @@ export interface Attachment {
     src?: string;
     localName?: string;
     fileName?: string;
+    name?: string;
     title?: string;
     mimeType?: string;
     mime?: string;
     size?: number;
     width?: number;
     height?: number;
+    source?: string;
+    subDir?: string;
+    isGenerated?: boolean;
+    providerRequestId?: string;
+    imageOrdinal?: number;
+    generation?: GeneratedMediaIdentity;
+    isImage?: boolean;
     dataBuffer?: ArrayBuffer | ArrayBufferView;
     blobBase64?: string;
     dataBase64?: string;
-    [key: string]: any;
-}
-
-export interface ThoughtBlock {
-    text: string;
-    timestamp?: number;
-}
-
-export interface CitationSource {
-    title?: string;
-    url?: string;
-    snippet?: string;
-    [key: string]: any;
 }
 
 export type AuthorRole = 'user' | 'model' | 'assistant' | 'system';
 
 export interface ChatMessage {
+    nodeId?: string;
+    parentNodeId?: string | null;
+    contentType?: string;
+    unparsedContentParts?: number;
+    provider?: string;
+    providerMetadata?: unknown;
+    assetPointer?: string;
+    fileId?: string;
+    providerRole?: string;
+    id?: string;
     role: AuthorRole;
     content: string;
-    timestamp?: number;
+    /** Server-authoritative message time; null when the server provided none (never fabricate Date.now()). */
+    timestamp?: number | null;
     turnId?: string;
+    providerRequestId?: string;
+    generation?: GeneratedMediaIdentity;
     attachments?: Attachment[];
-    thoughts?: string[];
-    sources?: CitationSource[];
-    [key: string]: any;
+    thoughts?: string | string[];
+    thinking?: string;
+    citations?: any[];
+    images?: Attachment[];
+    documents?: any[];
+    attachmentCount?: number;
+    messageCount?: number;
+    sources?: unknown[];
+    structuredContent?: unknown;
+    groundingCitationMarkers?: string[];
 }
 
 export type Message = ChatMessage;
 
-
 export interface Turn {
     id?: string;
-    timestamp?: number; // In milliseconds
+    timestamp?: number | null;
     messages?: ChatMessage[];
     userContent?: string;
     modelContent?: string;
-    thoughts?: string[];
+    thoughts?: string | string[];
     attachments?: Attachment[];
-    sources?: CitationSource[];
-    [key: string]: any;
+    images?: Attachment[];
+    sources?: unknown[];
+    structuredContent?: unknown;
 }
 
 export interface Conversation {
     id: string;
     title: string;
-    /**
-     * Normalized timestamp in milliseconds (SSoT).
-     */
-    timestamp: number;
+    timestamp: number | null;
     updatedAt?: number | string;
     createdAt?: number | string;
     chatTime?: number | string;
@@ -105,5 +129,8 @@ export interface Conversation {
     isTakeoutOnly?: boolean;
     hitGoogleLimit?: boolean;
     url?: string;
-    [key: string]: any;
+    attachmentCount?: number;
+    messageCount?: number;
+    href?: string;
+    hasExplicitPrompt?: boolean;
 }

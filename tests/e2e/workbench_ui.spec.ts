@@ -5,7 +5,7 @@ test.describe('Workbench UI & Selection Controls', () => {
     const page = await context.newPage();
 
     // 1. Navigate to options page
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     // 2. Seed mock conversations into chrome.storage.local via page execution
@@ -20,7 +20,9 @@ test.describe('Workbench UI & Selection Controls', () => {
       };
       await chrome.storage.local.set({
         gemini_conversations: mockConvs,
-        exportedIds: mockExported
+        exportedIds: mockExported,
+        has_completed_tour: true,
+        last_seen_feature_version: '999.0.0'
       });
       if (typeof window.__workbenchLoadStore === 'function') {
         await window.__workbenchLoadStore(true);
@@ -121,14 +123,14 @@ test.describe('Workbench UI & Selection Controls', () => {
 
   test('should display "已更新" badge for previously exported conversations with new activity and auto-select', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     await page.evaluate(async () => {
       await chrome.storage.local.clear();
-      const Store = (window as any).Store;
-      if (Store && typeof Store.setConversations === 'function') {
-        Store.setConversations([]);
+      const ConversationsStore = (window as any).ConversationsStore;
+      if (ConversationsStore && typeof ConversationsStore.setConversations === 'function') {
+        ConversationsStore.setConversations([]);
       }
       const now = Date.now();
       const mockConvs = [
@@ -142,7 +144,9 @@ test.describe('Workbench UI & Selection Controls', () => {
       };
       await chrome.storage.local.set({
         gemini_conversations: mockConvs,
-        exportedIds: mockExported
+        exportedIds: mockExported,
+        has_completed_tour: true,
+        last_seen_feature_version: '999.0.0'
       });
       if (typeof window.__workbenchLoadStore === 'function') {
         await window.__workbenchLoadStore(true);

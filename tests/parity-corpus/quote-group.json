@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "conversation": {
+    "key": {
+      "providerId": "gemini",
+      "accountId": "acct-parity-001",
+      "conversationId": "conv-quote-group-001"
+    },
+    "title": "引用组：嵌套引用与列表",
+    "createdAt": "2026-09-26T12:00:00-07:00",
+    "updatedAt": "2026-09-26T12:04:00-07:00",
+    "messages": [
+      {
+        "id": "u1",
+        "role": "user",
+        "createdAt": "2026-09-26T12:00:00-07:00",
+        "blocks": [
+          {
+            "id": "u1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "总结一下 HTML 与 PDF 导出 parity 的测试策略，用引用和列表组织答案。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a1",
+        "role": "assistant",
+        "createdAt": "2026-09-26T12:04:00-07:00",
+        "author": {
+          "model": "Gemini 2.5 Pro",
+          "rawRole": "model"
+        },
+        "blocks": [
+          {
+            "id": "a1:b0",
+            "type": "thought",
+            "disclosure": "providerExposed",
+            "kind": "reasoning",
+            "blocks": [
+              {
+                "id": "a1:b0:t0",
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "用户要的是测试策略，先列出三层验证：语料校验、文本对比、视觉抽查。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b1",
+            "type": "heading",
+            "level": 2,
+            "children": [
+              {
+                "type": "text",
+                "text": "Parity 测试策略"
+              }
+            ]
+          },
+          {
+            "id": "a1:b2",
+            "type": "quote",
+            "blocks": [
+              {
+                "id": "a1:b2:q0",
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "第一层：语料必须先通过 canonical runtime validator 与 JSON Schema 校验。"
+                  }
+                ]
+              },
+              {
+                "id": "a1:b2:q1",
+                "type": "quote",
+                "blocks": [
+                  {
+                    "id": "a1:b2:q1:q0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "嵌套引用：validator 报错即阻断后续对比，避免在脏数据上浪费渲染时间。"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b3",
+            "type": "list",
+            "ordered": false,
+            "items": [
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b3:i0:b0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "文本层对比：HTML 与 PDF 提取文本归一化后逐行 diff。"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b3:i1:b0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "结构层对比：标题层级、表格行列数、代码块数量一致。"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b3:i2:b0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "strikethrough",
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "已废弃："
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "像素级对比（ flaky，改为人工抽查）。"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b4",
+            "type": "list",
+            "ordered": true,
+            "start": 1,
+            "items": [
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b4:i0:b0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "准备 canonical fixture。"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b4:i1:b0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "渲染 HTML 与 PDF。"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "blocks": [
+                  {
+                    "id": "a1:b4:i2:b0",
+                    "type": "paragraph",
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "提取并归一化文本，输出 diff 报告。"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b5",
+            "type": "thematicBreak"
+          },
+          {
+            "id": "a1:b6",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "以上策略在 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Phase D 真编译器"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 落地后完整启用。"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [],
+  "citations": []
+}

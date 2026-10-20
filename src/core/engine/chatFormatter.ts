@@ -1,3 +1,5 @@
+import { convertHtmlToMarkdown as canonicalHtmlToMarkdown } from "./formatters/htmlConverter.js";
+import { normalizeGeminiConversation, CanonicalHtmlRenderer, renderCanonicalMarkdown, type CanonicalMarkdownOptions, type RenderContext } from "../export/canonical/index.js";
 /**
  * chatFormatter.ts
  * Provider-aware export formatter for AI Exporter conversations.
@@ -24,6 +26,8 @@ export interface ChatFormatterModule {
     toMarkdown: (chat: any, opts?: ChatFormatterOptions) => string;
     toOpenAIJson: (chat: any) => string;
     formatContent: (chat: any, formatType?: string, opts?: ChatFormatterOptions) => FormattedResult;
+    formatMarkdownCanonical: (chat: any, opts?: CanonicalMarkdownOptions) => Promise<FormattedResult>;
+    formatHtmlCanonical: (chat: any, opts?: CanonicalHtmlExportOptions) => Promise<FormattedResult>;
 }
 
 declare global {
@@ -112,45 +116,7 @@ declare global {
      * Convert HTML content (from Google Takeout or HTML-rich model responses) to Markdown.
      */
     function convertHtmlToMarkdown(html?: string | null): string {
-        if (!html || typeof html !== 'string') return html || '';
-        if (!/<(?:pre|code|p|h[1-6]|ul|ol|li|blockquote|strong|b|em|i)[\s>]/i.test(html)) return html;
-
-        let res = html;
-        // 1. Convert <pre><code> blocks
-        res = res.replace(/<pre><code(?:\s+class=["'](?:language-)?([a-z0-9_-]+)["'])?>([\s\S]*?)<\/code><\/pre>/gi, (_match, lang, code) => {
-            let cleanCode = code
-                .replace(/&quot;/g, '"')
-                .replace(/&#39;/g, "'")
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&amp;/g, '&');
-            return `\n\`\`\`${lang || ''}\n${cleanCode.trim()}\n\`\`\`\n`;
-        });
-        // 2. Inline code
-        res = res.replace(/<code>([\s\S]*?)<\/code>/gi, (_match, code) => {
-            let cleanCode = code
-                .replace(/&quot;/g, '"')
-                .replace(/&#39;/g, "'")
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&amp;/g, '&');
-            return `\`${cleanCode}\``;
-        });
-        // 3. Headings
-        res = res.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, lvl, txt) => `\n${'#'.repeat(parseInt(lvl, 10))} ${txt.trim()}\n`);
-        // 4. Paragraphs and breaks
-        res = res.replace(/<br\s*\/?>/gi, '\n');
-        res = res.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n$1\n');
-        // 5. Bold & italic
-        res = res.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
-        res = res.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
-        // 6. Strip any other HTML tags repeatedly to remove nested tags
-        let prev = '';
-        do {
-            prev = res;
-            res = res.replace(/<[^>]+>/g, '');
-        } while (res !== prev);
-        return res;
+        return canonicalHtmlToMarkdown(html);
     }
 
     /**
@@ -488,7 +454,7 @@ declare global {
     /**
      * Unified content formatter entry point.
      */
-    function formatContent(chat: any, formatType: string = 'markdown', opts: ChatFormatterOptions = {}): FormattedResult {
+    function formatContent(chat: any, formatType: string = 'json', opts: ChatFormatterOptions = {}): FormattedResult {
         if (formatType === 'json_openai') {
             return {
                 content: toOpenAIJson(chat),
@@ -510,12 +476,58 @@ declare global {
                 mime: 'application/json'
             };
         }
-        return {
-            content: toMarkdown(chat, opts),
-            ext: 'md',
-            mime: 'text/markdown'
-        };
+        throw new Error(`[chatFormatter] unsupported format: ${formatType}`);
     }
+
+export interface CanonicalHtmlExportOptions {
+    lang?: 'zh' | 'en';
+    theme?: 'dark' | 'light';
+}
+
+/**
+ * Production HTML export route:
+ * Conversation -> normalizeGeminiConversation() -> CanonicalHtmlRenderer.
+ *
+ * Asset URLs fall back to each asset's storageRef (the `assets/...` relative
+ * layout the export pipeline already writes), so the renderer needs no
+ * external AssetResolver plumbing here.
+ */
+export async function formatHtmlCanonical(
+    chat: any,
+    opts: CanonicalHtmlExportOptions = {}
+): Promise<FormattedResult> {
+    const { bundle, diagnostics } = await normalizeGeminiConversation(chat);
+    const integrityError = diagnostics.find((d) => d.severity === 'error' && (d.code === 'MSG_BAD_ID' || d.code === 'MSG_DUP_ID'));
+    if (integrityError) throw new Error(`[${integrityError.code}] ${integrityError.message}`);
+    const renderer = new CanonicalHtmlRenderer({
+        lang: opts.lang === 'en' ? 'en' : 'zh',
+        theme: opts.theme === 'light' ? 'light' : 'dark',
+    });
+    const context: RenderContext = {
+        bundle,
+        assets: { resolve: async () => null },
+        locale: opts.lang === 'en' ? 'en' : 'zh',
+        signal: AbortSignal.timeout(60000),
+        reportProgress: () => { /* noop: chatFormatter facade has no progress sink */ },
+    };
+    const artifact = await renderer.render(context);
+    return {
+        content: artifact.content as string,
+        ext: 'html',
+        mime: artifact.mimeType,
+    };
+}
+
+export async function formatMarkdownCanonical(
+    chat: any,
+    opts: CanonicalMarkdownOptions = {},
+): Promise<FormattedResult> {
+    const { bundle, diagnostics } = await normalizeGeminiConversation(chat);
+    const integrityError = diagnostics.find((d) => d.severity === 'error' && (d.code === 'MSG_BAD_ID' || d.code === 'MSG_DUP_ID'));
+    if (integrityError) throw new Error(`[${integrityError.code}] ${integrityError.message}`);
+    return { content: renderCanonicalMarkdown(bundle, opts), ext: 'md', mime: 'text/markdown' };
+}
+
 
 export {
     adjustHeadingHierarchy,
@@ -534,7 +546,9 @@ export const ChatFormatter: ChatFormatterModule = {
     cleanMessageBody,
     toMarkdown,
     toOpenAIJson,
-    formatContent
+    formatContent,
+    formatHtmlCanonical,
+    formatMarkdownCanonical
 };
 
 (ChatFormatter as any).ChatFormatter = ChatFormatter;

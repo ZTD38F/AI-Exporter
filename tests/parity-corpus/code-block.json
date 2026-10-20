@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "conversation": {
+    "key": {
+      "providerId": "gemini",
+      "accountId": "acct-parity-001",
+      "conversationId": "conv-code-block-001"
+    },
+    "title": "代码块：多语言代码示例",
+    "createdAt": "2026-09-26T11:00:00-07:00",
+    "updatedAt": "2026-09-26T11:03:00-07:00",
+    "messages": [
+      {
+        "id": "u1",
+        "role": "user",
+        "createdAt": "2026-09-26T11:00:00-07:00",
+        "blocks": [
+          {
+            "id": "u1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "给我一份可取消导出任务的 Python 示例，再附带 TypeScript 归一化函数和生成 fixture 的 shell 命令。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a1",
+        "role": "assistant",
+        "createdAt": "2026-09-26T11:03:00-07:00",
+        "author": {
+          "model": "Gemini 2.5 Pro",
+          "rawRole": "model"
+        },
+        "blocks": [
+          {
+            "id": "a1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "先看 Python 版本，注意 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "cancel()"
+              },
+              {
+                "type": "text",
+                "text": " 是幂等的："
+              }
+            ]
+          },
+          {
+            "id": "a1:b1",
+            "type": "code",
+            "language": "python",
+            "filename": "export_job.py",
+            "code": "from dataclasses import dataclass, field\n\n@dataclass\nclass ExportJob:\n    \"\"\"导出任务：支持取消与重试。\"\"\"\n    conversation_id: str\n    formats: list[str] = field(default_factory=list)\n    cancelled: bool = False\n\n    def cancel(self) -> None:\n        self.cancelled = True  # 幂等：重复调用无副作用\n"
+          },
+          {
+            "id": "a1:b2",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "TypeScript 归一化函数用于 HTML/PDF 文本对比前的预处理："
+              }
+            ]
+          },
+          {
+            "id": "a1:b3",
+            "type": "code",
+            "language": "typescript",
+            "filename": "parity.ts",
+            "code": "export interface ParityResult {\n  fixture: string;\n  htmlText: string;\n  pdfText: string;\n  /** 归一化后的差异行，空数组表示通过 */\n  diffs: string[];\n}\n\nexport function normalizeForParity(s: string): string {\n  return s\n    .replace(/\\r\\n/g, \"\\n\")\n    .replace(/[ \\t]+/g, \" \")\n    .trim();\n}\n"
+          },
+          {
+            "id": "a1:b4",
+            "type": "quote",
+            "blocks": [
+              {
+                "id": "a1:b4:q0",
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "引用：长会话 fixture 请用脚本生成，不要手写 121 条消息。"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a1:b5",
+            "type": "code",
+            "language": "bash",
+            "meta": "fixture-gen",
+            "code": "#!/usr/bin/env bash\nset -euo pipefail\n# 121 消息长会话 fixture 生成\npython3 generate_long_conversation.py --messages 121 --out long-conversation-121.json\n"
+          },
+          {
+            "id": "a1:b6",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "代码块渲染要点：等宽字体、语法高亮、行号可选、长行横向滚动不断行。"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [],
+  "citations": []
+}

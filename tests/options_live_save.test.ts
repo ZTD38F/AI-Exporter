@@ -10,8 +10,7 @@ test('optionsSettings - initLiveSaveSettings with existing handle enables live s
 
     const mockElements: Record<string, any> = {
         liveSaveDiskToggle: { checked: false, dataset: {}, addEventListener: function(e: string, fn: Function) { this.onChange = fn; } },
-        dirLabel: { textContent: '' },
-        liveSaveStatusTag: { textContent: '' }
+        dirLabel: { textContent: '' }
     };
 
     const origDoc = (global as any).document;
@@ -77,8 +76,7 @@ test('optionsSettings - toggling live save without handle triggers requestDirHan
 
     const mockElements: Record<string, any> = {
         liveSaveDiskToggle: { checked: false, dataset: {}, addEventListener: function(e: string, fn: Function) { this.onChange = fn; } },
-        dirLabel: { textContent: '' },
-        liveSaveStatusTag: { textContent: '' }
+        dirLabel: { textContent: '' }
     };
 
     const origDoc = (global as any).document;
@@ -142,8 +140,7 @@ test('optionsSettings - cancelling dir picker rolls back liveSaveDiskToggle to f
 
     const mockElements: Record<string, any> = {
         liveSaveDiskToggle: { checked: false, dataset: {}, addEventListener: function(e: string, fn: Function) { this.onChange = fn; } },
-        dirLabel: { textContent: '' },
-        liveSaveStatusTag: { textContent: '' }
+        dirLabel: { textContent: '' }
     };
 
     const origDoc = (global as any).document;
@@ -202,8 +199,7 @@ test('optionsSettings - cancelling dir picker rolls back liveSaveDiskToggle to f
 test('optionsSettings - initLiveSaveSettings with dirError not_found marks toggle false and warns in dirLabel', async () => {
     const mockElements: Record<string, any> = {
         liveSaveDiskToggle: { checked: true, dataset: {}, addEventListener: function() {} },
-        dirLabel: { textContent: '', style: {} },
-        liveSaveStatusTag: { textContent: '' }
+        dirLabel: { textContent: '', style: {} }
     };
 
     const origDoc = (global as any).document;

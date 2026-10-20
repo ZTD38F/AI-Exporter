@@ -1,4 +1,3 @@
-// src/ui/tour/tourSteps.ts - Static tour step definitions (E.2)
 export const STEPS: any[] = [
     {
         id: 'connect',
@@ -73,7 +72,27 @@ export const STEPS: any[] = [
         }
     },
     {
+        id: 'format',
+        getTarget: () => document.getElementById('format') || null,
+        placement: 'right',
+        titleKey: 'tourStepFormatTitle',
+        descKey: 'tourStepFormatDesc',
+        hintKey: 'tourHintChooseFormat',
+        setupAction: (advance: () => void) => {
+            const format = document.getElementById('format');
+            if (!format) return undefined;
+            const onChange = () => setTimeout(advance, 300);
+            format.addEventListener('change', onChange);
+            return () => format.removeEventListener('change', onChange);
+        }
+    },
+    {
         id: 'export',
+        spotlightTarget: () => document.getElementById('format') || null,
+        spotlightTitleKey: 'tourExportFormatsTitle',
+        spotlightDescKey: 'tourExportFormatsDesc',
+        spotlightHintKey: 'tourExportFormatsHint',
+        spotlightActionLabelKey: 'tourExportFormatsAction',
         getTarget: () => document.getElementById('btnExport') || null,
         placement: 'right',
         titleKey: 'tourStep4Title',

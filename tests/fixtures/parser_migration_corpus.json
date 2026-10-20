@@ -1,0 +1,2171 @@
+{
+  "version": "1.1.0",
+  "generatedAt": "2026-09-28T17:39:23.205320Z",
+  "description": "Corpus strictly segmented into real_gemini_output, scenario_inputs, and synthetic_fixtures. ONLY real_gemini_output may justify compatibility rules.",
+  "admissionPolicy": {
+    "real_gemini_output": "ONLY entries here can justify compatibility rules (GM-MD-* / GM-TEX-*). Must possess evidence file and originalHash.",
+    "scenario_inputs": "User prompts / instructions sent to Gemini. Used for parser robustness, NOT as Gemini output dialect evidence.",
+    "synthetic_fixtures": "Synthetic fixtures for structural regression. Non-authoritative."
+  },
+  "corpusSets": {
+    "real_gemini_output": {
+      "count": 0,
+      "mathCount": 0,
+      "documents": [],
+      "mathExpressions": []
+    },
+    "scenario_inputs": {
+      "count": 108,
+      "mathCount": 58,
+      "documents": [
+        {
+          "id": "scenario_prompt_quantum_error_correction_color_code_transversal_clifford_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_error_correction_color_code_transversal_clifford",
+          "domain": "quantum_computing_topological_color_codes",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在代数拓扑与链式复形（Chain Complexes）理论框架下，形式化定义二维色码（2D Color Code）在非紧致二维流形（如 4.8.8 或 6.6.6 正规镶嵌）上的稳定子生成元（Stabilizers）。证明该晶格满足每个面（Plaquette）都是三色可着色（Three-colorable）且每个顶点度数均为 3 的拓扑充要条件，并推导每个面 p 上的 X 类与 Z 类稳定子算符 B_p^X = \\prod_{i \\in p} X_i, B_p^Z = \\prod_{i \\in p} Z_i 相互对易的严密代数证明。"
+        },
+        {
+          "id": "scenario_prompt_quantum_error_correction_color_code_transversal_clifford_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_error_correction_color_code_transversal_clifford",
+          "domain": "quantum_computing_topological_color_codes",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "详细推导为什么二维色码相比于标准 Kitaev 表面码（Surface Code）具备实现整个横截 Clifford 门群（Transversal Clifford Group：含 H、S 以及 CNOT 门）的根本拓扑代数优势。写出横截阿达玛门 H^{\\otimes n} 与横截相位门 S^{\\otimes n} 对逻辑量子态作用下的映射法则，并论证 Eastin-Knill 定理为什么依然保证不存在非平凡非 Clifford 门（如 T 门）的横截实现从而必须引入容错魔态蒸馏（Magic State Distillation）。"
+        },
+        {
+          "id": "scenario_prompt_quantum_error_correction_color_code_transversal_clifford_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_error_correction_color_code_transversal_clifford",
+          "domain": "quantum_computing_topological_color_codes",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导色码中由泡利 X 与 Z 物理误差引发的伴随子（Syndrome）在红、绿、蓝三种面缺陷上的分支拓扑约束关系 \\partial(c_R) + \\partial(c_G) + \\partial(c_B) = 0，并推演如何通过将色码投影分解为两个解耦的表面码格子（Decoupled Surface Codes），利用最小权重完美匹配（MWPM）解码器或联合限制图（Restriction Graph）提升容错纠错阈值（Threshold）。"
+        },
+        {
+          "id": "scenario_prompt_quantum_error_correction_color_code_transversal_clifford_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_error_correction_color_code_transversal_clifford",
+          "domain": "quantum_computing_topological_color_codes",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写一个色码纠错解码器核心逻辑脚本，输入一个距离 d=3 的三角形色码（含 7 个物理量子比特、3 个稳定子面）上随机产生的物理单比特泡利 X 翻转误差，计算 3 个面的 Z 稳定子伴随子测量结果，并通过查表匹配或加权图匹配返回纠错恢复算符 R，验证逻辑态保真度达到 100%。"
+        },
+        {
+          "id": "scenario_prompt_quantum_error_correction_color_code_transversal_clifford_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_error_correction_color_code_transversal_clifford",
+          "domain": "quantum_computing_topological_color_codes",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，横向对比二维色码（Color Code）、二维表面码（Surface Code / Rotated Planar Code）、三维量子低密度奇偶校验码（qLDPC Code）以及玻色猫态码（Cat Code）在物理比特到逻辑比特编码开销率 k/n、容错阈值（电路噪声模型下 %）、逻辑门执行开销（横截门集合 vs 格子手术 Lattice Surgery）以及超导/中性原子硬件布线连接性要求四个维度的关键工程指标。"
+        },
+        {
+          "id": "scenario_prompt_high_energy_astrophysics_frb_magnetar_synchrotron_maser_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "high_energy_astrophysics_frb_magnetar_synchrotron_maser",
+          "domain": "high_energy_astrophysics_fast_radio_burst_magnetar",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在相对论无力场电动力学（Relativistic Force-Free Electrodynamics）框架下，推导超强磁场磁星（Magnetar, \\text{B} \\sim 10^{14}-10^{15}\\,\\text{G}）在星震（Crustal Crustquake）激发下，磁层内部产生剪切阿尔芬波（Shear Alfvén Waves）向外传播的能量通量 Poynting 矢量 \\vec{S} = \\frac{c}{4\\pi} (\\vec{E} \\times \\vec{B})，并推导阿尔芬波在光圆柱（Light Cylinder）之外转变为超相对论性磁化外流（Magnetized Relativistic Outflow, 洛伦兹因子 \\Gamma \\gg 10^2）的极限光度上限。"
+        },
+        {
+          "id": "scenario_prompt_high_energy_astrophysics_frb_magnetar_synchrotron_maser_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "high_energy_astrophysics_frb_magnetar_synchrotron_maser",
+          "domain": "high_energy_astrophysics_fast_radio_burst_magnetar",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导磁星相对论性爆炸波冲击周围星周介质时，激波前沿产生的同步辐射脉泽不稳定性（Synchrotron Maser Instability）微观物理过程。推导磁化冷等离子体在垂直于激波面的环形相空间分布下的电磁异常模式（X-mode）微观色散方程，证明其为何能在千兆赫兹（GHz）射电波段产生亮度温度高达 T_b \\sim 10^{35}\\,\\text{K} 的超相干瞬态射电脉冲。"
+        },
+        {
+          "id": "scenario_prompt_high_energy_astrophysics_frb_magnetar_synchrotron_maser_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "high_energy_astrophysics_frb_magnetar_synchrotron_maser",
+          "domain": "high_energy_astrophysics_fast_radio_burst_magnetar",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "从等离子体色散理论出发，推导快速射电暴（FRB）信号在星际介质（ISM）与星系际介质（IGM）传播时的群延迟公式 \\Delta t = \\frac{e^2}{2\\pi m_e c} \\frac{\\text{DM}}{\\nu^2}，并推导出法拉第旋转量（Rotation Measure, RM）与磁场沿视线积分的物理公式 \\text{RM} = \\frac{e^3}{2\\pi m_e^2 c^4} \\int n_e B_\\parallel ds，说明为何偏振角线性变化与超大 RM 值（如 FRB 121102）是断言致密高度磁化极端环境的核心指纹。"
+        },
+        {
+          "id": "scenario_prompt_high_energy_astrophysics_frb_magnetar_synchrotron_maser_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "high_energy_astrophysics_frb_magnetar_synchrotron_maser",
+          "domain": "high_energy_astrophysics_fast_radio_burst_magnetar",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写一个天文数据处理算法脚本，模拟宽带射电望远镜（频率范围 1.0 GHz 至 1.8 GHz，含 1024 个频段通道）接收到的被色散污染的原始动态谱（Dynamic Spectrum），实现基于非相干消色散（Incoherent Dedispersion）的遍历试探步长算法，计算试验色散量 \\text{DM}_{trial} 对应的脉冲信噪比曲线，精确重构脉冲固有到达时间与半高全宽（FWHM）。"
+        },
+        {
+          "id": "scenario_prompt_high_energy_astrophysics_frb_magnetar_synchrotron_maser_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "high_energy_astrophysics_frb_magnetar_synchrotron_maser",
+          "domain": "high_energy_astrophysics_fast_radio_burst_magnetar",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比重复快速射电暴（Repeating FRBs, 如 FRB 121102 / FRB 20200120E）、非重复快速射电暴（Non-repeating FRBs）、旋转射电暂现源（RRATs）以及银河系内磁星 SGR 1935+2154 射电暴在脉冲爆发各向同性能量量级（\\text{erg}）、偏振度与电矢量位置角（EVPA）摆动行为、能量谱指数与微结构子脉冲下漂（Sad Trombone Effect）特征上的异同点。"
+        },
+        {
+          "id": "scenario_prompt_neuroengineering_optogenetic_closed_loop_bci_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "neuroengineering_optogenetic_closed_loop_bci",
+          "domain": "neuroengineering_optogenetic_closed_loop_bci",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "基于空间光调制器 (SLM) 与两光子吸收微透镜干涉原理，推导 Gerchberg-Saxton 迭代傅里叶相位恢复算法如何将近红外飞秒激光波前调制为能在三维脑组织内同时靶向激发数百个特定神经元的三维全息衍射点阵列点扩散函数 (PSF)。"
+        },
+        {
+          "id": "scenario_prompt_neuroengineering_optogenetic_closed_loop_bci_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "neuroengineering_optogenetic_closed_loop_bci",
+          "domain": "neuroengineering_optogenetic_closed_loop_bci",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导基于一阶自回归模型 (AR(1)) 与非负截断惩罚的快速在线钙成像荧光轨迹解卷积算法 (OASIS)，写出如何从低采样率、高泊松噪声的 GCaMP8 荧光强度动态 F(t) 准确反演神经元离散动作电位触发时刻与发放率 \\lambda(t)。"
+        },
+        {
+          "id": "scenario_prompt_neuroengineering_optogenetic_closed_loop_bci_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "neuroengineering_optogenetic_closed_loop_bci",
+          "domain": "neuroengineering_optogenetic_closed_loop_bci",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "请使用 Python 编写一段紧凑高效的 OASIS 钙信号解卷积反演函数，输入一段含随机光漂移与高斯-泊松混合白噪声的一维荧光信号序列，输出估计的基线荧光、去噪后钙离子瞬变过程及重建的离散动作电位脉冲时刻列表。"
+        },
+        {
+          "id": "scenario_prompt_neuroengineering_optogenetic_closed_loop_bci_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "neuroengineering_optogenetic_closed_loop_bci",
+          "domain": "neuroengineering_optogenetic_closed_loop_bci",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "设计一个结构化 Markdown 表格，横向对比全光学生理学闭环系统、高密度刚性穿透硅微电极阵列 (Neuropixels 2.0)、微创柔性高分子电极刺入阵列与硬膜下皮层脑电 (ECoG) 在记录通道规模、单细胞空间分辨率 (μm)、时间精度 (ms)、长期在体生物相容性及双向闭环反馈延迟。"
+        },
+        {
+          "id": "scenario_prompt_neuroengineering_optogenetic_closed_loop_bci_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "neuroengineering_optogenetic_closed_loop_bci",
+          "domain": "neuroengineering_optogenetic_closed_loop_bci",
+          "features": [
+            "code",
+            "math",
+            "latex",
+            "tables",
+            "algorithms"
+          ],
+          "text": "阐述皮层浅层微回路中兴奋性锥体神经元与抑制性中间神经元 (PV/SST) 构成的平衡态网络 (Balanced State Network) 在光遗传全息扰动下的非线性增益控制动力学，分析预防异常同步化与癫痫样放电的闭环反馈阻尼控制器数学模型。"
+        },
+        {
+          "id": "scenario_prompt_quantum_materials_altermagnetism_spintronics_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_materials_altermagnetism_spintronics",
+          "domain": "quantum_materials_altermagnetism_spintronics",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables"
+          ],
+          "text": "基于非相对论自旋空间群（Spin Space Groups）与晶体点群对称性分析，严格推导交替磁体（如金红石结构 RuO2 或六方 MnTe）在实空间具有净零剩磁但反演与时间反演联合对称性破缺的物理条件，推导其在动量空间产生非相对论性 d-波自旋轨道分裂 \\Delta E_{spin}(\\mathbf{k}) \\propto k_x^2 - k_y^2 的哈密顿量形式。"
+        },
+        {
+          "id": "scenario_prompt_quantum_materials_altermagnetism_spintronics_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_materials_altermagnetism_spintronics",
+          "domain": "quantum_materials_altermagnetism_spintronics",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables"
+          ],
+          "text": "深入阐释交替磁体为何能够在宏观总磁矩严格为零的条件下展现显著的反常霍尔效应（Anomalous Hall Effect）与自旋分裂力矩，对比其贝里曲率 \\Omega_n^z(\\mathbf{k}) 在布里渊区内的宇称积分行为与传统外尔铁磁体的差异。"
+        },
+        {
+          "id": "scenario_prompt_quantum_materials_altermagnetism_spintronics_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_materials_altermagnetism_spintronics",
+          "domain": "quantum_materials_altermagnetism_spintronics",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables"
+          ],
+          "text": "请使用 Python 编写基于二维正方晶格双子晶格交替磁性紧束缚模型的哈密顿量本征值求解程序，计算沿布里渊区高对称路径 \\Gamma - X - M - \\Gamma 上的自旋向上与自旋向下能带色散曲线并打印自旋劈裂极大值点。"
+        },
+        {
+          "id": "scenario_prompt_quantum_materials_altermagnetism_spintronics_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_materials_altermagnetism_spintronics",
+          "domain": "quantum_materials_altermagnetism_spintronics",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables"
+          ],
+          "text": "设计一个结构化 Markdown 表格，系统对比铁磁体 (FM)、常规共线反铁磁体 (Collinear AFM)、非共线反铁磁体 (Non-collinear AFM) 与交替磁体 (Altermagnet) 在宏观剩磁、反常霍尔电导率、自旋流极化率、磁共振频段 (GHz vs THz)、抗外磁场杂散干扰能力及自旋电子学读写能耗上的核心性能指标。"
+        },
+        {
+          "id": "scenario_prompt_quantum_materials_altermagnetism_spintronics_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_materials_altermagnetism_spintronics",
+          "domain": "quantum_materials_altermagnetism_spintronics",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables"
+          ],
+          "text": "推导交替磁体中由自旋转移矩 (STT) 与自旋轨道矩 (SOT) 驱动的反铁磁畴壁动力学方程，分析由于相对论洛伦兹洛仑兹不变性导致畴壁运动速度突破自旋波群速极限（超音速运动）且无 Walker 击穿现象的力学物理机制。"
+        },
+        {
+          "id": "scenario_prompt_gravitational_physics_black_hole_ringdown_qnm_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "gravitational_physics_black_hole_ringdown_qnm",
+          "domain": "gravitational_physics_black_hole_ringdown_qnm",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在 Kerr 黑洞时空几何背景下，基于 Newman-Penrose 零四标架投影推导 Teukolsky 主方程（Teukolsky Master Equation），并严格展示辐射规范下拉普拉斯-贝尔特拉米算子沿角向与径向变量分离为自旋权重球谐函数 S_{s\\ell m}(\\theta; a\\omega) 与径向 Teukolsky 方程的过程。"
+        },
+        {
+          "id": "scenario_prompt_gravitational_physics_black_hole_ringdown_qnm_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "gravitational_physics_black_hole_ringdown_qnm",
+          "domain": "gravitational_physics_black_hole_ringdown_qnm",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "详细阐述黑洞准正规模（Quasi-Normal Modes, QNM）的物理边界条件：在视界 r -> r_+ 处为纯内向吸积透射波，在空间无穷远 r -> \\infty 处为纯向外辐射耗散波，推导由此构成的复共轭本征频率谱 \\omega_{n\\ell m} = \\omega_R - i \\omega_I，并解释虚部 \\omega_I > 0 决定的特征阻尼时标 \\tau = 1/\\omega_I。"
+        },
+        {
+          "id": "scenario_prompt_gravitational_physics_black_hole_ringdown_qnm_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "gravitational_physics_black_hole_ringdown_qnm",
+          "domain": "gravitational_physics_black_hole_ringdown_qnm",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "编写 Python 程序使用连分数法（Leaver's Continued Fraction Method）数值求解无自旋 Schwarzschild 黑洞基本四极引力辐射模（\\ell=2, m=2, n=0）的复特征频率初值，并计算其品质因数 Q = \\omega_R / (2\\omega_I)。"
+        },
+        {
+          "id": "scenario_prompt_gravitational_physics_black_hole_ringdown_qnm_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "gravitational_physics_black_hole_ringdown_qnm",
+          "domain": "gravitational_physics_black_hole_ringdown_qnm",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格对比极端质量比旋近 (EMRI)、双中子星并合千新星 (BNS Kilonova)、中等质量黑洞双星 (IMBHB) 以及超大质量黑洞双星并合 (SMBHB) 在特征引力波辐射频段 (Hz)、有效自旋进动效应、视界无毛定理（No-Hair Theorem）铃落多极模检验能力以及对应观测探测器（LIGO-Virgo-KAGRA, LISA, 太极/天琴, PTA 脉冲星测时阵列）的科学技术特征。"
+        },
+        {
+          "id": "scenario_prompt_gravitational_physics_black_hole_ringdown_qnm_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "gravitational_physics_black_hole_ringdown_qnm",
+          "domain": "gravitational_physics_black_hole_ringdown_qnm",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "深入推导双黑洞并合后期超辐射（Superradiance）与克尔黑洞测地极光圈（Light Ring / Photon Sphere）李雅普诺夫指数 \\lambda 之间的对应关系：证明大 \\ell 极限下准正规模频率与衰减率满足 \\omega_R \\to m \\Omega_c 和 \\omega_I \\to (n + 1/2) \\lambda，阐明其微观几何光学（Geometric Optics）测地线不稳定性的几何本质。"
+        },
+        {
+          "id": "scenario_prompt_fluid_dynamics_lattice_boltzmann_turbulent_channel_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fluid_dynamics_lattice_boltzmann_turbulent_channel",
+          "domain": "fluid_dynamics_lattice_boltzmann_mrt",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "从介观离散玻尔兹曼 Bhatnagar-Gross-Krook (BGK) 方程出发，推导标准三维十九速 (D3Q19) 格子速度模型在平衡态离散分布函数 f_i^{(0)} 下的声速 c_s = c/\\sqrt{3}，并运用 Chapman-Enskog 多尺度渐进展开 (Knudsen 数 \\epsilon \\ll 1) 严格推导出宏观不可压缩 Navier-Stokes 动量连续性方程与等效运动粘性系数 \\nu = c_s^2 (\\tau - 1/2) \\Delta t 的代数映射关系。"
+        },
+        {
+          "id": "scenario_prompt_fluid_dynamics_lattice_boltzmann_turbulent_channel_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fluid_dynamics_lattice_boltzmann_turbulent_channel",
+          "domain": "fluid_dynamics_lattice_boltzmann_mrt",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "针对标准单松弛时间 (SRT/LBGK) 模型在雷诺数 Re \\gg 10^3 强剪切流动中容易发生的数值非物理伪振荡与数值发散失稳问题，推导多松弛时间 (Multiple-Relaxation-Time, MRT) 碰撞模型。给出将速度空间分布函数映射至矩空间的正交变换矩阵 M (19x19)，并阐明不同物理本征模式（剪切粘性应力模式 vs 鬼模式/高阶非物理矩）独立松弛时间设定的线性稳定性机理。"
+        },
+        {
+          "id": "scenario_prompt_fluid_dynamics_lattice_boltzmann_turbulent_channel_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fluid_dynamics_lattice_boltzmann_turbulent_channel",
+          "domain": "fluid_dynamics_lattice_boltzmann_mrt",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写一个紧凑高效的二维九速 (D2Q9) MRT-LBM 模拟程序，实现顶盖驱动方腔流 (Lid-Driven Cavity Flow, Re = 1000) 或周期性压力驱动槽道泊肃叶流动，包含矩空间正反投影变换、平衡态力项源注入以及壁面半步反弹格式 (Half-Way Bounce-Back) 无滑移边界条件实现。"
+        },
+        {
+          "id": "scenario_prompt_fluid_dynamics_lattice_boltzmann_turbulent_channel_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fluid_dynamics_lattice_boltzmann_turbulent_channel",
+          "domain": "fluid_dynamics_lattice_boltzmann_mrt",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导近壁湍流边界层中的大涡模拟 (LES) 亚格子尺度模型（如 Smagorinsky 模型与壁面自适应局域涡粘 WALE 模型）在格子玻尔兹曼局部非平衡应力张量 Q_{\\alpha\\beta} 下的直接闭合代数形式，证明为何 LBM 无需在物理空间对速度场求导即可局部确定应变率张量 S_{\\alpha\\beta}。"
+        },
+        {
+          "id": "scenario_prompt_fluid_dynamics_lattice_boltzmann_turbulent_channel_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fluid_dynamics_lattice_boltzmann_turbulent_channel",
+          "domain": "fluid_dynamics_lattice_boltzmann_mrt",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比格子玻尔兹曼方法 (LBM)、有限体积法 (FVM, 如 OpenFOAM)、直接数值模拟谱方法 (Spectral DNS) 以及光滑粒子流体动力学 (SPH) 在非结构网格几何适应性、大规模 GPU 并行扩展效率、不可压缩压力泊松方程解耦优势、多相多组分界面捕捉精度以及超音速可压缩激波捕捉能力等维度的核心性能特征。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_superconducting_qubit_fluxonium_coherence_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_superconducting_qubit_fluxonium_coherence",
+          "domain": "superconducting_circuits_fluxonium_qubit",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "针对由超电感（Superinductor, L \\approx 100-500 nH）、小约瑟夫森结（Josephson Junction, E_J）与分流电容（Charging Energy, E_C）并联构成的 Fluxonium 量子比特电路，严格推导其无量纲正则量子哈密顿量 \\hat{H} = 4 E_C \\hat{n}^2 + \\frac{1}{2} E_L \\hat{\\varphi}^2 - E_J \\cos(\\hat{\\varphi} + 2\\pi \\Phi_{ext}/\\Phi_0)，并从阻抗比与特征相位涨落说明为什么超电感能抑制电荷噪声。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_superconducting_qubit_fluxonium_coherence_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_superconducting_qubit_fluxonium_coherence",
+          "domain": "superconducting_circuits_fluxonium_qubit",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "分析在外部磁通偏置于半整数磁通量子处（\\Phi_{ext} = 0.5 \\Phi_0 甜点 Sweet Spot）时，势能双阱关于 \\varphi = 0 呈现宇称反演对称性。推导基态 |0\\rangle 与第一激发态 |1\\rangle 局域于不同阱底所形成的波函数宇称杂化，并从对偶空间证明为什么跃迁偶极矩 \\langle 0 | \\hat{n} | 1 \\rangle 出现指数级抑制（从而极大延长弛豫时间 T_1 \\gg 1 ms）。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_superconducting_qubit_fluxonium_coherence_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_superconducting_qubit_fluxonium_coherence",
+          "domain": "superconducting_circuits_fluxonium_qubit",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写数值程序，在谐振子激发态基底（Harmonic Oscillator Basis, N=30）下截断并对角化 Fluxonium 比特哈密顿量矩阵，计算从 \\Phi_{ext} = 0 到 \\Phi_0 的前 4 个本征能级演化谱线 E_k(\\Phi_{ext})，并输出在半磁通点处的计算跃迁频率 \\omega_{01} 与 \\omega_{12}。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_superconducting_qubit_fluxonium_coherence_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_superconducting_qubit_fluxonium_coherence",
+          "domain": "superconducting_circuits_fluxonium_qubit",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导由准粒子遂穿（Quasiparticle Tunneling）与磁通噪声（1/f Flux Noise）主导的去相干速率 \\Gamma_2^* 和 Purcell 滤波效应微扰表达式，给出由 \\partial^2 \\omega_{01} / \\partial \\Phi_{ext}^2 决定的二阶磁通噪声纯退相干时标 T_\\phi 的标度律。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_superconducting_qubit_fluxonium_coherence_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_superconducting_qubit_fluxonium_coherence",
+          "domain": "superconducting_circuits_fluxonium_qubit",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比 Transmon 比特、Fluxonium 比特、0-\\pi 拓扑保护超导比特以及超导谐振腔玻色猫态比特在非简谐性 (\\alpha / 2\\pi)、相干时间 T_1 与 T_2、单/双量子比特门保真度阈值以及微波读出与操控复杂度四个维度的技术优劣。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_majorana_zero_modes_topological_braiding_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_majorana_zero_modes_topological_braiding",
+          "domain": "topological_superconductivity_majorana_zero_modes",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在 Oreg-Lutchyn 理论模型下，针对强 Rashba 自旋-轨道耦合（\\alpha_R）半导体纳米线（如 InAs 或 InSb）外延临近接触 s 波超导体（配对能隙 \\Delta）并在平行线轴施加塞曼磁场 V_Z 的一维复合系统，严格推导其 Bogoliubov-de Gennes (BdG) 哈密顿量 \\mathcal{H}_{BdG} = (\\frac{p_x^2}{2m^*} - \\mu)\\tau_z + \\alpha_R p_x \\sigma_y \\tau_z + V_Z \\sigma_x + \\Delta \\tau_x，证明出现拓扑非平庸超导相与端点马约拉纳零模（MZM）的拓扑相变临界充要条件 V_Z > \\sqrt{\\Delta^2 + \\mu^2}。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_majorana_zero_modes_topological_braiding_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_majorana_zero_modes_topological_braiding",
+          "domain": "topological_superconductivity_majorana_zero_modes",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "从连续介质极限出发，求解准一维有限长纳米线（长 L \\gg \\xi）两端马约拉纳实费米算符 \\gamma_1, \\gamma_2 的零能空间波函数 \\psi_0(x)，证明其局域态密度在端点呈指数衰减 \\psi(x) \\sim e^{-x/\\xi} \\cos(k_F x)，并推导由于两端波函数重叠引起的有限尺寸杂化能隙能级分裂 \\Delta E \\propto e^{-L/\\xi} \\cos(k_F L) 对拓扑简并保护度的物理限制。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_majorana_zero_modes_topological_braiding_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_majorana_zero_modes_topological_braiding",
+          "domain": "topological_superconductivity_majorana_zero_modes",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写脚本，基于紧束缚近似（Tight-Binding Model）离散化一维 N 节点超导纳米线晶格系统，构建 BdG 矩阵并使用 NumPy/SciPy 稀疏对角化求解随塞曼磁场 V_Z 连续调节下的本征能谱流演化曲线，精准再现体能隙闭合、重新打开以及零偏压电导峰（Zero-Bias Conductance Peak, ZBCP, 量子化高度 2e^2/h）对应的孤立零能平带出现。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_majorana_zero_modes_topological_braiding_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_majorana_zero_modes_topological_braiding",
+          "domain": "topological_superconductivity_majorana_zero_modes",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导在四端 T 型纳米线结（T-junction）网络中，通过绝热门电压调节各臂的拓扑/平庸相变边界，实现两个马约拉纳零能模 \\gamma_i 与 \\gamma_j 空间逆时针交换（Braiding）的过程。严格写出非阿贝尔几何贝里相位矩阵（Non-Abelian Berry Phase），证明交换操作对应的拓扑演化算符为单演群酉变换 U_{ij} = \\exp(\\frac{\\pi}{4} \\gamma_i \\gamma_j) = \\frac{1}{\\sqrt{2}}(1 + \\gamma_i \\gamma_j)，论述其为何能天然免疫局域退相干噪声构建拓扑量子编织门。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_majorana_zero_modes_topological_braiding_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_majorana_zero_modes_topological_braiding",
+          "domain": "topological_superconductivity_majorana_zero_modes",
+          "features": [
+            "math",
+            "latex",
+            "physics",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比基于马约拉纳零模的拓扑超导量子比特、超导 Transmon 量子比特、半导体量子点自旋量子比特（Loss-DiVincenzo 比特）以及离子阱量子比特在逻辑相干时间保护机制（非局域拓扑存储 vs 动力学解耦/主动纠错）、基本单/双比特量子门操作时标、硬件制造容差鲁棒性以及当前实验物理证据确定性维度的核心指标对比。"
+        },
+        {
+          "id": "scenario_prompt_quantum_thermodynamics_information_engine_jarzynski_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_thermodynamics_information_engine_jarzynski",
+          "domain": "quantum_thermodynamics_information_engine_jarzynski",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "考虑受任意时间依赖外场驱动且处于有限温度 T 热库中的微观系统，从两时间测量方案 (Two-Point Measurement Scheme) 出发，推导微观做功概率分布 P(W) 严格满足的 Jarzynski 非平衡等式 <exp(-beta * W)> = exp(-beta * Delta F) 并证明热力学第二定律不等式 <W> >= Delta F。"
+        },
+        {
+          "id": "scenario_prompt_quantum_thermodynamics_information_engine_jarzynski_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_thermodynamics_information_engine_jarzynski",
+          "domain": "quantum_thermodynamics_information_engine_jarzynski",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "针对麦克斯韦妖 (Maxwell's Demon) 进行测量反馈的信息发动机，推导引入香农互信息 I(X; Y) 修正后的广义热力学第二定律界限 W_ext <= -Delta F + k_B * T * I，并证明兰道尔擦除原理 (Landauer's Principle) 在信息重置过程中产生的最小热耗散 Q_erase = k_B * T * ln(2)。"
+        },
+        {
+          "id": "scenario_prompt_quantum_thermodynamics_information_engine_jarzynski_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_thermodynamics_information_engine_jarzynski",
+          "domain": "quantum_thermodynamics_information_engine_jarzynski",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导由微观可逆性与时间反演对称性决定的 Crooks 涨落定理 P_F(W) / P_R(-W) = exp(beta * (W - Delta F))，并分析在远离热力学平衡的极端非准静态拉伸过程中自由能变化 Delta F 的极大似然估计解析形式。"
+        },
+        {
+          "id": "scenario_prompt_quantum_thermodynamics_information_engine_jarzynski_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_thermodynamics_information_engine_jarzynski",
+          "domain": "quantum_thermodynamics_information_engine_jarzynski",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写 Langevin 随机动力学模拟脚本，数值求解布朗粒子在一维谐振子双势阱驱动移动过程中的随机轨迹，统计提取 5000 次独立非平衡实验路径上的做功做功积分，并绘制功分布直方图与 Jarzynski 平均收敛曲线。"
+        },
+        {
+          "id": "scenario_prompt_quantum_thermodynamics_information_engine_jarzynski_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_thermodynamics_information_engine_jarzynski",
+          "domain": "quantum_thermodynamics_information_engine_jarzynski",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格横向对比经典信息引擎 (Szilard Engine)、量子相干性驱动热机、超导腔量子电动力学热机与单自旋非平衡热机在工作工质尺度、量子相干能增益、最大功输出功率与卡诺效率比值 (Efficiency at Maximum Power)。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_quantum_spin_liquid_kitaev_honeycomb_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "domain": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在二维蜂窝晶格中，写出具有方向依赖键交换相互作用的 Kitaev 纯自旋哈密顿量 H = - sum_{<ij>_gamma} J_gamma * sigma_i^gamma * sigma_j^gamma (gamma in {x, y, z})，引入 4 种局域马约拉纳费米子算符 c_i, b_i^x, b_i^y, b_i^z 实现自旋自由度的严格分数化映射。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_quantum_spin_liquid_kitaev_honeycomb_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "domain": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "证明定义在每个六边形晶胞上的通量算符 W_p = sigma_1^x * sigma_2^y * sigma_3^z * sigma_4^x * sigma_5^y * sigma_6^z 与哈密顿量完全对易且互相独立对易 ([W_p, H] = 0, [W_p, W_q] = 0)，从而证明整个希尔伯特空间能严格对角化为解耦的自由静态 Z_2 规范场扇区与流动马约拉纳费米子谱带。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_quantum_spin_liquid_kitaev_honeycomb_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "domain": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在施加外部垂直微扰弱磁场 h_x * h_y * h_z 下，推导由有效时间反演破缺引起的三阶微扰非阿贝尔拓扑相有效哈密顿量，计算非零陈数 (Chern Number) nu = pm 1 导致的半整数量子热霍尔电导率 kappa_{xy} = (nu / 2) * (pi * k_B^2 / (6 * hbar)) * T。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_quantum_spin_liquid_kitaev_honeycomb_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "domain": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写基于动量空间布里渊区的 Kitaev 模型无通量基态能带结构计算脚本，求解并绘制沿 Gamma-M-K 高对称路径的马约拉纳费米子狄拉克锥色散曲线，计算费米速度并在存在质量能隙 Delta_M 时计算贝里曲率分布积分。"
+        },
+        {
+          "id": "scenario_prompt_condensed_matter_quantum_spin_liquid_kitaev_honeycomb_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "domain": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格横向对比 Kitaev 量子自旋液体材料候选物 (如 alpha-RuCl3、Na2IrO3)、 Kagome 晶格自旋液体候选物 (Herbertsmithite) 与有机阻挫自旋液体系统的海森堡/非海森堡交换耦合参数、磁阻挫参数、连续自旋激发谱特征与无序杂质屏蔽机制。"
+        },
+        {
+          "id": "scenario_prompt_structural_biology_cryo_et_subtomogram_averaging_ribosome_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "structural_biology_cryo_et_subtomogram_averaging_ribosome",
+          "domain": "structural_biology_cryo_et_subtomogram_averaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在冷冻电子断层扫描 (Cryo-ET) 与傅里叶投影切片定理 (Projection-Slice Theorem) 框架下，针对样品倾转角度限制 (例如 -60 度至 +60 度) 引发的傅里叶空间缺失楔 (Missing Wedge) 几何畸变，推导实空间点扩散函数 (PSF) 在 Z 轴方向拉伸展宽系数 e_z / e_{xy} = 1 / \\sin(\\theta_{max}) 的数学表达式，并分析其引起的伪影与非等方性分辨率损失机制。"
+        },
+        {
+          "id": "scenario_prompt_structural_biology_cryo_et_subtomogram_averaging_ribosome_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "structural_biology_cryo_et_subtomogram_averaging_ribosome",
+          "domain": "structural_biology_cryo_et_subtomogram_averaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "请生成一张科学级高分辨率多模态 3D 原生生物分子渲染插图：展现冷冻聚焦离子束 (Cryo-FIB) 减薄后处于近生理玻璃态水环境的原核细胞内部纳米超微结构断层切片。视野中央密集分布着三维近原子分辨率重构的原生核糖体 (70S Ribosome) 大分子复合体，清晰可见大亚基 (50S) 与小亚基 (30S) 构象轮廓、正在转运的多肽链以及结合的信使 RNA (mRNA) 纤维；周围伴随柔性细胞骨架微管蛋白网格与双层脂质生物膜，图像具备冷冻电镜密度图与等值面高动态渲染质感。"
+        },
+        {
+          "id": "scenario_prompt_structural_biology_cryo_et_subtomogram_averaging_ribosome_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "structural_biology_cryo_et_subtomogram_averaging_ribosome",
+          "domain": "structural_biology_cryo_et_subtomogram_averaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "针对亚断层平均 (Subtomogram Averaging, STA) 中的三维对比度传递函数 (3D CTF) 校正与旋转平移对齐，推导考虑电子衍射相衬与离焦梯度的三维互相关函数 (Cross-Correlation Function, CCF) 赋权积分公式，并给出基于四元数 (Quaternions) 或欧拉角空间采样的受约束最大似然优化算法收敛准则。"
+        },
+        {
+          "id": "scenario_prompt_structural_biology_cryo_et_subtomogram_averaging_ribosome_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "structural_biology_cryo_et_subtomogram_averaging_ribosome",
+          "domain": "structural_biology_cryo_et_subtomogram_averaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写脚本，模拟合成包含高斯噪声与低信噪比 (SNR = 0.05) 的三维子断层体，实现基于快速傅里叶变换 (FFT) 的受限角度互相关配准算法，并计算金标准傅里叶壳层相关 (Gold-Standard Fourier Shell Correlation, FSC) 曲线，绘制 0.143 临界切断阈值处的名义空间分辨率图表。"
+        },
+        {
+          "id": "scenario_prompt_structural_biology_cryo_et_subtomogram_averaging_ribosome_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "structural_biology_cryo_et_subtomogram_averaging_ribosome",
+          "domain": "structural_biology_cryo_et_subtomogram_averaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比单颗粒冷冻电镜 (Single-Particle Cryo-EM)、冷冻电子断层扫描亚断层平均 (Cryo-ET STA)、微晶电子衍射 (MicroED) 以及同步辐射 X 射线自由电子激光 (XFEL) 在样品制备要求、最大分子量适用范围、构象异质性解析能力、原位生理保真度以及最终可达空间分辨率维度的技术指标差异。"
+        },
+        {
+          "id": "scenario_prompt_quantum_optomechanics_cavity_ground_state_cooling_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_optomechanics_cavity_ground_state_cooling",
+          "domain": "quantum_optomechanics_cavity_cooling",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "从单模光学共振腔与微机械谐振子辐射压力耦合哈密顿量 \\hat{H} = \\hbar \\Delta \\hat{a}^\\dagger \\hat{a} + \\hbar \\omega_m \\hat{b}^\\dagger \\hat{b} - \\hbar g_0 \\hat{a}^\\dagger \\hat{a} (\\hat{b} + \\hat{b}^\\dagger) 出发，在强相干光驱动极限下推导有效线性化光力学耦合常数 G = g_0 \\sqrt{\\bar{n}_{cav}}，并求出光力诱导频移 (Optical Spring Effect) \\delta \\omega_m 与有效光力阻尼率 \\Gamma_{opt} 的解析形式。"
+        },
+        {
+          "id": "scenario_prompt_quantum_optomechanics_cavity_ground_state_cooling_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_optomechanics_cavity_ground_state_cooling",
+          "domain": "quantum_optomechanics_cavity_cooling",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在边带分辨良好条件 (Resolved Sideband Regime, \\omega_m \\gg \\kappa) 下，运用量子朗之万方程 (Quantum Langevin Equations) 与玻色输入-输出理论，推导微机械振子经反斯托克斯 (Anti-Stokes) 光子散射冷却后的稳态最小声子占据数 \\bar{n}_{min} = (\\kappa / 4 \\omega_m)^2，证明实现量子基态冷却 (\\bar{n}_{eff} < 1) 所需的临界光力协同度 C = 4 G^2 / (\\kappa \\gamma_m) \\gg n_{th} 条件。"
+        },
+        {
+          "id": "scenario_prompt_quantum_optomechanics_cavity_ground_state_cooling_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_optomechanics_cavity_ground_state_cooling",
+          "domain": "quantum_optomechanics_cavity_cooling",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写脚本，基于 Scipy 或 QuTiP 求解线性化光力学系统的漂移矩阵 (Drift Matrix) 与稳态协方差矩阵 (Covariance Matrix)，数值计算机械位移对称化功率谱密度 S_{xx}(\\omega)，并可视化展示强耦合区模式分裂 (Normal Mode Splitting) 现象。"
+        },
+        {
+          "id": "scenario_prompt_quantum_optomechanics_cavity_ground_state_cooling_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_optomechanics_cavity_ground_state_cooling",
+          "domain": "quantum_optomechanics_cavity_cooling",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导微机械振子处于非经典高阶量子态（如 Fock 态 |1\\rangle 或猫态薛定谔态）时的 Wigner 准几率分布函数 W(x, p)，并论证环境热库耗散下 Wigner 函数负值区域的退相干时间尺度 \\tau_{dec} \\approx 1 / (\\gamma_m \\bar{n}_{th}) 的物理起源。"
+        },
+        {
+          "id": "scenario_prompt_quantum_optomechanics_cavity_ground_state_cooling_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_optomechanics_cavity_ground_state_cooling",
+          "domain": "quantum_optomechanics_cavity_cooling",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比光子晶体纳米梁腔 (Optomechanical Crystal Beam)、硅基回音壁微环微环芯 (Whispering Gallery Mode Microtoroid)、氮化硅薄膜在超导微波腔 (Membrane-in-the-Middle) 以及悬浮光镊纳米颗粒 (Levitated Nanoparticle) 在机械共振频率 \\omega_m、机械品质因数 Q_m、单光子耦合强度 g_0 以及基态冷却可达极限维度的关键实验参数。"
+        },
+        {
+          "id": "scenario_prompt_fusion_plasma_tokamak_tearing_modes_mhd_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fusion_plasma_tokamak_tearing_modes_mhd",
+          "domain": "fusion_plasma_tokamak_tearing_modes",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在环形托卡马克磁约束等离子体几何与阻抗磁流体动力学 (Resistive MHD) 框架下，针对有理磁面 q(r_s) = m/n 处的撕裂不稳定性，推导经典撕裂模稳定性判据指数 \\Delta' = \\lim_{\\epsilon \\to 0} \\frac{1}{\\psi(r_s)} \\left[ \\frac{d\\psi}{dr}\\Big|_{r_s+\\epsilon} - \\frac{d\\psi}{dr}\\Big|_{r_s-\\epsilon} \\right] 的渐近匹配渐进解，并分析磁剪切 s = (r/q)(dq/dr) 对阻抗撕裂层增长率 \\gamma \\tau_R \\propto (S)^{2/5} (-\\Delta')^{-4/5} 的稳定化效应。"
+        },
+        {
+          "id": "scenario_prompt_fusion_plasma_tokamak_tearing_modes_mhd_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fusion_plasma_tokamak_tearing_modes_mhd",
+          "domain": "fusion_plasma_tokamak_tearing_modes",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "当等离子体处于无碰撞高温香蕉区 (Banana Regime) 且具有高归一化极向比压 \\beta_p 时，分析自举电流 (Bootstrap Current) 扰动诱发的新经典撕裂模 (Neoclassical Tearing Mode, NTM)。推导修正的广义 Rutherford 方程 \\frac{\\tau_R}{r_s} \\frac{dw}{dt} = r_s \\Delta' + r_s \\Delta'_{BS}(w) - r_s \\Delta'_{GGJ}(w) - r_s \\Delta'_{pol}(w)，给出自举电流亏损项 \\Delta'_{BS} \\propto \\epsilon^{1/2} \\frac{\\beta_p L_q}{L_p} \\frac{w}{w^2 + w_d^2} 导致的非线性亚临界自激增长阈值条件。"
+        },
+        {
+          "id": "scenario_prompt_fusion_plasma_tokamak_tearing_modes_mhd_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fusion_plasma_tokamak_tearing_modes_mhd",
+          "domain": "fusion_plasma_tokamak_tearing_modes",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写脚本，基于 Scipy 对包含自举电流项、极向极化电流项 (Ion Polarization Current) 与有限径向热导展宽特征尺度 w_d 的广义 Rutherford 微分方程进行时域数值积分，绘制磁岛宽度 w(t) 随初始扰动种子宽度 w_0 的相空间轨道分岔图，确定触发 NTM 磁岛爆发的临界种子岛宽度 (Critical Seed Island Width)。"
+        },
+        {
+          "id": "scenario_prompt_fusion_plasma_tokamak_tearing_modes_mhd_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fusion_plasma_tokamak_tearing_modes_mhd",
+          "domain": "fusion_plasma_tokamak_tearing_modes",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导出利用高功率局域电子回旋共振波电流驱动 (ECCD) 对有理磁面磁岛 O 点进行相位同步射频波注入的稳定化功率平衡模型，推导完全抑制稳态磁岛所需的最小局域射频电流驱动密度 j_{cd} / j_{bs} 的临界阈值比例。"
+        },
+        {
+          "id": "scenario_prompt_fusion_plasma_tokamak_tearing_modes_mhd_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "fusion_plasma_tokamak_tearing_modes_mhd",
+          "domain": "fusion_plasma_tokamak_tearing_modes",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比国际热核聚变实验堆 (ITER)、全超导托卡马克 (EAST)、先进超导托卡马克 (KSTAR) 以及紧凑型高场强托卡马克 (SPARC) 在主半径 R、环向磁场 B_t、等离子体电流 I_p、归一化比压 \\beta_N、自举电流份额 f_{bs} 以及稳态长脉冲运行防破裂 (Disruption Mitigation) 应对策略维度的关键聚变参数。"
+        },
+        {
+          "id": "scenario_prompt_topological_metamaterials_non_hermitian_skin_effect_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "topological_metamaterials_non_hermitian_skin_effect",
+          "domain": "topological_metamaterials_non_hermitian_skin_effect",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "在非互易单链 Hatano-Nelson 模型与非厄米苏-施里弗-希格 (NH-SSH) 晶格模型中，推导开边界条件 (OBC) 下全部本征态呈指数局域在系统边界的非厄米趋肤效应 (Non-Hermitian Skin Effect, NHSE) 物理机制。引入复动量变换 \\beta = e^{ik}，通过转移矩阵行列式特征多项式 P(\\beta, E) = 0，严格推导广义布里渊区 (Generalized Brillouin Zone, GBZ) 满足模长连续条件 |\\beta_M(E)| = |\\beta_{M+1}(E)| 的闭合解析代数轨迹。"
+        },
+        {
+          "id": "scenario_prompt_topological_metamaterials_non_hermitian_skin_effect_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "topological_metamaterials_non_hermitian_skin_effect",
+          "domain": "topological_metamaterials_non_hermitian_skin_effect",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "请生成一张具备顶级科研学术期刊封面质感的科学级 3D 多模态超构材料概念插图：展现工作在可见光波段的双维非厄米拓扑光子超构晶格芯片（Nanophotonic Metamaterial Slab）。芯片由周期性微纳硅基回音壁纳米谐振环腔构成，环腔之间通过非互易光学波导桥接（微观展现光子手性单向跃迁路径）；在激光垂直泵浦激发下，原本弥散分布的光学电磁能量呈现出强烈的非厄米趋肤聚集效应，全部电磁能量坍缩局域在芯片单一边缘角落形成强烈高亮发光的拓扑边缘态辉光光斑，侧面悬浮半透明的复能量谱复数平面代数闭合环（拓扑能谱环绕数几何拓扑示意），展现极致微纳微腔刻蚀纹理与量子光学实验室冷色调背景。"
+        },
+        {
+          "id": "scenario_prompt_topological_metamaterials_non_hermitian_skin_effect_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "topological_metamaterials_non_hermitian_skin_effect",
+          "domain": "topological_metamaterials_non_hermitian_skin_effect",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "推导周期性边界条件 (PBC) 下复能谱在复平面上形成环绕非零区域的谱拓扑缠绕数 (Spectral Winding Number) W = \\frac{1}{2\\pi i} \\oint_{0}^{2\\pi} \\frac{d}{dk} \\ln \\det[H(k) - E_B] dk，并证明非零能谱环绕数 W \\neq 0 与开边界条件下 NHSE 指数局域化衰减长度 \\kappa = -\\ln |\\beta| 之间的体-边对应关系 (Bulk-Boundary Correspondence) 对偶定理。"
+        },
+        {
+          "id": "scenario_prompt_topological_metamaterials_non_hermitian_skin_effect_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "topological_metamaterials_non_hermitian_skin_effect",
+          "domain": "topological_metamaterials_non_hermitian_skin_effect",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "使用 Python 编写脚本，分别构建一维非互易 Hatano-Nelson 紧束缚模型在周期边界 (PBC) 与开边界 (OBC) 下的稀疏三对角非对称哈密顿矩阵，对角化求解并绘制复本征能量谱图（展示闭合椭圆 vs 实线段坍缩），并数值计算所有波函数概率密度分布 \\sum_n |\\psi_n(x)|^2，清晰展示趋肤效应指数富集曲线。"
+        },
+        {
+          "id": "scenario_prompt_topological_metamaterials_non_hermitian_skin_effect_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "topological_metamaterials_non_hermitian_skin_effect",
+          "domain": "topological_metamaterials_non_hermitian_skin_effect",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "使用 Markdown 表格，对比拓扑声学超材料 (Topological Acoustics)、拓扑光子晶体与波导阵列 (Topological Photonics)、LC 电路拓扑电网络 (Topoelectrical Circuits) 以及超冷原子光晶格 (Ultracold Atoms in Optical Lattices) 在非厄米增益/损耗调控手段、非互易跃迁物理实现方案、趋肤效应观察信噪比以及高维高阶拓扑角态扩展能力维度的系统级优缺点。"
+        },
+        {
+          "id": "scenario_prompt_spintronics_magnetic_skyrmion_racetrack_memory_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "spintronics_magnetic_skyrmion_racetrack_memory",
+          "domain": "spintronics_magnetic_skyrmions",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "在空间反演对称性破缺的铁磁/重金属超薄多层膜异质结（如 Pt/Co/AlOx）中，推导海森堡交换作用常数 J 与界面 Dzyaloshinskii-Moriya 相互作用 (iDMI) 矢量 \\mathbf{D}_{ij} 协同竞争下的自旋哈密顿量连续统极限，导出奈尔型 (Néel-type) 磁斯格明子能量泛函并推导形成稳定二维孤子解的临界 DMI 阈值 D_c = \\frac{4\\sqrt{A K_{eff}}}{\\pi}。"
+        },
+        {
+          "id": "scenario_prompt_spintronics_magnetic_skyrmion_racetrack_memory_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "spintronics_magnetic_skyrmion_racetrack_memory",
+          "domain": "spintronics_magnetic_skyrmions",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "当施加面内自旋极化电流驱动自旋轨道转矩 (SOT) 时，将微磁学 Landau-Lifshitz-Gilbert (LLG) 方程对刚体斯格明子自旋轮廓积分，严格推导稳态漂移运动的 Thiele 方程 \\mathbf{G} \\times \\mathbf{v} - \\alpha \\mathcal{D} \\cdot \\mathbf{v} + 4\\pi \\mathcal{B} \\cdot \\mathbf{j} = 0。证明拓扑荷 Q = \\frac{1}{4\\pi} \\int \\mathbf{m} \\cdot \\left( \\frac{\\partial \\mathbf{m}}{\\partial x} \\times \\frac{\\partial \\mathbf{m}}{\\partial y} \\right) dx dy = \\pm 1 产生的回转张量 \\mathbf{G} = -4\\pi Q \\hat{z} 为拓扑 Magnus 力的物理本质，并导出导致斯格明子撞壁湮灭的斯格明子霍尔角 \\theta_{SkHE} = \\arctan\\left(\\frac{4\\pi Q}{\\alpha \\mathcal{D}_{xx}}\\right)。"
+        },
+        {
+          "id": "scenario_prompt_spintronics_magnetic_skyrmion_racetrack_memory_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "spintronics_magnetic_skyrmion_racetrack_memory",
+          "domain": "spintronics_magnetic_skyrmions",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 编写脚本，基于 Runge-Kutta (RK4) 数值求解包含边缘排斥势垒、随机钉扎杂质点 (Pinning Sites) 以及脉冲驱动电流的二维 Thiele 动力学微分方程，模拟斯格明子在限制赛道 (Confined Racetrack) 内部的纵向行进轨迹，展示随电流密度增加从蠕变 (Creep) 到退钉扎解卡 (Depinning) 的非线性速度响应曲线。"
+        },
+        {
+          "id": "scenario_prompt_spintronics_magnetic_skyrmion_racetrack_memory_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "spintronics_magnetic_skyrmion_racetrack_memory",
+          "domain": "spintronics_magnetic_skyrmions",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导反铁磁斯格明子 (Antiferromagnetic Skyrmion) 或合成反铁磁 (SAF) 双层耦合系统抵消拓扑 Magnus 力的微观配对机制，证明由两个具有相反拓扑荷 Q_1 = -Q_2 的亚点阵耦合构成的复合斯格明子如何实现严格为零的斯格明子霍尔角 \\theta_{SkHE} = 0，从而根除赛道侧壁碰撞湮灭瓶颈。"
+        },
+        {
+          "id": "scenario_prompt_spintronics_magnetic_skyrmion_racetrack_memory_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "spintronics_magnetic_skyrmion_racetrack_memory",
+          "domain": "spintronics_magnetic_skyrmions",
+          "features": [
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Markdown 表格，对比拓扑磁斯格明子赛道内存 (Skyrmion Racetrack)、传统磁畴壁内存 (Domain Wall Memory)、自旋转移力矩磁阻随机存取存储器 (STT-MRAM) 以及相变存储器 (PCRAM) 在位单元尺寸 (nm)、写入/擦除能耗 (fJ/bit)、读写速度 (ns)、抗外磁场干扰能力以及室温热稳定性因子 \\Delta = E_b / (k_B T) 维度的核心技术指标。"
+        },
+        {
+          "id": "scenario_prompt_quantum_acoustics_saw_resonator_circuit_qed_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_acoustics_saw_resonator_circuit_qed",
+          "domain": "quantum_acoustics_saw_resonator",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "在强压电各向异性晶体衬底（如黑磷或钽酸锂 LiNbO3）上，联立弹性力学应力平衡微分方程与准静电麦克斯韦方程，推导无耗散表面瑞利波（Rayleigh SAW）在自由表面边界条件下的三维声场应变张量 S_{ij}(x,y,z) 与电势波 \\phi(x,y,z) 空间剖面，分析声速比体电磁波慢 10^5 倍（v_{saw} \\approx 3000 m/s）形成的极短声子波长 \\lambda_{saw} \\approx 1 \\mu\\text{m} 的量子受限效应。"
+        },
+        {
+          "id": "scenario_prompt_quantum_acoustics_saw_resonator_circuit_qed_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_acoustics_saw_resonator_circuit_qed",
+          "domain": "quantum_acoustics_saw_resonator",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "请生成一张具备顶级物理科研期刊封底质感的科学级 3D 多模态量子声学芯片渲染概念插图：展现深低温（10 mK）微波屏蔽封装内部的超导量子声学芯片（Quantum Surface Acoustic Wave Chip）。高纯钽酸锂压电晶圆表面精细微加工着铝基超导叉指换能器 (IDT) 与布拉格声学反射栅阵列，中央耦合着一个超导 Transmon 量子比特（呈现淡金色约瑟夫森结超导环）；量子比特向左侧微声学谐振腔发射出波长亚微米级的相干单声子表面波纹（呈现亮青色透明起伏的声学微晶格涟漪），背景呈现稀释制冷机镀金辐射屏蔽罩与冷凝量子光学微波电缆，具备极致纳米金属光泽与电磁-声学多物理场耦合渲染美感。"
+        },
+        {
+          "id": "scenario_prompt_quantum_acoustics_saw_resonator_circuit_qed_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_acoustics_saw_resonator_circuit_qed",
+          "domain": "quantum_acoustics_saw_resonator",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "在电路量子电动力学 (cQED) 拓展框架下，推导超导 Transmon 量子比特电容焊盘与叉指换能器 (IDT) 压电电极之间的电声耦合 Jaynes-Cummings 哈密顿量 \\hat{H}_{int} = \\hbar g (\\hat{a} \\hat{\\sigma}_+ + \\hat{a}^\\dagger \\hat{\\sigma}_-)，并给出电声耦合强度 g / 2\\pi \\propto \\sqrt{K^2 f_{saw} / C_{\\Sigma}} 的电容分压与压电机电耦合系数 K^2 定标律，分析强耦合条件 g \\gg (\\kappa, \\gamma) 的实验可达性。"
+        },
+        {
+          "id": "scenario_prompt_quantum_acoustics_saw_resonator_circuit_qed_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_acoustics_saw_resonator_circuit_qed",
+          "domain": "quantum_acoustics_saw_resonator",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "使用 Python 编写脚本，基于开放量子系统 QuTiP 库构建超导比特与单模声学谐振腔的复合希尔伯特空间，数值模拟真空拉比振荡 (Vacuum Rabi Oscillation) 过程，演示单个微波光子在约瑟夫森比特与机械表面声子之间的确定性量子态相干互换，并计算声子态保真度 F(\\rho, |1\\rangle\\langle 1|)。"
+        },
+        {
+          "id": "scenario_prompt_quantum_acoustics_saw_resonator_circuit_qed_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "quantum_acoustics_saw_resonator_circuit_qed",
+          "domain": "quantum_acoustics_saw_resonator",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "physics",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "使用 Markdown 表格，对比声表面波量子体系 (SAW cQED)、体声波超导谐振器 (HBAR)、光机械悬臂梁 (Optomechanical Beams) 以及三维微波腔 (3D Superconducting Cavities) 在特征共振频率、机械/电磁品质因数 Q、相干退相干时间 T_1 与 T_2、单激发封装体积以及量子非破坏 (QND) 单声子探测能力维度的综合物理特性。"
+        },
+        {
+          "id": "scenario_prompt_marine_biology_bioluminescent_reef_imaging_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "marine_biology_bioluminescent_reef_imaging",
+          "domain": "marine_biology_bioluminescent_reef_imaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "推导海水中波长相关的 Beer–Lambert 衰减和后向散射模型，解释珊瑚荧光蛋白激发光与发射光在不同水深下的信噪比变化，并用 LaTeX 写出反演目标函数。"
+        },
+        {
+          "id": "scenario_prompt_marine_biology_bioluminescent_reef_imaging_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "marine_biology_bioluminescent_reef_imaging",
+          "domain": "marine_biology_bioluminescent_reef_imaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "生成一张科学信息图：展示夜间珊瑚礁、蓝光激发源、绿色荧光珊瑚及水下相机的几何关系；图中要有清晰的光路箭头和水深标尺。"
+        },
+        {
+          "id": "scenario_prompt_marine_biology_bioluminescent_reef_imaging_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "marine_biology_bioluminescent_reef_imaging",
+          "domain": "marine_biology_bioluminescent_reef_imaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "使用 Python 写一个可复现的小型模拟，给定三种波长的吸收和散射系数，估计 5、15、30 米深度的相机接收辐亮度并绘图。"
+        },
+        {
+          "id": "scenario_prompt_marine_biology_bioluminescent_reef_imaging_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "marine_biology_bioluminescent_reef_imaging",
+          "domain": "marine_biology_bioluminescent_reef_imaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "用 Markdown 表格比较珊瑚荧光、浮游生物生物发光与人工荧光示踪剂的发光机制、典型波段、成像限制和生态干扰风险。"
+        },
+        {
+          "id": "scenario_prompt_marine_biology_bioluminescent_reef_imaging_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "marine_biology_bioluminescent_reef_imaging",
+          "domain": "marine_biology_bioluminescent_reef_imaging",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "设计一套野外校准流程，说明如何用白板、暗场帧和参考光谱纠正水下相机的颜色偏差，并列出可量化的验收指标。"
+        },
+        {
+          "id": "scenario_prompt_archaeometry_ancient_glass_isotope_provenance_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "archaeometry_ancient_glass_isotope_provenance",
+          "domain": "archaeometry_ancient_glass_isotope_provenance",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "设想有三处古玻璃原料产地，推导锶、钕同位素比值的双端元混合模型，明确测量误差和污染项如何进入似然函数。"
+        },
+        {
+          "id": "scenario_prompt_archaeometry_ancient_glass_isotope_provenance_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "archaeometry_ancient_glass_isotope_provenance",
+          "domain": "archaeometry_ancient_glass_isotope_provenance",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "建立层级贝叶斯模型来判断一块出土玻璃的产地，写出先验、似然、后验及后验预测检验的 LaTeX 表达式。"
+        },
+        {
+          "id": "scenario_prompt_archaeometry_ancient_glass_isotope_provenance_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "archaeometry_ancient_glass_isotope_provenance",
+          "domain": "archaeometry_ancient_glass_isotope_provenance",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "用 Python 编写可运行示例，为三个假想产地生成测量数据，并计算一件未知样品的产地后验概率与可信区间。"
+        },
+        {
+          "id": "scenario_prompt_archaeometry_ancient_glass_isotope_provenance_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "archaeometry_ancient_glass_isotope_provenance",
+          "domain": "archaeometry_ancient_glass_isotope_provenance",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "用 Markdown 表格比较同位素比值、微量元素指纹、考古地层和器型风格四类证据的辨识能力、常见偏差与交叉验证方法。"
+        },
+        {
+          "id": "scenario_prompt_archaeometry_ancient_glass_isotope_provenance_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "archaeometry_ancient_glass_isotope_provenance",
+          "domain": "archaeometry_ancient_glass_isotope_provenance",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "讨论当两处产地的化学分布高度重叠时，如何做灵敏度分析和报告不确定性，避免给出过度确定的单一产地结论。"
+        },
+        {
+          "id": "scenario_prompt_materials_science_photonic_crystal_defect_cavity_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "materials_science_photonic_crystal_defect_cavity",
+          "domain": "materials_science_photonic_crystal_defect_cavity",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "从一维周期介质的 Maxwell 本征方程出发，用 LaTeX 推导 Bloch 模与光子带隙形成条件，并说明折射率对比度的作用。"
+        },
+        {
+          "id": "scenario_prompt_materials_science_photonic_crystal_defect_cavity_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "materials_science_photonic_crystal_defect_cavity",
+          "domain": "materials_science_photonic_crystal_defect_cavity",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "生成一张科研示意图：二维光子晶体薄膜中的点缺陷腔、局域电场强度分布、入射波导及出射方向，要求结构边界和颜色图例清晰。"
+        },
+        {
+          "id": "scenario_prompt_materials_science_photonic_crystal_defect_cavity_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "materials_science_photonic_crystal_defect_cavity",
+          "domain": "materials_science_photonic_crystal_defect_cavity",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "使用 Python 编写简化的传输矩阵数值脚本，计算介质层数和缺陷层厚度改变时的透射谱与共振峰位置。"
+        },
+        {
+          "id": "scenario_prompt_materials_science_photonic_crystal_defect_cavity_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "materials_science_photonic_crystal_defect_cavity",
+          "domain": "materials_science_photonic_crystal_defect_cavity",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "用 Markdown 表格比较光子晶体缺陷腔、微环谐振器、法布里珀罗腔与等离激元纳米腔的品质因数、模式体积、制造误差敏感度和适用场景。"
+        },
+        {
+          "id": "scenario_prompt_materials_science_photonic_crystal_defect_cavity_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "materials_science_photonic_crystal_defect_cavity",
+          "domain": "materials_science_photonic_crystal_defect_cavity",
+          "features": [
+            "imagen",
+            "multimodal",
+            "attachments",
+            "math",
+            "latex",
+            "code",
+            "tables"
+          ],
+          "text": "设计一个近场光学表征实验，解释如何从空间扫描图像估计缺陷腔模式体积，并列出误差来源与校准步骤。"
+        },
+        {
+          "id": "scenario_prompt_ecology_forest_carbon_flux_data_assimilation_turn1",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "ecology_forest_carbon_flux_data_assimilation",
+          "domain": "ecology_forest_carbon_flux_data_assimilation",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "推导森林生态系统净碳交换 NEE 与总初级生产力、生态系统呼吸之间的碳收支关系，并用 LaTeX 说明涡度协方差通量估计量。"
+        },
+        {
+          "id": "scenario_prompt_ecology_forest_carbon_flux_data_assimilation_turn2",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "ecology_forest_carbon_flux_data_assimilation",
+          "domain": "ecology_forest_carbon_flux_data_assimilation",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "解释夜间低湍流条件为何造成通量低估，给出基于摩擦速度阈值的质量控制步骤和不确定性传播公式。"
+        },
+        {
+          "id": "scenario_prompt_ecology_forest_carbon_flux_data_assimilation_turn3",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "ecology_forest_carbon_flux_data_assimilation",
+          "domain": "ecology_forest_carbon_flux_data_assimilation",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "使用 Python 写一个小型可复现示例，生成半小时通量数据，完成异常值过滤、缺测填补和年度累积碳收支计算。"
+        },
+        {
+          "id": "scenario_prompt_ecology_forest_carbon_flux_data_assimilation_turn4",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "ecology_forest_carbon_flux_data_assimilation",
+          "domain": "ecology_forest_carbon_flux_data_assimilation",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "用 Markdown 表格比较涡度协方差、树木样地调查、遥感反演和过程模型在空间尺度、时间分辨率、主要偏差及验证方式上的差异。"
+        },
+        {
+          "id": "scenario_prompt_ecology_forest_carbon_flux_data_assimilation_turn5",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "scenarioId": "ecology_forest_carbon_flux_data_assimilation",
+          "domain": "ecology_forest_carbon_flux_data_assimilation",
+          "features": [
+            "math",
+            "latex",
+            "code",
+            "tables",
+            "algorithms"
+          ],
+          "text": "设计一套用贝叶斯数据同化估计森林呼吸参数的方案，明确先验、似然、观测误差协方差和交叉验证策略。"
+        },
+        {
+          "id": "takeout_user_prompt_7",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "请用一个结构清晰的 Markdown 对比表格，从叠加态、并行度、纠错难度、应用场景四个维度对比经典比特与量子比特 (Qubit)。\nSep 2, 2026, 12:12:52 PM PDT\n 经典比特（Bit）与量子比特（Qubit）是经典计算与量子计算的最核心物理与信息单元。两者在计算范式上有着本质区别： \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    对比维度  经典比特 (Bit)  量子比特 (Qubit)       叠加态    确定状态 \n任意时刻只能处于确定的 $0$ 或 $1$ 状态。   连续叠加 \n可同时处于 $0$ 与 $1$ 的叠加态：\n$|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle$，其中 $|\\alpha|^2 + |\\beta|^2 = 1$。     并行度    线性扩展 \n$N$ 个经典比特在同一时刻只能表达 $1$ 个确定状态，处理速度随比特数线性增长。   指数级并行 \n$N$ 个处于纠缠叠加态的量子比特可同时表达 $2^N$ 个状态，提供指数级计算空间。     纠错难度    极低（高鲁棒性） \n硬件实现通常基于高低电平，受热噪声等环境干扰小；纠错算法（如重复码）成熟且开销极低。   极高（高脆弱性） \n极易受环境噪声干扰发生退相干（Decoherence）；根据非克隆定理，需要通过复杂的量子纠错码（如 Surface Code），且单个逻辑比特通常需要成百上千个物理比特支撑。     应用场景    通用基础计算 \n日常逻辑运算、文档处理、数据库查询、网络通信、图像与音视频编解码等。   特定难题破译与模拟 \n大整数质因数分解（Shor算法）、复杂分子与量子材料模拟、组合优化问题、加速无序数据库搜索（Grover算法）等。"
+        },
+        {
+          "id": "takeout_user_prompt_13",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "请详细推导贝尔不等式 (Bell&#39;s inequality) 并解释量子纠缠违反该不等式的物理意义，使用标准的 LaTeX 格式展示数学公式。\nSep 2, 2026, 12:11:57 PM PDT\n 贝尔不等式（Bell&#39;s Inequality）是量子力学发展史上最具决定性的物理定理之一。它为爱因斯坦的“定域实在论”（Local Realism）与量子力学的完整性争论提供了一个可以通过实验检验的定量判据。通常在物理学中采用由 Clauser-Horne-Shimony-Holt 提出的  CHSH 不等式  进行推导与证明。 \n \n\n \n 定域隐变量理论的基本假设 \n 假设一个粒子源发射一对处于某种关联状态的自旋 $1/2$ 粒子，分别飞向两地的观测者 Alice 和 Bob。 \n 根据爱因斯坦提出的 定域实在论 （Local Hidden Variable Theory, LHV）： \n \n  实在性（Realism） ：物理量在测量之前就已具备确定的客观值，测量只是揭示了这个预先存在的值。设隐变量 $\\lambda$ 包含了决定所有测量结果的物理状态，其概率密度分布为 $\\rho(\\lambda)$，满足 $\\int \\rho(\\lambda) d\\lambda = 1$ 且 $\\rho(\\lambda) \\ge 0$。 \n  定域性（Locality） ：Alice 在方向 $a$ 上的测量选择和结果 $A(a, \\lambda)$，绝不依赖于 Bob 在方向 $b$ 上的测量选择或结果 $B(b, \\lambda)$，反之亦然。 \n \n 假设测量结果仅能取值 $+1$ 或 $-1$（对应自旋朝上或朝下）：\n$$A(a, \\lambda) = \\pm 1, \\quad B(b, \\lambda) = \\pm 1$$ \n Alice 和 Bob 在设定方向 $a$ 与 $b$ 下测量结果的关联期望值定义为：\n$$E(a, b) = \\int A(a, \\lambda) B(b, \\lambda) \\rho(\\lambda) d\\lambda$$ \n \n CHSH 不等式的推导 \n 设 Alice 可以选择两个测量方向 $a$ 或 $a&#39;$，Bob 可以选择两个测量方向 $b$ 或 $b&#39;$。定义如下的代数组合表达式 $C(\\lambda)$：\n$$C(\\lambda) = A(a, \\lambda) B(b, \\lambda) - A(a, \\lambda) B(b&#39;, \\lambda) + A(a&#39;, \\lambda) B(b, \\lambda) + A(a&#39;, \\lambda) B(b&#39;, \\lambda)$$ \n 将前两项和后两项分别提取公因式：\n$$C(\\lambda) = A(a, \\lambda) \\left[ B(b, \\lambda) - B(b&#39;, \\lambda) \\right] + A(a&#39;, \\lambda) \\left[ B(b, \\lambda) + B(b&#39;, \\lambda) \\right]$$ \n 注意到 $B(b, \\lambda)$ 与 $B(b&#39;, \\lambda)$ 的取值均只能为 $+1$ 或 $-1$： \n \n 若 $B(b, \\lambda) = B(b&#39;, \\lambda)$，则 $B(b, \\lambda) - B(b&#39;, \\lambda) = 0$，而 $B(b, \\lambda) + B(b&#39;, \\lambda) = \\pm 2$。 \n 若 $B(b, \\lambda) \\ne B(b&#39;, \\lambda)$，则 $B(b, \\lambda) - B(b&#39;, \\lambda) = \\pm 2$，而 $B(b, \\lambda) + B(b&#39;, \\lambda) = 0$。 \n \n 因为 $A(a, \\lambda) = \\pm 1$ 且 $A(a&#39;, \\lambda) = \\pm 1$，在任何隐变量 $\\lambda$ 的具体状态下，这两个括号中总有一个为零，另一个的绝对值为 $2$。因此：\n$$|C(\\lambda)| = 2$$ \n 即隐变量组合满足边界限定：\n$$-2 \\le A(a, \\lambda) B(b, \\lambda) - A(a, \\lambda) B(b&#39;, \\lambda) + A(a&#39;, \\lambda) B(b, \\lambda) + A(a&#39;, \\lambda) B(b&#39;, \\lambda) \\le 2$$ \n 将上述不等式在整个隐变量空间上对概率密度积分：\n$$S \\equiv E(a, b) - E(a, b&#39;) + E(a&#39;, b) + E(a&#39;, b&#39;)$$\n$$|S| = \\left| \\int C(\\lambda) \\rho(\\lambda) d\\lambda \\right| \\le \\int |C(\\lambda)| \\rho(\\lambda) d\\lambda \\le 2 \\int \\rho(\\lambda) d\\lambda = 2$$ \n 这就推导出了 CHSH 不等式 ：\n$$|S| = |E(a, b) - E(a, b&#39;) + E(a&#39;, b) + E(a&#39;, b&#39;)| \\le 2$$ \n 任何符合定域实在论假设的物理模型，其测量关联值 $S$ 的绝对值上限绝不能超过 $2$。 \n \n 量子力学预言与不等式的违反 \n 现在使用量子力学计算处于纠缠单态（Singlet state）的两粒子自旋关联：\n$$|\\psi^-\\rangle = \\frac{1}{\\sqrt{2}} \\left( |\\uparrow\\downarrow\\rangle - |\\downarrow\\uparrow\\rangle \\right)$$ \n 根据量子力学，Alice 和 Bob 分别沿着单位向量 $\\vec{a}$ 和 $\\vec{b}$ 测量自旋时的期望值为：\n$$E_{QM}(a, b) = \\langle \\psi^- | (\\vec{\\sigma} \\cdot \\vec{a}) \\otimes (\\vec{\\sigma} \\cdot \\vec{b}) | \\psi^- \\rangle = -\\vec{a} \\cdot \\vec{b} = -\\cos \\theta_{ab}$$ \n 假设我们将测量测角布置在同一平面内，选择如下经典角度组合： \n \n Alice 选择方向：$\\vec{a}$ 设为 $0^\\circ$，$\\vec{a}&#39;$ 设为 $90^\\circ$ \n Bob 选择方向：$\\vec{b}$ 设为 $45^\\circ$，$\\vec{b}&#39;$ 设为 $135^\\circ$ \n \n 代入期望值公式： \n \n $\\theta_{ab} = 45^\\circ \\implies E(a, b) = -\\cos(45^\\circ) = -\\frac{\\sqrt{2}}{2}$ \n $\\theta_{ab&#39;} = 135^\\circ \\implies E(a, b&#39;) = -\\cos(135^\\circ) = \\frac{\\sqrt{2}}{2}$ \n $\\theta_{a&#39;b} = -45^\\circ \\implies E(a&#39;, b) = -\\cos(-45^\\circ) = -\\frac{\\sqrt{2}}{2}$ \n $\\theta_{a&#39;b&#39;} = 45^\\circ \\implies E(a&#39;, b&#39;) = -\\cos(45^\\circ) = -\\frac{\\sqrt{2}}{2}$ \n \n 计算量子力学预言的 $S$ 参数：\n$$S_{QM} = \\left(-\\frac{\\sqrt{2}}{2}\\right) - \\left(\\frac{\\sqrt{2}}{2}\\right) + \\left(-\\frac{\\sqrt{2}}{2}\\right) + \\left(-\\frac{\\sqrt{2}}{2}\\right) = -2\\sqrt{2}$$\n$$|S_{QM}| = 2\\sqrt{2} \\approx 2.828 &gt; 2$$ \n 量子力学给出的预言达到了 西雷尔森上限（Cirel&#39;son&#39;s Bound, $2\\sqrt{2}$） ，极大地突破了定域实在论上限 $2$。 \n \n 违反贝尔不等式的物理意义 \n 阿斯佩（Aspect）及后续许多闭合漏洞的经典实验一致证实： 实验测量结果彻底违反了贝尔不等式，完美符合量子力学预言 。这一结论在物理学上具有划时代的深刻内涵： \n \n  彻底否定定域实在论 ：自然界无法同时满足“实在性”（物理量预先存在）与“定域性”（信息不能超光速传播）。我们必须至少放弃其中一个前提条件。物理学界普遍选择放弃定域性或预先确定的实在性。 \n  确立量子非局域性（Quantum Non-locality） ：纠缠粒子对不能被看作两个独立的个体的简单组合，它们构成了一个非局域的整体系统。对其中一个粒子的测量，会瞬间改变整个系统的叠加态。 \n  与狭义相对论相容（无超光速通信定理） ：尽管纠缠表现出瞬时的非局域关联，但单边观测者（如 Alice）得到的任何单个测量结果依然是完全随机的（概率各 $50%$）。Alice 无法单方面控制测量结果来向 Bob 发送信号，因此这并不违背狭义相对论的信息传播速度极限。 \n  量子信息科学的基石 ：贝尔不等式的违反成为了区分“纯量子资源”与“经典可模拟资源”的严格判据，是设备无关的量子密钥分发（DI-QKD）、可验证量子计算和量子隐形传态的物理基础。"
+        },
+        {
+          "id": "takeout_user_prompt_19",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "现在为刚才的 LRU 缓存加上线程安全锁 (threading.Lock)，并编写一个基准性能测试函数，输出多线程并发测试结果表格。\nSep 2, 2026, 12:08:31 PM PDT\n 在多线程并发场景下，访问与修改 LRU 缓存需要保证原子性。由于  get  操作会改变双向链表中的节点顺序（移动节点到头部），因此   get  和  put  操作均属于写操作 ，都需要通过互斥锁保护。 \n \n\n \n 1. 线程安全的 LRU 缓存实现 \n 这里使用  threading.Lock  作为上下文管理器（ with self.lock: ）来保证线程安全性。 \n  import random\nimport threading\nimport time\n\n\nclass Node:\n    &quot;&quot;&quot;双向链表节点&quot;&quot;&quot;\n\n    def __init__(self, key: int = 0, value: int = 0):\n        self.key = key\n        self.value = value\n        self.prev = None\n        self.next = None\n\n\nclass ThreadSafeLRUCache:\n    &quot;&quot;&quot;线程安全的 LRU 缓存实现&quot;&quot;&quot;\n\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}  # key -&gt; Node\n        self.lock = threading.Lock()  # 互斥锁\n\n        # 初始化伪头节点和伪尾节点\n        self.head = Node()\n        self.tail = Node()\n        self.head.next = self.tail\n        self.tail.prev = self.head\n\n    def _add_node_to_head(self, node: Node) -&gt; None:\n        &quot;&quot;&quot;内部方法：插入节点到头部（必须在锁保护下调用）&quot;&quot;&quot;\n        node.prev = self.head\n        node.next = self.head.next\n        self.head.next.prev = node\n        self.head.next = node\n\n    def _remove_node(self, node: Node) -&gt; None:\n        &quot;&quot;&quot;内部方法：从链表移除节点（必须在锁保护下调用）&quot;&quot;&quot;\n        prev_node = node.prev\n        next_node = node.next\n        prev_node.next = next_node\n        next_node.prev = prev_node\n\n    def _move_to_head(self, node: Node) -&gt; None:\n        &quot;&quot;&quot;内部方法：移动节点到头部（必须在锁保护下调用）&quot;&quot;&quot;\n        self._remove_node(node)\n        self._add_node_to_head(node)\n\n    def _pop_tail(self) -&gt; Node:\n        &quot;&quot;&quot;内部方法：弹出尾部最久未使用的节点（必须在锁保护下调用）&quot;&quot;&quot;\n        res_node = self.tail.prev\n        self._remove_node(res_node)\n        return res_node\n\n    def get(self, key: int) -&gt; int:\n        &quot;&quot;&quot;线程安全的 get 操作&quot;&quot;&quot;\n        with self.lock:\n            if key not in self.cache:\n                return -1\n\n            node = self.cache[key]\n            self._move_to_head(node)\n            return node.value\n\n    def put(self, key: int, value: int) -&gt; None:\n        &quot;&quot;&quot;线程安全的 put 操作&quot;&quot;&quot;\n        with self.lock:\n            if key in self.cache:\n                node = self.cache[key]\n                node.value = value\n                self._move_to_head(node)\n            else:\n                new_node = Node(key, value)\n                self.cache[key] = new_node\n                self._add_node_to_head(new_node)\n\n                if len(self.cache) &gt; self.capacity:\n                    tail_node = self._pop_tail()\n                    del self.cache[tail_node.key]\n  \n \n 2. 多线程并发基准性能测试代码 \n 下面定义基准测试函数  benchmark_lru_cache ，它将在多线程并发读写的场景下度量吞吐量（QPS）与平均耗时，并直接输出格式化的 markdown 表格。 \n  def benchmark_lru_cache():\n    # 测试配置\n    thread_counts = [1, 2, 4, 8, 16]\n    operations_per_thread = 100_000\n    cache_capacity = 1_000\n    key_range = 2_000  # 保证一定的 hit / miss 和淘汰触发率\n\n    print(&quot;\\n运行并发性能测试中，请稍候...\\n&quot;)\n\n    # 格式化输出表格表头\n    print(\n        f&quot;| 线程数 (Threads) | 总操作数 (Operations) | 总耗时 (Seconds) | 吞吐量 (QPS) | 每万次操作耗时 (ms) |&quot;\n    )\n    print(\n        f&quot;| :--- | :--- | :--- | :--- | :--- |&quot;\n    )\n\n    for threads_num in thread_counts:\n        cache = ThreadSafeLRUCache(capacity=cache_capacity)\n        total_ops = threads_num * operations_per_thread\n\n        def worker():\n            # 80% 读取，20% 写入混杂并发\n            for _ in range(operations_per_thread):\n                key = random.randint(1, key_range)\n                if random.random() &lt; 0.8:\n                    cache.get(key)\n                else:\n                    cache.put(key, key)\n\n        threads = []\n        for _ in range(threads_num):\n            t = threading.Thread(target=worker)\n            threads.append(t)\n\n        start_time = time.perf_counter()\n\n        for t in threads:\n            t.start()\n        for t in threads:\n            t.join()\n\n        end_time = time.perf_counter()\n\n        elapsed_time = end_time - start_time\n        qps = total_ops / elapsed_time\n        time_per_10k_ms = (elapsed_time / total_ops) * 10_000 * 1000\n\n        print(\n            f&quot;| {threads_num:&lt;16} | {total_ops:&lt;21,} | {elapsed_time:&lt;16.4f} | {qps:&lt;12,.2f} | {time_per_10k_ms:&lt;19.2f} |&quot;\n        )\n\n\nif __name__ == &quot;__main__&quot;:\n    benchmark_lru_cache()\n  \n \n 3. 测试结果示例分析 \n 在标准多核 CPython 环境下运行该测试，结果形式如下： \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    线程数 (Threads)  总操作数 (Operations)  总耗时 (Seconds)  吞吐量 (QPS)  每万次操作耗时 (ms)      1  100,000  0.0825  1,212,121.21  8.25    2  200,000  0.2105  950,118.76  10.53    4  400,000  0.4680  854,700.85  11.70    8  800,000  0.9852  812,017.86  12.32    16  1,600,000  2.0125  795,031.06  12.58    \n 性能注意事项： \n \n  GIL (全局解释器锁) 限制 ：在 CPython 中，受到全局解释器锁的限制，单纯依赖  threading  并不能利用多核算力提升绝对吞吐量。 \n  锁竞争 (Lock Contention) ：随着并发线程数的增多，线程在尝试获取  self.lock  时的竞争加剧，使得吞吐量（QPS）相比单线程时有所下降。若在极高并发读场景下需要更高性能，通常需要改用更轻量级的分段锁（Sharded LRU Cache）或者在 C 扩展层释放 GIL。"
+        },
+        {
+          "id": "takeout_user_prompt_22",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "请用 Python 实现一个高性能的双向链表+哈希表 LRU 缓存类，要求包含 get 和 put 方法，不要使用 collections.OrderedDict。\nSep 2, 2026, 12:05:26 PM PDT\n  class Node:\n    &quot;&quot;&quot;双向链表节点&quot;&quot;&quot;\n\n    def __init__(self, key: int = 0, value: int = 0):\n        self.key = key\n        self.value = value\n        self.prev = None\n        self.next = None\n\n\nclass LRUCache:\n    &quot;&quot;&quot;基于双向链表和哈希表实现的高性能 LRU 缓存&quot;&quot;&quot;\n\n    def __init__(self, capacity: int):\n        self.capacity = capacity\n        self.cache = {}  # 哈希表：key -&gt; Node\n\n        # 初始化伪头节点和伪尾节点，避免复杂的边界判断\n        self.head = Node()\n        self.tail = Node()\n        self.head.next = self.tail\n        self.tail.prev = self.head\n\n    def _add_node_to_head(self, node: Node) -&gt; None:\n        &quot;&quot;&quot;将节点插入到链表头部（表示最近使用）&quot;&quot;&quot;\n        node.prev = self.head\n        node.next = self.head.next\n        self.head.next.prev = node\n        self.head.next = node\n\n    def _remove_node(self, node: Node) -&gt; None:\n        &quot;&quot;&quot;从链表中删除指定节点&quot;&quot;&quot;\n        prev_node = node.prev\n        next_node = node.next\n        prev_node.next = next_node\n        next_node.prev = prev_node\n\n    def _move_to_head(self, node: Node) -&gt; None:\n        &quot;&quot;&quot;将已有节点移动到链表头部&quot;&quot;&quot;\n        self._remove_node(node)\n        self._add_node_to_head(node)\n\n    def _pop_tail(self) -&gt; Node:\n        &quot;&quot;&quot;移除并返回链表尾部的节点（最久未使用）&quot;&quot;&quot;\n        res_node = self.tail.prev\n        self._remove_node(res_node)\n        return res_node\n\n    def get(self, key: int) -&gt; int:\n        &quot;&quot;&quot;获取 key 的值；若 key 不存在则返回 -1&quot;&quot;&quot;\n        if key not in self.cache:\n            return -1\n\n        node = self.cache[key]\n        self._move_to_head(node)  # 被访问后更新为最近使用\n        return node.value\n\n    def put(self, key: int, value: int) -&gt; None:\n        &quot;&quot;&quot;存入 key-value；若 key 存在则更新，超限时淘汰最久未使用的数据&quot;&quot;&quot;\n        if key in self.cache:\n            node = self.cache[key]\n            node.value = value  # 更新值\n            self._move_to_head(node)  # 更新为最近使用\n        else:\n            new_node = Node(key, value)\n            self.cache[key] = new_node\n            self._add_node_to_head(new_node)\n\n            # 超过容量限制，淘汰最久未使用的元素（尾节点前一个）\n            if len(self.cache) &gt; self.capacity:\n                tail_node = self._pop_tail()\n                del self.cache[tail_node.key]\n  \n 设计要点与性能保证 \n \n  伪头尾节点 (Dummy Head/Tail) ：在双向链表两端加入哨兵节点，消除在头部插入或尾部删除时所需的边界判空条件，提升运行效率。 \n  双向连接 ：节点同时保留  prev  与  next  指针，使得任意节点在已知指针的前提下均可在 $O(1)$ 时间内被删除。 \n  高效查找与存取 ： cache  散列表存储  key -&gt; Node  的映射关系，配合双向链表的结构，确保  get  和  put  操作的时间复杂度均为  $O(1)$ ，空间复杂度为  $O(C)$ （$C$ 为设定的缓存容量）。"
+        },
+        {
+          "id": "takeout_user_prompt_25",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "Generate an image of a cute futuristic astronaut cat drinking coffee on Mars with high detail\n1 generated image."
+        },
+        {
+          "id": "takeout_user_prompt_31",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "请为我设计一个 Python 装饰器函数，用于自动记录函数执行耗时和入参日志，附带详细示例代码\nSep 2, 2026, 11:36:23 AM PDT\n 下面是一个通用的 Python 日志装饰器实现，能够自动记录函数的 调用参数 、 执行耗时 以及 返回值/异常情况 。 \n 装饰器实现代码 \n  import functools\nimport logging\nimport time\n\n# 配置标准日志格式\nlogging.basicConfig(\n    level=logging.INFO,\n    format=&quot;%(asctime)s [%(levelname)s] %(message)s&quot;,\n    datefmt=&quot;%Y-%m-%d %H:%M:%S&quot;,\n)\n\n\ndef log_execution_time(logger: logging.Logger = None):\n    &quot;&quot;&quot;记录函数入参、返回值及执行耗时的装饰器。\n\n    :param logger: 可选，指定的 logging.Logger 实例。若不传则默认使用根日志记录器。\n    &quot;&quot;&quot;\n\n    def decorator(func):\n        @functools.wraps(func)  # 保留原函数的元数据（函数名、docstring 等）\n        def wrapper(*args, **kwargs):\n            log_target = logger or logging.getLogger()\n            func_name = func.__qualname__\n\n            # 1. 格式化并记录入参\n            args_repr = [repr(a) for a in args]\n            kwargs_repr = [f&quot;{k}={v!r}&quot; for k, v in kwargs.items()]\n            signature = &quot;, &quot;.join(args_repr + kwargs_repr)\n\n            log_target.info(f&quot;开始执行 [{func_name}] | 参数: ({signature})&quot;)\n\n            # 2. 计时并捕获异常\n            start_time = time.perf_counter()\n            try:\n                result = func(*args, **kwargs)\n                elapsed_time = (time.perf_counter() - start_time) * 1000  # 转为毫秒\n\n                # 3. 记录正常返回日志\n                log_target.info(\n                    f&quot;完成执行 [{func_name}] | 耗时: {elapsed_time:.2f} ms | 返回值: {result!r}&quot;\n                )\n                return result\n\n            except Exception as e:\n                elapsed_time = (time.perf_counter() - start_time) * 1000\n                # 异常发生时记录错误日志及耗时\n                log_target.error(\n                    f&quot;执行失败 [{func_name}] | 耗时: {elapsed_time:.2f} ms | 异常: {type(e).__name__}: {e}&quot;,\n                    exc_info=False,  # 若需要输出完整堆栈，设为 True\n                )\n                raise  # 重新抛出异常，不破坏原函数的报错逻辑\n\n        return wrapper\n\n    # 支持不带括号 @log_execution_time 和带括号 @log_execution_time() 两种语法\n    if callable(logger):\n        func = logger\n        logger = None\n        return decorator(func)\n\n    return decorator\n  \n \n 使用示例 \n  # 示例 1: 基础无参调用\n@log_execution_time\ndef fetch_user_data(user_id: int, include_details: bool = False):\n    time.sleep(0.12)  # 模拟网络请求耗时\n    return {&quot;id&quot;: user_id, &quot;name&quot;: &quot;Alice&quot;}\n\n\n# 示例 2: 使用自定义 Logger 实例\ncustom_logger = logging.getLogger(&quot;AppModule&quot;)\n\n\n@log_execution_time(logger=custom_logger)\ndef compute_sum(a: int, b: int) -&gt; int:\n    time.sleep(0.05)\n    return a + b\n\n\n# 示例 3: 异常场景捕获\n@log_execution_time\ndef divide(a: float, b: float) -&gt; float:\n    return a / b\n\n\nif __name__ == &quot;__main__&quot;:\n    print(&quot;--- 测试 1: 正常调用 ---&quot;)\n    fetch_user_data(42, include_details=True)\n\n    print(&quot;\\n--- 测试 2: 自定义 Logger ---&quot;)\n    compute_sum(10, 20)\n\n    print(&quot;\\n--- 测试 3: 异常触发 ---&quot;)\n    try:\n        divide(10, 0)\n    except ZeroDivisionError:\n        pass\n  \n \n 输出日志样式 \n  --- 测试 1: 正常调用 ---\n2026-09-02 11:36:23 [INFO] 开始执行 [fetch_user_data] | 参数: (42, include_details=True)\n2026-09-02 11:36:23 [INFO] 完成执行 [fetch_user_data] | 耗时: 121.45 ms | 返回值: {&#39;id&#39;: 42, &#39;name&#39;: &#39;Alice&#39;}\n\n--- 测试 2: 自定义 Logger ---\n2026-09-02 11:36:23 [INFO] 开始执行 [compute_sum] | 参数: (10, 20)\n2026-09-02 11:36:23 [INFO] 完成执行 [compute_sum] | 耗时: 51.10 ms | 返回值: 30\n\n--- 测试 3: 异常触发 ---\n2026-09-02 11:36:23 [INFO] 开始执行 [divide] | 参数: (10, 0)\n2026-09-02 11:36:23 [ERROR] 执行失败 [divide] | 耗时: 0.02 ms | 异常: ZeroDivisionError: division by zero\n  \n \n 设计亮点 \n \n  高精度计时 ：采用  time.perf_counter()  代替  time.time() ，精确计算毫秒级/微秒级耗时。 \n  保持元数据 ：使用  @functools.wraps  保证装饰后函数的名称（ __name__ ）、文档字符串（ __doc__ ）不变。 \n  灵活适配 ：兼容默认日志输出，也支持传入框架自定义的  logger  对象。 \n  全面记录 ：同时拦截正常返回与运行期异常，防止出现“只记录了开始，未记录异常结束”的断日志现象。"
+        },
+        {
+          "id": "takeout_user_prompt_34",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "请介绍詹姆斯·韦伯太空望远镜（JWST）在深空探测领域的重大科学发现，包含关键时间节点与研究意义\nSep 2, 2026, 11:36:07 AM PDT\n 詹姆斯·韦伯太空望远镜（JWST）凭借主镜口径（6.5米）与强大的红外感知能力，成为人类探索深空与宇宙黎明时代的旗舰工具。以下是其关键时间节点与四大深空探测领域的重大科学突破及研究意义。 \n \n  关键时间节点  \n \n  2021年12月25日：  搭乘阿丽亚娜5号火箭成功发射。 \n  2022年01月24日：  顺利抵达距离地球约150万公里的日地拉格朗日L2点，并完成遮阳板与主镜展开。 \n  2022年07月11日–12日：  官方发布首批全彩深空图像（包含著名的“SMACS 0723”深空场与“宇宙崖壁”），标志着科学观测正式启动。 \n  2023年–2024年：  观测进入爆发期，不断刷新“最古老星系”纪录，并在系外行星大气探测与早期超大质量黑洞研究中取得一系列颠覆性成果。 \n \n \n  深空探测四大重大科学突破  \n  1. 揭示“宇宙黎明”与最古老星系（颠覆标准星系演化模型）  \n \n  核心发现：  JWST探测到了大爆炸后仅2.9亿至3.5亿年形成的高红移星系（如 GLASS-z12、JADES-GS-z14-0 等）。 \n  研究意义：  传统模型认为早期星系应规模小且十分暗淡。JWST却发现了大量比预期更加明亮、庞大且结构成熟的极早期星系。这一发现迫使天文学家重新修正关于宇宙早期恒星形成速率与气体凝聚机制的理论。 \n \n  2. 发现超早期的“超大质量黑洞”  \n \n  核心发现：  JWST在宇宙诞生仅4亿至8亿年的星系核心，发现了数个质量达太阳百万倍至数亿倍的活性超大质量黑洞（例如 CEERS 1019）。 \n  研究意义：  按照原有的“恒星级黑洞慢慢吸积”理论，黑洞无法在这么短的时间内成长到如此巨型。这一发现为“种子黑洞”理论（如巨大气体云直接塌缩成黑洞）提供了强有力的证据。 \n \n  3. 宜居系外行星大气成分光谱精细分析  \n \n  核心发现：  JWST利用透射光谱技术，首次对多颗系外行星的大气成分进行了高精度探测。例如，在位于宜居带的液态水候选行星 K2-18b 的大气中检测到了二氧化碳、甲烷以及可能存在的二甲基硫醚（DMS）。 \n  研究意义：  摆脱了过去只能“发现行星”的局限，开启了“透视行星化学成分”的新时代，为在系外行星寻找生命的潜在生物签名（Biosignatures）打下了坚实基础。 \n \n  4. 破译恒星与行星系统的“诞生孕育场”  \n \n  核心发现：  凭借红外穿透能力，JWST穿透了例如创世之柱（Pillars of Creation）、船底座星云中的厚重尘埃，清晰展现了恒星诞生的幼年期与原行星盘的内部结构。它甚至在猎户座星云中发现了数十对自由漂浮的“木星质量双体系统”（JuMBOs）。 \n  研究意义：  揭示了恒星形成过程中复杂的磁场与气体流活动，并为解释太阳系及地球等类地行星的早期形成环境提供了直接的观察样本。 \n \n JWST不仅深化了人类对宇宙演化历史的理解，更直接拉开了人类探测“最早期的光”和“系外生命迹象”的战略序幕。"
+        },
+        {
+          "id": "takeout_user_prompt_40",
+          "category": "scenario_inputs",
+          "role": "user_prompt",
+          "domain": "takeout_user_activity",
+          "features": [
+            "takeout_prompt"
+          ],
+          "text": "介绍一下量子计算的基本概念，包含代码示例\nSep 2, 2026, 11:33:59 AM PDT\n 量子计算利用量子力学的特性处理复杂信息，能够在特定领域提供超越传统计算机的指数级算力。 \n\n \n  核心概念  \n \n  量子比特（Qubit）：  经典计算的比特只能是 0 或 1，而量子比特基于布洛赫球面（Bloch Sphere）表示，可以同时处于 0 和 1 的叠加概率状态。 \n  量子叠加（Superposition）：  量子比特在未被测量前，以一定概率幅同时处于多种状态。测量动作会导致状态坍缩为确定的 0 或 1。 \n  量子纠缠（Entanglement）：  多个量子比特间存在强关联，改变其中一个比特的状态会瞬间影响另一个，即使两者相距甚远。 \n  量子门（Quantum Gate）：  类似于经典逻辑门（AND/OR），通过对量子比特施加酉变换（如 H 门、CNOT 门）来改变量子态。 \n \n \n  代码示例：生成贝尔态（量子纠缠）  \n 以下使用 Python 的主流量子计算框架  Qiskit  创建一个经典贝尔态（Bell State，双量子比特的最大纠缠态）。 \n  # 需要先安装: pip install qiskit qiskit-aer\n\nfrom qiskit import QuantumCircuit\nfrom qiskit_aer import AerSimulator\n\n# 1. 创建包含 2 个量子比特和 2 个经典比特的量子电路\nqc = QuantumCircuit(2, 2)\n\n# 2. 构造逻辑门\nqc.h(0)         # 对 q[0] 施加 Hadamard 门，使其进入 |0&gt; 和 |1&gt; 的叠加态\nqc.cx(0, 1)     # 施加 CNOT 门（控制非门），以 q[0] 为控制比特，q[1] 为目标比特，产生纠缠态\n\n# 3. 测量量子比特并映射到经典比特\nqc.measure([0, 1], [0, 1])\n\n# 4. 使用本地模拟器运行电路\nsimulator = AerSimulator()\njob = simulator.run(qc, shots=1000)  # 运行 1000 次模拟\nresult = job.result()\ncounts = result.get_counts(qc)\n\n# 5. 输出结果\nprint(&quot;测量统计结果:&quot;, counts)\n  \n  运行结果说明 \n由于量子纠缠，1000 次运行结果中约有 50% 为  &#39;00&#39; ，50% 为  &#39;11&#39; ，极少或不会出现  &#39;01&#39;  或  &#39;10&#39; 。这证明两个量子比特的状态已经完全绑定。"
+        }
+      ],
+      "mathExpressions": [
+        {
+          "id": "takeout_user_prompt_7_m1",
+          "docId": "takeout_user_prompt_7",
+          "latex": "|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_7_m2",
+          "docId": "takeout_user_prompt_7",
+          "latex": "|\\alpha|^2 + |\\beta|^2 = 1",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_7_m3",
+          "docId": "takeout_user_prompt_7",
+          "latex": "N",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_7_m4",
+          "docId": "takeout_user_prompt_7",
+          "latex": "2^N",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m1",
+          "docId": "takeout_user_prompt_13",
+          "latex": "A(a, \\lambda) = \\pm 1, \\quad B(b, \\lambda) = \\pm 1",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m2",
+          "docId": "takeout_user_prompt_13",
+          "latex": "E(a, b) = \\int A(a, \\lambda) B(b, \\lambda) \\rho(\\lambda) d\\lambda",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m3",
+          "docId": "takeout_user_prompt_13",
+          "latex": "C(\\lambda) = A(a, \\lambda) B(b, \\lambda) - A(a, \\lambda) B(b&#39;, \\lambda) + A(a&#39;, \\lambda) B(b, \\lambda) + A(a&#39;, \\lambda) B(b&#39;, \\lambda)",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m4",
+          "docId": "takeout_user_prompt_13",
+          "latex": "C(\\lambda) = A(a, \\lambda) \\left[ B(b, \\lambda) - B(b&#39;, \\lambda) \\right] + A(a&#39;, \\lambda) \\left[ B(b, \\lambda) + B(b&#39;, \\lambda) \\right]",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m5",
+          "docId": "takeout_user_prompt_13",
+          "latex": "|C(\\lambda)| = 2",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m6",
+          "docId": "takeout_user_prompt_13",
+          "latex": "-2 \\le A(a, \\lambda) B(b, \\lambda) - A(a, \\lambda) B(b&#39;, \\lambda) + A(a&#39;, \\lambda) B(b, \\lambda) + A(a&#39;, \\lambda) B(b&#39;, \\lambda) \\le 2",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m7",
+          "docId": "takeout_user_prompt_13",
+          "latex": "S \\equiv E(a, b) - E(a, b&#39;) + E(a&#39;, b) + E(a&#39;, b&#39;)",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m8",
+          "docId": "takeout_user_prompt_13",
+          "latex": "|S| = \\left| \\int C(\\lambda) \\rho(\\lambda) d\\lambda \\right| \\le \\int |C(\\lambda)| \\rho(\\lambda) d\\lambda \\le 2 \\int \\rho(\\lambda) d\\lambda = 2",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m9",
+          "docId": "takeout_user_prompt_13",
+          "latex": "|S| = |E(a, b) - E(a, b&#39;) + E(a&#39;, b) + E(a&#39;, b&#39;)| \\le 2",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m10",
+          "docId": "takeout_user_prompt_13",
+          "latex": "|\\psi^-\\rangle = \\frac{1}{\\sqrt{2}} \\left( |\\uparrow\\downarrow\\rangle - |\\downarrow\\uparrow\\rangle \\right)",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m11",
+          "docId": "takeout_user_prompt_13",
+          "latex": "E_{QM}(a, b) = \\langle \\psi^- | (\\vec{\\sigma} \\cdot \\vec{a}) \\otimes (\\vec{\\sigma} \\cdot \\vec{b}) | \\psi^- \\rangle = -\\vec{a} \\cdot \\vec{b} = -\\cos \\theta_{ab}",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m12",
+          "docId": "takeout_user_prompt_13",
+          "latex": "S_{QM} = \\left(-\\frac{\\sqrt{2}}{2}\\right) - \\left(\\frac{\\sqrt{2}}{2}\\right) + \\left(-\\frac{\\sqrt{2}}{2}\\right) + \\left(-\\frac{\\sqrt{2}}{2}\\right) = -2\\sqrt{2}",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m13",
+          "docId": "takeout_user_prompt_13",
+          "latex": "|S_{QM}| = 2\\sqrt{2} \\approx 2.828 &gt; 2",
+          "display": true,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m14",
+          "docId": "takeout_user_prompt_13",
+          "latex": "1/2",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m15",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\lambda",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m16",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\rho(\\lambda)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m17",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\int \\rho(\\lambda) d\\lambda = 1",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m18",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\rho(\\lambda) \\ge 0",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m19",
+          "docId": "takeout_user_prompt_13",
+          "latex": "a",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m20",
+          "docId": "takeout_user_prompt_13",
+          "latex": "A(a, \\lambda)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m21",
+          "docId": "takeout_user_prompt_13",
+          "latex": "b",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m22",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b, \\lambda)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m23",
+          "docId": "takeout_user_prompt_13",
+          "latex": "+1",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m24",
+          "docId": "takeout_user_prompt_13",
+          "latex": "-1",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m25",
+          "docId": "takeout_user_prompt_13",
+          "latex": "a&#39;",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m26",
+          "docId": "takeout_user_prompt_13",
+          "latex": "b&#39;",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m27",
+          "docId": "takeout_user_prompt_13",
+          "latex": "C(\\lambda)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m28",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b&#39;, \\lambda)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m29",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b, \\lambda) = B(b&#39;, \\lambda)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m30",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b, \\lambda) - B(b&#39;, \\lambda) = 0",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m31",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b, \\lambda) + B(b&#39;, \\lambda) = \\pm 2",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m32",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b, \\lambda) \\ne B(b&#39;, \\lambda)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m33",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b, \\lambda) - B(b&#39;, \\lambda) = \\pm 2",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m34",
+          "docId": "takeout_user_prompt_13",
+          "latex": "B(b, \\lambda) + B(b&#39;, \\lambda) = 0",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m35",
+          "docId": "takeout_user_prompt_13",
+          "latex": "A(a, \\lambda) = \\pm 1",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m36",
+          "docId": "takeout_user_prompt_13",
+          "latex": "A(a&#39;, \\lambda) = \\pm 1",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m37",
+          "docId": "takeout_user_prompt_13",
+          "latex": "S",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m38",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\vec{a}",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m39",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\vec{b}",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m40",
+          "docId": "takeout_user_prompt_13",
+          "latex": "0^\\circ",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m41",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\vec{a}&#39;",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m42",
+          "docId": "takeout_user_prompt_13",
+          "latex": "90^\\circ",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m43",
+          "docId": "takeout_user_prompt_13",
+          "latex": "45^\\circ",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m44",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\vec{b}&#39;",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m45",
+          "docId": "takeout_user_prompt_13",
+          "latex": "135^\\circ",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m46",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\theta_{ab} = 45^\\circ \\implies E(a, b) = -\\cos(45^\\circ) = -\\frac{\\sqrt{2}}{2}",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m47",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\theta_{ab&#39;} = 135^\\circ \\implies E(a, b&#39;) = -\\cos(135^\\circ) = \\frac{\\sqrt{2}}{2}",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m48",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\theta_{a&#39;b} = -45^\\circ \\implies E(a&#39;, b) = -\\cos(-45^\\circ) = -\\frac{\\sqrt{2}}{2}",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m49",
+          "docId": "takeout_user_prompt_13",
+          "latex": "\\theta_{a&#39;b&#39;} = 45^\\circ \\implies E(a&#39;, b&#39;) = -\\cos(45^\\circ) = -\\frac{\\sqrt{2}}{2}",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m50",
+          "docId": "takeout_user_prompt_13",
+          "latex": "2\\sqrt{2}",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_13_m51",
+          "docId": "takeout_user_prompt_13",
+          "latex": "50%",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_22_m1",
+          "docId": "takeout_user_prompt_22",
+          "latex": "O(1)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_22_m2",
+          "docId": "takeout_user_prompt_22",
+          "latex": "O(C)",
+          "display": false,
+          "source": "takeout_prompt"
+        },
+        {
+          "id": "takeout_user_prompt_22_m3",
+          "docId": "takeout_user_prompt_22",
+          "latex": "C",
+          "display": false,
+          "source": "takeout_prompt"
+        }
+      ]
+    },
+    "synthetic_fixtures": {
+      "count": 2,
+      "mathCount": 2,
+      "documents": [
+        {
+          "id": "synthetic_c_f2b_sample_001_m-u1",
+          "category": "synthetic_fixtures",
+          "role": "user",
+          "domain": "synthetic_sample",
+          "features": [
+            "synthetic"
+          ],
+          "text": "# Shopping list\n\nBuy **milk**, *eggs* and ~~butter~~. Total $5 not math.\n\n- apples\n  - fuji\n  - gala\n- oranges\n\n1. first\n2. second\n\n> remember the receipt\n\n---\n\n![alt text](https://example.com/inline.png)\n"
+        },
+        {
+          "id": "synthetic_c_f2b_sample_001_m-a1",
+          "category": "synthetic_fixtures",
+          "role": "model",
+          "domain": "synthetic_sample",
+          "features": [
+            "synthetic"
+          ],
+          "text": "Here is the plan [1] and the formula $E=mc^2$, see also [2]:\n\n```python\nprint(\"hello\")\n```\n\n| item | qty |\n|:-----|----:|\n| milk | 2 |\n\n$$\n\\frac{a}{b}\n$$\n\nSee [docs](https://example.com/docs) for details.\n"
+        }
+      ],
+      "mathExpressions": [
+        {
+          "id": "synthetic_c_f2b_sample_001_m-a1_m1",
+          "docId": "synthetic_c_f2b_sample_001_m-a1",
+          "latex": "\\frac{a}{b}",
+          "display": true,
+          "source": "synthetic_sample"
+        },
+        {
+          "id": "synthetic_c_f2b_sample_001_m-a1_m2",
+          "docId": "synthetic_c_f2b_sample_001_m-a1",
+          "latex": "E=mc^2",
+          "display": false,
+          "source": "synthetic_sample"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "totalDocuments": 110,
+    "totalMathExpressions": 60,
+    "realOutputCount": 0,
+    "scenarioInputCount": 108,
+    "syntheticCount": 2
+  }
+}

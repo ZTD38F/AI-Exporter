@@ -3,7 +3,7 @@ import { test, expect } from './fixtures';
 test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
   test('should display takeout suggestion modal with accurate count and close on dismiss', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const modal = page.locator('#takeoutLimitModal');
@@ -43,7 +43,7 @@ test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
 
   test('should trigger takeout file input click when clicking import button', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const modal = page.locator('#takeoutLimitModal');
@@ -72,47 +72,78 @@ test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
   });
 
   test('should automatically show modal when deep scan completes with hitGoogleLimit', async ({ context, extensionId }) => {
+    // 1. Open mock Gemini page in background with credentials and network routing for MaZiqc
+    const geminiPage = await context.newPage();
+
+    await geminiPage.route('https://gemini.google.com/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: `<!DOCTYPE html>
+        <html>
+        <head>
+          <script>
+            window._WIZ_global_data = {
+              SNlM0e: 'mock_at_token_limit',
+              cfb2h: 'boq_assistant-bard-web-server_20260802.09_p1'
+            };
+          </script>
+        </head>
+        <body>Gemini Mock Active Tab</body>
+        </html>`
+      });
+    });
+
+    let requestCount = 0;
+    await geminiPage.route('**/batchexecute*', async (route) => {
+      requestCount++;
+      if (requestCount === 1) {
+        // Page 1: returns items with nextPageToken (must start with tC per Gemini protocol)
+        const page1Items = [
+          ["c_limit_001", "会话 1", [1700000000, 0], [1700000000, 0], 2],
+          ["c_limit_002", "会话 2", [1700000100, 0], [1700000100, 0], 2]
+        ];
+        const page1Inner = JSON.stringify([null, page1Items, "tC_token_page_2"]);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: `)]}'\n\n[["wrb.fr","MaZiqc",${JSON.stringify(page1Inner)}]]`
+        });
+      } else {
+        // Page 2: Google sliding-window limit reached with BardErrorInfo
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: `)]}'\n\n[["wrb.fr","MaZiqc",null,null,null,["BardErrorInfo", 1096]]]`
+        });
+      }
+    });
+
+    await geminiPage.goto('https://gemini.google.com/app');
+    await geminiPage.waitForLoadState('domcontentloaded');
+
+    // 2. Open Workbench Options page with tour disabled
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const modal = page.locator('#takeoutLimitModal');
     await page.evaluate(async () => {
-      await chrome.storage.local.remove(['has_completed_takeout_prompt']);
+      await chrome.storage.local.clear();
+      await chrome.storage.local.set({
+        has_completed_tour: true,
+        last_seen_feature_version: '99.9.9'
+      });
     });
     await expect(modal).toBeHidden();
 
-    // Mock chrome.runtime.sendMessage to simulate deepScan returning hitGoogleLimit = true
-    await page.evaluate(() => {
-      const origSendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
-      (chrome.runtime as any).sendMessage = function(msg: any, callback: any) {
-        if (msg && msg.action === 'deepScan') {
-          setTimeout(() => {
-            if (callback) {
-              callback({
-                success: true,
-                count: 615,
-                hitGoogleLimit: true,
-                diagnostics: {
-                  stopReason: 'Google 服务端翻页到达极限 (BardErrorInfo: 游标链已达服务端上限)',
-                  hitGoogleLimit: true
-                }
-              });
-            }
-          }, 50);
-          return true;
-        }
-        return origSendMessage(msg, callback);
-      };
-    });
-
-
-    // Click full deep scan button
+    // 3. Click full deep scan button (#btnDeepScan)
     await page.click('#btnDeepScan');
 
-    // Verify modal automatically appears with 615 count
-    await expect(modal).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('#takeoutLimitPromptText')).toContainText('615');
+    // 4. Verify modal automatically appears with hitGoogleLimit title and count
+    await expect(modal).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#takeoutLimitPromptTitle')).toContainText(/已达网页端上限|Reached Google Cloud History Limit/i);
+    await expect(page.locator('#takeoutLimitPromptText')).toContainText('2');
 
     // Close via close button ✕
     await page.click('#btnTakeoutLimitClose');
@@ -121,7 +152,7 @@ test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
 
   test('should verify Google Takeout button links to custom Gemini deep link', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const link = page.locator('#btnModalOpenTakeoutWeb');
@@ -130,7 +161,7 @@ test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
 
   test('should suppress takeout limit prompt if takeout conversations already exist', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const modal = page.locator('#takeoutLimitModal');
@@ -139,7 +170,7 @@ test.describe('E2E: Google 600-Chat Limit Takeout Suggestion Prompt', () => {
     // Inject a takeout conversation into storage & ConversationsStore and await the prompt check
     await page.evaluate(async () => {
       await chrome.storage.local.set({
-        gemini_conversations_u0: [
+        gemini_conversations: [
           { id: 'takeout_chat_1', title: 'Takeout Recovered Chat', source: 'takeout', timestamp: 1700000000000 }
         ]
       });

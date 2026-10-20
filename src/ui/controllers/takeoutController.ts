@@ -1,38 +1,14 @@
-// src/ui/controllers/takeoutController.ts - Takeout Import Controller
 import type { TakeoutControllerContract } from '../../types/ui.js';
-import GeminiUtils, { normId as utilsNormId } from '../../core/utils/utils.js';
 import TakeoutEngine from '../../core/engine/takeoutEngine.js';
+import { __resolveModule } from '../../core/utils/moduleOverrides.js';
 import ConversationsStore from '../state/conversationsStore.js';
 import StorageService from '../../core/storage/storageService.js';
+import { deduplicateConversations as staticDeduplicateConversations, planTakeoutMerge } from '../../core/utils/mergeUtils.js';
+import { t } from '../uiCommon.js';
 
-const normId = (id?: string | null) => {
-    if (typeof (globalThis as any).GeminiUtils?.normId === 'function') {
-        return (globalThis as any).GeminiUtils.normId(id);
-    }
-    return utilsNormId(id);
-};
-
-const t = (key: string, ...args: any[]): string => {
-    if (typeof I18n !== 'undefined' && I18n.t) {
-        return I18n.t(key, ...args);
-    }
-    return key;
-};
-
-const getTakeoutEngine = () => {
-    if (typeof (globalThis as any).TakeoutEngine !== 'undefined') return (globalThis as any).TakeoutEngine;
-    return TakeoutEngine;
-};
-
-const getStore = () => {
-    if (typeof (globalThis as any).ConversationsStore !== 'undefined') return (globalThis as any).ConversationsStore;
-    return ConversationsStore;
-};
-
-const getStorage = () => {
-    if (typeof (globalThis as any).StorageService !== 'undefined') return (globalThis as any).StorageService;
-    return StorageService;
-};
+const getTakeoutEngine = () => __resolveModule('TakeoutEngine', TakeoutEngine);
+const getStore = () => __resolveModule('ConversationsStore', ConversationsStore);
+const getStorage = () => __resolveModule('StorageService', StorageService);
 
 export async function handleTakeoutImport(
     file: File,
@@ -60,36 +36,48 @@ export async function handleTakeoutImport(
             if (onLog) onLog(txt, 'info');
         }, slot);
 
-        const convs = Store ? Store.getConversations() : [];
-        const existingMap = new Map();
-        for (const c of convs) {
-            existingMap.set(normId(c.id).toLowerCase(), c);
-        }
+        const incoming = Array.isArray(res.conversations) ? res.conversations : [];
 
+        // SSoT: merge via deduplicateConversations so multi-tier titles
+        // (titles.takeout seeding), timestamps and ordering converge with the
+        // online upsert path. A naive push-if-absent would drop takeout slots
+        // for existing ids and store raw temp titles unsorted for new ids.
+        const dedupe = (list: any[]) => {
+            if (Store && typeof Store.normalizeAndDeduplicate === 'function') {
+                return Store.normalizeAndDeduplicate(list);
+            }
+            const injected = __resolveModule('GeminiUtils', null);
+            if (injected && typeof injected.deduplicateConversations === 'function') {
+                return injected.deduplicateConversations(list);
+            }
+            return staticDeduplicateConversations(list);
+        };
+
+        const planMerge = (existing: any[]) => planTakeoutMerge(existing, incoming, dedupe);
+
+        const Storage = getStorage();
+        const currentSlot = Store ? (Store.getCurrentSlot() || 'u0') : 'u0';
         let addedCount = 0;
-        for (const tc of res.conversations) {
-            const nid = normId(tc.id).toLowerCase();
-            if (!existingMap.has(nid)) {
-                convs.push(tc);
-                existingMap.set(nid, tc);
-                addedCount++;
+        if (Storage && typeof Storage.transactConversations === 'function') {
+            const tx = await Storage.transactConversations(currentSlot, (existing: any[]) => {
+                const plan = planMerge(existing);
+                if (!plan) return null;
+                addedCount = plan.addedCount;
+                return { list: plan.processed, changed: plan.changed };
+            });
+            if (tx?.written && Store && typeof Store.setConversations === 'function') {
+                Store.setConversations(tx.list);
             }
         }
 
-        if (addedCount > 0 && Store) {
-            const currentSlot = Store.getCurrentSlot() || 'u0';
-            await Store.saveConversations(currentSlot, convs);
-        }
-
-        const Storage = getStorage();
         if (Storage) {
             if (Storage.setTakeoutPromptCompleted) await Storage.setTakeoutPromptCompleted(true);
             if (Storage.setHasImportedTakeout) await Storage.setHasImportedTakeout(true);
         }
 
         const successMsg = typeof t === 'function'
-            ? t('takeoutSuccessDetail', res.conversations.length, addedCount, res.totalMediaCount)
-            : `Takeout 解析成功！发现 ${res.conversations.length} 条对话，已补全 ${addedCount} 条缺失历史，索引 ${res.totalMediaCount} 个离线资源`;
+            ? t('takeoutSuccessDetail', incoming.length, addedCount, res.totalMediaCount)
+            : `Takeout 解析成功！发现 ${incoming.length} 条对话，已补全 ${addedCount} 条缺失历史，索引 ${res.totalMediaCount} 个离线资源`;
 
         if (onLog) onLog(successMsg, 'info');
         if (onFinished) onFinished({ res, addedCount, totalMediaCount: res.totalMediaCount, message: successMsg });
@@ -103,15 +91,5 @@ export async function handleTakeoutImport(
 export const TakeoutController: TakeoutControllerContract = {
     handleTakeoutImport
 };
-
-(TakeoutController as any).TakeoutController = TakeoutController;
-(TakeoutController as any).default = TakeoutController;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).TakeoutController = TakeoutController;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = TakeoutController;
-}
 
 export default TakeoutController;

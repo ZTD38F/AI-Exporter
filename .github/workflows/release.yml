@@ -1,72 +1,178 @@
-name: Build Extension Package
+name: Build & Release Extension
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
-
-permissions:
-  contents: read
+    inputs:
+      action:
+        description: '发布方式 (Release Mode)'
+        required: true
+        default: 'release_current_main'
+        type: choice
+        options:
+          - 'release_current_main'
+          - 'bump_patch_and_release'
+          - 'bump_minor_and_release'
+          - 'custom_tag'
+      custom_tag:
+        description: '自定义版本号 (仅在选择 custom_tag 时生效，例如 v1.4.0)'
+        required: false
+        default: ''
+      publish_to_store:
+        description: '发布到 Chrome Web Store 商店审查 (false = 仅生成 GitHub Release)'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
-  package:
-    name: Build verified extension ZIP
+  build-and-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          node-version: 24
-          cache: npm
+          ref: main
+          fetch-depth: 0
 
-      - name: Install dependencies from lockfile
-        run: npm ci
-
-      - name: Verify source
+      - name: Determine version and create tag
+        id: version_step
+        env:
+          ACTION: ${{ github.event.inputs.action }}
+          CUSTOM_TAG: ${{ github.event.inputs.custom_tag }}
         run: |
-          npm run type-check
-          npm run build
-          npm run test:unit
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Package runtime-only extension
-        shell: bash
-        run: |
-          VERSION="$(node -p "require('./manifest.json').version")"
-          ZIP_NAME="ai-exporter-v${VERSION}.zip"
-          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+            echo "Triggered by git tag push: ${TAG}"
+          else
+            ACTION="${ACTION}"
+            echo "Triggered by workflow_dispatch with action: ${ACTION}"
 
-          zip -r "${ZIP_NAME}" \
-            manifest.json \
-            _locales \
-            icons \
-            lib \
-            LICENSE \
-            THIRD_PARTY_NOTICES.md \
-            README.md \
-            README_zh.md
+            CURRENT_VER=$(jq -r '.version' manifest.json)
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VER"
 
-          zip -r "${ZIP_NAME}" src -x 'src/*.ts' \
-                                   'src/*/*.ts' \
-                                   'src/*/*/*.ts' \
-                                   'src/*/*/*/*.ts' \
-                                   'src/README.md'
+            if [ "$ACTION" = "bump_patch_and_release" ]; then
+              NEW_VER="${MAJOR}.${MINOR}.$((PATCH + 1))"
+              TAG="v${NEW_VER}"
+              VERSION="${NEW_VER}"
+              echo "Bumping patch: ${CURRENT_VER} -> ${NEW_VER}"
+              jq --arg v "$NEW_VER" '.version = $v' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+              if [ -f package.json ]; then
+                jq --arg v "$NEW_VER" '.version = $v' package.json > package.tmp && mv package.tmp package.json
+              fi
+              # Sync package.json + README badges from manifest.json (SSOT) before the release commit,
+              # so the tag and main carry the same version everywhere. build.js no longer does this.
+              npm run release:prepare
+              git commit -am "chore(release): bump version to ${TAG} [skip ci]"
+              git push origin main
+              git tag -a "${TAG}" -m "Release ${TAG}"
+              git push origin "${TAG}"
+            elif [ "$ACTION" = "bump_minor_and_release" ]; then
+              NEW_VER="${MAJOR}.$((MINOR + 1)).0"
+              TAG="v${NEW_VER}"
+              VERSION="${NEW_VER}"
+              echo "Bumping minor: ${CURRENT_VER} -> ${NEW_VER}"
+              jq --arg v "$NEW_VER" '.version = $v' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+              if [ -f package.json ]; then
+                jq --arg v "$NEW_VER" '.version = $v' package.json > package.tmp && mv package.tmp package.json
+              fi
+              # Sync package.json + README badges from manifest.json (SSOT) before the release commit,
+              # so the tag and main carry the same version everywhere. build.js no longer does this.
+              npm run release:prepare
+              git commit -am "chore(release): bump version to ${TAG} [skip ci]"
+              git push origin main
+              git tag -a "${TAG}" -m "Release ${TAG}"
+              git push origin "${TAG}"
+            elif [ "$ACTION" = "custom_tag" ] && [ -n "${CUSTOM_TAG}" ]; then
+              TAG="${CUSTOM_TAG}"
+              VERSION="${TAG#v}"
+              # No-op when versions are in sync; guarantees tag-time consistency otherwise.
+              npm run release:prepare
+              if ! git rev-parse "${TAG}" >/dev/null 2>&1; then
+                git tag -a "${TAG}" -m "Release ${TAG}"
+                git push origin "${TAG}"
+              fi
+            else
+              # Default: release_current_main
+              TAG="v${CURRENT_VER}"
+              VERSION="${CURRENT_VER}"
+              echo "Releasing current main version: ${TAG}"
+              # No-op when versions are in sync; guarantees tag-time consistency otherwise.
+              npm run release:prepare
+              if ! git rev-parse "${TAG}" >/dev/null 2>&1; then
+                git tag -a "${TAG}" -m "Release ${TAG}"
+                git push origin "${TAG}" || true
+              fi
+            fi
+          fi
 
-          zip -r "${ZIP_NAME}" dist \
-            -i 'dist/background/background.js' \
-               'dist/content/content.js' \
-               'dist/content/hook.js' \
-               'dist/ui/options.js' \
-               'dist/ui/popup.js'
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "TAG=${TAG}" >> $GITHUB_ENV
 
-          sha256sum "${ZIP_NAME}" | tee "${ZIP_NAME}.sha256"
-          unzip -l "${ZIP_NAME}"
-
-      - name: Upload verified package
-        uses: actions/upload-artifact@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          name: ai-exporter-package
-          path: |
-            ${{ env.ZIP_NAME }}
-            ${{ env.ZIP_NAME }}.sha256
-          if-no-files-found: error
-          retention-days: 14
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Build dist bundles
+        run: |
+          # esbuild transform of src/ -> dist/ (manifest loads dist/ for all JS)
+          node build.js
+          ls -lh dist | head -5
+
+      - name: Package extension zip
+        run: |
+          npm run package
+          ZIP_NAME="gemini-exporter-${{ env.TAG }}.zip"
+          echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
+          ls -lh "${ZIP_NAME}"
+          unzip -l "${ZIP_NAME}" | tail -n 8
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Gemini Exporter ${{ env.TAG }}
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      - name: Check Chrome Web Store credentials
+        id: check_cws
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CWS_EXT_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+        run: |
+          if [ -n "$CWS_CLIENT_ID" ] && [ -n "$CWS_REFRESH_TOKEN" ] && [ -n "$CWS_EXT_ID" ]; then
+            echo "has_cws=true" >> $GITHUB_OUTPUT
+            echo "Chrome Web Store credentials detected. Store upload will run."
+          else
+            echo "has_cws=false" >> $GITHUB_OUTPUT
+            echo "Chrome Web Store credentials not configured. Skipping store upload."
+          fi
+
+      - name: Upload to Chrome Web Store
+        if: steps.check_cws.outputs.has_cws == 'true'
+        uses: mnao305/chrome-extension-upload@v5.0.0
+        continue-on-error: true
+        with:
+          file-path: ${{ env.ZIP_NAME }}
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          publish: ${{ github.event.inputs.publish_to_store || true }}

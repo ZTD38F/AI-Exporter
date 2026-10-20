@@ -1,11 +1,11 @@
 import { test, expect } from './fixtures';
 
 test.describe('E2E: Direct Write Suggestion Prompt for Large Bulk Exports', () => {
-  test('should show suggestion modal only once when exporting >= 50 conversations and never prompt again', async ({ context, extensionId }) => {
+  test('should show suggestion modal only once when exporting > 20 conversations and never prompt again', async ({ context, extensionId }) => {
     const page = await context.newPage();
 
     // 1. Navigate to options page
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     // 2. Seed 55 mock conversations into chrome.storage.local
@@ -21,7 +21,9 @@ test.describe('E2E: Direct Write Suggestion Prompt for Large Bulk Exports', () =
       await chrome.storage.local.set({
         gemini_conversations: mockConvs,
         exportedIds: {},
-        gemini_suppress_direct_write_prompt: false
+        gemini_suppress_direct_write_prompt: false,
+        has_completed_tour: true,
+        last_seen_feature_version: '999.0.0'
       });
       if (typeof window.__workbenchLoadStore === 'function') {
         await window.__workbenchLoadStore(true);
@@ -32,9 +34,9 @@ test.describe('E2E: Direct Write Suggestion Prompt for Large Bulk Exports', () =
     const listItems = page.locator('#list .item');
     await expect(listItems).toHaveCount(55);
 
-    // 3. Select all items (55 items >= 50 threshold)
+    // 3. Select all items (55 items > 20 threshold)
     await page.click('#btnSelectAll');
-    await expect(page.locator('#selectedStat')).toContainText('55');
+    await expect(page.locator('#selectedStat')).toHaveText(/\b55\b/);
 
     // Ensure modal is initially hidden
     const modal = page.locator('#directWriteModal');
@@ -45,7 +47,7 @@ test.describe('E2E: Direct Write Suggestion Prompt for Large Bulk Exports', () =
 
     // 5. Verify modal appears with correct conversation count and buttons
     await expect(modal).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('#directWritePromptText')).toContainText('55');
+    await expect(page.locator('#directWritePromptText')).toHaveText(/\b55\b/);
     await expect(page.locator('#btnModalSwitchFolder')).toBeVisible();
     await expect(page.locator('#btnModalContinueZip')).toBeVisible();
 
@@ -62,9 +64,12 @@ test.describe('E2E: Direct Write Suggestion Prompt for Large Bulk Exports', () =
     });
     expect(isSuppressed).toBe(true);
 
+    // Wait for first export to settle before triggering second export
+    await expect(page.locator('#btnCancel')).toBeHidden({ timeout: 10000 });
+
     // 8. Next time exporting >= 50 items, modal should NEVER appear again
     await page.click('#btnExport');
-    await page.waitForTimeout(300);
+    await expect(page.locator('#btnCancel')).toBeVisible();
     await expect(modal).toBeHidden();
   });
 });

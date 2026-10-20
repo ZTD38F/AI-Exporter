@@ -1,5 +1,5 @@
-// src/content/liveSaveObserver.ts - Mutation and interaction observer for live conversation turns
 import { contentContext } from './contentContext.js';
+import { extractConversationIdFromUrl } from '../core/utils/pathUtils.js';
 
 export type LiveTurnCallback = (conversationId: string, reason: 'turn_complete' | 'location_change' | 'unload') => void;
 
@@ -17,17 +17,26 @@ let __options: LiveSaveObserverOptions = {};
 let __initialized = false;
 let _rafPending = false;
 
+function __onLocationChange(): void {
+    if (__isGenerating || __debounceTimer) {
+        triggerSave('location_change');
+    }
+    __isGenerating = false;
+}
+
+function __onBeforeUnload(): void {
+    if (__isGenerating || __debounceTimer) {
+        triggerSave('unload');
+    }
+}
+
 function isDev(): boolean {
     return contentContext.isDevMode();
 }
 
-/**
- * Heuristically inspect if Gemini UI is currently in generating/streaming state.
- */
 export function checkIsGeneratingDOM(): boolean {
     if (typeof document === 'undefined') return false;
 
-    // 1. Look for active stop buttons
     const stopSelectors = [
         'button[aria-label*="Stop"]',
         'button[aria-label*="停止"]',
@@ -46,7 +55,6 @@ export function checkIsGeneratingDOM(): boolean {
         }
     }
 
-    // 2. Look for active streaming/loading indicators on model responses
     const streamingSelectors = [
         'model-response.loading',
         'model-response.generating',
@@ -63,13 +71,9 @@ export function checkIsGeneratingDOM(): boolean {
     return false;
 }
 
-/**
- * Extract active conversation ID from current URL (e.g. /app/b382d56a -> b382d56a).
- */
 export function getActiveConversationId(): string | null {
     if (typeof location === 'undefined') return null;
-    const m = location.pathname.match(/\/app\/([a-f0-9]+)/i);
-    return m ? m[1] : null;
+    return extractConversationIdFromUrl(location.pathname);
 }
 
 function triggerSave(reason: 'turn_complete' | 'location_change' | 'unload'): void {
@@ -163,22 +167,11 @@ export function init(options: LiveSaveObserverOptions = {}): void {
     }
 
     // Emergency flush on route change
-    const onLocationChange = () => {
-        if (__isGenerating || __debounceTimer) {
-            triggerSave('location_change');
-        }
-        __isGenerating = false;
-    };
-    window.addEventListener('gemini:locationchange', onLocationChange);
-    window.addEventListener('popstate', onLocationChange);
+    window.addEventListener('gemini:locationchange', __onLocationChange);
+    window.addEventListener('popstate', __onLocationChange);
 
     // Emergency flush on beforeunload
-    const onBeforeUnload = () => {
-        if (__isGenerating || __debounceTimer) {
-            triggerSave('unload');
-        }
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('beforeunload', __onBeforeUnload);
 
     __initialized = true;
     if (isDev()) console.log('[LiveSaveObserver] Initialized');
@@ -195,6 +188,11 @@ export function cleanup(): void {
         __mutationObserver = null;
         contentContext.clearTimer('liveSaveObserver');
     }
+    if (typeof window !== 'undefined') {
+        window.removeEventListener('gemini:locationchange', __onLocationChange);
+        window.removeEventListener('popstate', __onLocationChange);
+        window.removeEventListener('beforeunload', __onBeforeUnload);
+    }
     __isGenerating = false;
     __pendingConversationId = null;
     __initialized = false;
@@ -208,9 +206,6 @@ export function flushCurrentTurnNow(): void {
     triggerSave('turn_complete');
 }
 
-/**
- * Explicitly notify that streaming generation has started via RPC / network event.
- */
 export function notifyStreamStart(cid?: string | null): void {
     const activeId = cid || (__options.getActiveId ? __options.getActiveId() : getActiveConversationId());
     __isGenerating = true;
@@ -227,10 +222,6 @@ export function notifyStreamStart(cid?: string | null): void {
     }
 }
 
-/**
- * Explicitly notify that streaming generation has completed via RPC / network event.
- * Triggers save immediately without heuristic debounce delays.
- */
 export function notifyStreamComplete(cid?: string | null): void {
     const activeId = cid || __pendingConversationId || (__options.getActiveId ? __options.getActiveId() : getActiveConversationId());
     if (activeId) {
@@ -265,13 +256,5 @@ export const LiveSaveObserver = {
     notifyStreamComplete,
     flushCurrentTurnNow
 };
-
-declare global {
-    var LiveSaveObserver: any;
-}
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).LiveSaveObserver = LiveSaveObserver;
-}
 
 export default LiveSaveObserver;

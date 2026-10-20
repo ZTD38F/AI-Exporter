@@ -16,11 +16,12 @@ print("=" * 60)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def test_json_files():
-    for jf in ["manifest.json", "package.json", "_locales/zh_CN/messages.json", "_locales/en/messages.json", "scripts/test_scenario_pool.json", "scripts/test_scenario_archive.json"]:
+    for jf in ["manifest.json", "package.json", "_locales/zh_CN/messages.json", "_locales/en/messages.json", "scripts/test_scenario_pool.json"]:
         p = os.path.join(BASE_DIR, jf)
         with open(p, "r", encoding="utf-8") as f:
             data = json.load(f)
             print(f"  ✓ JSON valid: {jf}")
+    # 场景池运行时归档（temp/scenario_pool/archive.json）是 git-ignored 的，不在 tracked 校验之列
 
 def test_manifest_structure():
     with open(os.path.join(BASE_DIR, "manifest.json"), "r", encoding="utf-8") as f:
@@ -126,6 +127,53 @@ def test_i18n_keys():
     assert len(zh_dict) >= 100, f"zh locale should have 100+ keys, got {len(zh_dict)}"
     assert len(en_dict) >= 100, f"en locale should have 100+ keys, got {len(en_dict)}"
 
+    from html.parser import HTMLParser
+    void_tags = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
+    zh_regex = re.compile(r'[\u4e00-\u9fa5]')
+
+    class StrictHTMLChecker(HTMLParser):
+        def __init__(self, filepath):
+            super().__init__()
+            self.filepath = filepath
+            self.tag_stack = []
+            self.errors = []
+
+        def handle_starttag(self, tag, attrs):
+            attr_dict = dict(attrs)
+            has_i18n = any(k.startswith('data-i18n') for k in attr_dict.keys())
+            for k in ['title', 'placeholder']:
+                if k in attr_dict:
+                    v = attr_dict[k]
+                    if 'Switch Language' in v or 'Developer Mode' in v:
+                        continue
+                    if f'data-i18n-{k}' not in attr_dict:
+                        self.errors.append((self.getpos(), tag, f'attr {k}="{v}" missing data-i18n-{k}'))
+            if tag not in void_tags:
+                self.tag_stack.append((tag, attr_dict, has_i18n))
+
+        def handle_endtag(self, tag):
+            if tag in void_tags:
+                return
+            for i in range(len(self.tag_stack) - 1, -1, -1):
+                if self.tag_stack[i][0] == tag:
+                    self.tag_stack = self.tag_stack[:i]
+                    break
+
+        def handle_data(self, data):
+            clean = data.strip()
+            if not clean or clean == '中':
+                return
+            if zh_regex.search(clean):
+                in_script = any(item[0] in ('script', 'style') for item in self.tag_stack)
+                if in_script:
+                    return
+                if self.tag_stack:
+                    curr_tag, curr_attrs, curr_has_i18n = self.tag_stack[-1]
+                    if not curr_has_i18n:
+                        has_parent_html = any(attrs.get('data-i18n-html') for _, attrs, _ in self.tag_stack)
+                        if not has_parent_html:
+                            self.errors.append((self.getpos(), curr_tag, f'text: "{clean[:40]}" missing data-i18n'))
+
     for html_file in ["src/ui/options/options.html", "src/ui/popup/popup.html"]:
         with open(os.path.join(BASE_DIR, html_file), "r", encoding="utf-8") as f:
             content = f.read()
@@ -134,6 +182,11 @@ def test_i18n_keys():
         missing_en = html_keys - set(en_dict.keys())
         assert not missing_zh, f"Missing in zh ({html_file}): {missing_zh}"
         assert not missing_en, f"Missing in en ({html_file}): {missing_en}"
+
+        checker = StrictHTMLChecker(html_file)
+        checker.feed(content)
+        assert not checker.errors, f"HTML i18n coverage errors in {html_file}: {checker.errors}"
+
     print("  ✓ i18n keys complete and matched across all HTML templates")
 
 def test_javascript_syntax():
@@ -160,7 +213,7 @@ def test_javascript_syntax():
     assert res.returncode == 0, f"TypeScript syntax check failed (tsc --noEmit):\n{res.stdout}\n{res.stderr}"
     print(f"  ✓ TypeScript strict syntax validated (tsc --noEmit)")
 
-def test_javascript_unit_tests():
+def test_javascript_unit_tests(target_tests=None):
     import subprocess
     import glob
     import shutil
@@ -173,18 +226,31 @@ def test_javascript_unit_tests():
             node_bin = cand
             break
 
-    test_files = sorted(set(glob.glob(os.path.join(BASE_DIR, "tests", "*.test.js")) + glob.glob(os.path.join(BASE_DIR, "tests", "*.test.ts"))))
+    test_files = sorted(set(glob.glob(os.path.join(BASE_DIR, "tests", "*.test.js")) + glob.glob(os.path.join(BASE_DIR, "tests", "*.test.ts")) + glob.glob(os.path.join(BASE_DIR, "tests", "arch", "*.test.ts"))))
+    if target_tests is not None:
+        norm_targets = {os.path.normpath(t).replace("\\", "/") for t in target_tests}
+        norm_bases = {os.path.basename(t) for t in target_tests}
+        test_files = [
+            tf for tf in test_files
+            if os.path.relpath(tf, BASE_DIR).replace("\\", "/") in norm_targets
+            or os.path.basename(tf) in norm_bases
+        ]
+        if not test_files:
+            print("  ✓ 无受影响的 JavaScript/TypeScript 单元测试需要执行。")
+            return
 
 
     # Preload files for mock fs in JSC
     file_map = {}
     for root, dirs, files in os.walk(BASE_DIR):
-        if any(x in root for x in ["node_modules", ".git", "playwright", "dist"]):
+        # Prune build outputs, test results and artifacts
+        dirs[:] = [d for d in dirs if d not in ["node_modules", ".git", "playwright", "dist", "output", "test-results", "playwright-report"]]
+        if any(x in root for x in ["node_modules", ".git", "playwright", "dist", "tests/output", "tests\\output", "test-results", "playwright-report"]):
             continue
         for f in files:
             if f.endswith((".js", ".html", ".json", ".md")):
                 p = os.path.join(root, f)
-                with open(p, "r", encoding="utf-8") as fp:
+                with open(p, "r", encoding="utf-8", errors="replace") as fp:
                     content = fp.read()
                     file_map[os.path.normpath(p)] = content
 
@@ -211,7 +277,7 @@ def test_javascript_unit_tests():
                 catch(e) { throw new Error(name + ': ' + (e.stack || e.message || e)); }
             };
             nodeTest.test = nodeTest;
-            nodeTest.skip = () => {};
+            nodeTest.skip = (name) => { throw new Error('Skipping unit tests is strictly forbidden: ' + name); };
             nodeTest.only = nodeTest;
 
             function require(id) {
@@ -410,9 +476,17 @@ def test_content_badge_flicker_prevention():
     if os.path.exists(badge_js_path):
         with open(badge_js_path, "r", encoding="utf-8") as f:
             badge_js = f.read()
+    observer_ts = os.path.join(BASE_DIR, "src/content/pageObserver.ts")
+    observer_path = observer_ts if os.path.isfile(observer_ts) else os.path.join(BASE_DIR, "src/content/pageObserver.js")
+    with open(observer_path, "r", encoding="utf-8") as f:
+        observer_js = f.read()
+    sync_ts = os.path.join(BASE_DIR, "src/content/syncEngine.ts")
+    sync_path = sync_ts if os.path.isfile(sync_ts) else os.path.join(BASE_DIR, "src/content/syncEngine.js")
+    with open(sync_path, "r", encoding="utf-8") as f:
+        sync_js = f.read()
     combined_js = js + badge_js
-    assert "debouncedSyncOnce" in js, "content.js should debounce syncOnce triggers"
-    assert re.search(r'changed\s*===?\s*0', js), "content.js upsertConversations should skip writes when changed === 0"
+    assert "debouncedSync" in observer_js, "pageObserver.js should debounce sync triggers"
+    assert re.search(r'changed\s*===?\s*0', sync_js), "syncEngine.js upsertConversations should skip writes when changed === 0"
     assert "textContent" in combined_js and "targetText" in combined_js, "badgeView/content.js updateBadge should guard textContent updates"
     assert "existing.isConnected" in combined_js or "isConnected" in combined_js, "badgeView/content.js ensureBadge should check isConnected"
     print("  ✓ Content badge flicker prevention verified")
@@ -422,9 +496,13 @@ def test_exported_history_and_slot_fallback():
     storage_js = storage_ts if os.path.isfile(storage_ts) else os.path.join(BASE_DIR, "src/core/storage/storageService.js")
     with open(storage_js, "r", encoding="utf-8") as f:
         code = f.read()
-    assert "gemini_exported_u0" in code and "exportedIds" in code, "storageService should merge legacy and global exportedIds"
-    assert re.search(r"updates(\['exportedIds'\]|\.exportedIds)\s*=", code), "saveExportRecord should maintain global exportedIds"
-    assert "gemini_conversations_u0" in code, "storageService should check gemini_conversations_u0"
+    assert re.search(r"updates(\['exportedIds'\]|\.exportedIds)\s*=", code), "saveExportRecordsBatch should maintain global exportedIds"
+
+    migration_ts = os.path.join(BASE_DIR, "src/core/storage/schemaMigration.ts")
+    with open(migration_ts, "r", encoding="utf-8") as f:
+        mig_code = f.read()
+    assert "gemini_conversations_u0" in mig_code, "schemaMigration should handle legacy gemini_conversations_u0"
+    assert "migrateExportAliases" in mig_code, "schemaMigration should run migrateExportAliases"
 
     store_ts = os.path.join(BASE_DIR, "src/ui/state/conversationsStore.ts")
     store_js = store_ts if os.path.isfile(store_ts) else os.path.join(BASE_DIR, "src/ui/state/conversationsStore.js")
@@ -433,48 +511,44 @@ def test_exported_history_and_slot_fallback():
     assert re.search(r"for\s*\(\s*(?:const|let|var)?\s*\w+\s+of\s+candidates\s*\)", store_code) or "candidates" in store_code, "conversationsStore should smartly fall back to slot with conversations"
     print("  ✓ Exported history preservation & slot fallback verified")
 
-def test_dataset_freshness_gate():
+def test_custom_dataset_loading():
     import tempfile
-    import time
     scripts_dir = os.path.join(BASE_DIR, "scripts")
     if scripts_dir not in sys.path:
         sys.path.insert(0, scripts_dir)
-    from test_live_chat_and_export import validate_dataset_freshness
+    from test_live_chat_and_export import load_custom_dataset
 
-    # 1. No dataset without allow_stale -> should fail
-    ok, res = validate_dataset_freshness(None, allow_stale=False)
-    assert not ok and "未指定测试数据集" in res, "Missing dataset should be blocked by gate"
+    # 1. No dataset -> should return (True, None) (falls back to pool)
+    ok, res = load_custom_dataset(None)
+    assert ok and res is None, "None dataset path should succeed with None (allowing pool default)"
 
-    # 2. Stale dataset without allow_stale -> should fail
+    # 2. Non-existent dataset file -> should return (False, err)
+    ok, res = load_custom_dataset("/path/to/non_existent_dataset.json")
+    assert not ok and "不存在" in res, "Non-existent dataset file should fail"
+
+    # 3. Invalid JSON file -> should return (False, err)
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as f:
+        f.write("{invalid json content")
+        f_bad = f.name
+    try:
+        ok, res = load_custom_dataset(f_bad)
+        assert not ok and "失败" in res, "Invalid JSON dataset should fail"
+    finally:
+        if os.path.isfile(f_bad):
+            os.remove(f_bad)
+
+    # 4. Valid JSON dataset -> should return (True, parsed_data)
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as f:
         f.write('[{"id":"test","title":"Test","turns":["Q1","A1"]}]')
         f_name = f.name
     try:
-        os.utime(f_name, (time.time() - 300, time.time() - 300))
-        ok, res = validate_dataset_freshness(f_name, allow_stale=False)
-        assert not ok and "已超过 2 分钟" in res, "Stale dataset (>120s) should be blocked by gate"
-
-        # 3. Stale dataset with allow_stale -> should pass
-        ok, res = validate_dataset_freshness(f_name, allow_stale=True)
-        assert ok and isinstance(res, list), "Stale dataset with allow_stale should pass"
-
-        # 4. Fresh dataset without allow_stale -> should pass
-        os.utime(f_name, (time.time(), time.time()))
-        ok, res = validate_dataset_freshness(f_name, allow_stale=False)
-        assert ok and isinstance(res, list), "Fresh dataset should pass without allow_stale"
-
-        # 5. Default dataset with allow_stale -> should pass with None
-        ok, res = validate_dataset_freshness(None, allow_stale=True)
-        assert ok and res is None, "Default dataset with allow_stale should pass"
-
-        # 6. Default dataset with skip_chat -> should pass with None
-        ok, res = validate_dataset_freshness(None, allow_stale=False, skip_chat=True)
-        assert ok and res is None, "Default dataset with skip_chat should pass"
+        ok, res = load_custom_dataset(f_name)
+        assert ok and isinstance(res, list) and len(res) == 1, "Valid dataset should parse successfully"
     finally:
         if os.path.isfile(f_name):
             os.remove(f_name)
 
-    print("  ✓ Dataset 2-minute freshness gate & bypass options verified")
+    print("  ✓ Custom dataset loader & format validation verified")
 
 def test_scenario_pool_pipeline():
     import tempfile
@@ -523,6 +597,86 @@ def test_scenario_pool_pipeline():
                 os.remove(p)
 
     print("  ✓ Scenario pool pipeline, 20-scenario diversity, consume, archive & top-up verified")
+
+def test_online_scenario_provider_and_lifecycle_tracker():
+    import tempfile
+    scripts_dir = os.path.join(BASE_DIR, "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from framework.scenario_provider import OnlineScenarioProvider
+    from framework.lifecycle_tracker import SessionLifecycleTracker
+
+    # 1. Test OnlineScenarioProvider
+    OnlineScenarioProvider.reset()
+    mock_pool = [
+        {"id": "sc_img", "title": "Imagen Test", "features": ["imagen", "creative"], "turns": ["draw a cat", "draw a dog"]},
+        {"id": "sc_code", "title": "Code Test", "features": ["code", "python"], "turns": ["write fibonacci", "optimize it"]},
+    ]
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as f_p:
+        json.dump(mock_pool, f_p, ensure_ascii=False)
+        p_path = f_p.name
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as f_a:
+        json.dump([], f_a)
+        a_path = f_a.name
+
+    try:
+        prov = OnlineScenarioProvider(pool_path=p_path, archive_path=a_path)
+        status = prov.get_status()
+        assert status["count"] == 2
+        assert status["has_imagen"] == 1
+
+        # Pop imagen
+        sc1 = prov.pop_scenario(required_features=["imagen"])
+        assert sc1["id"] == "sc_img"
+        assert prov.get_status()["count"] == 1
+
+        # Pop next
+        sc2 = prov.pop_scenario()
+        assert sc2["id"] == "sc_code"
+        assert prov.get_status()["count"] == 0
+
+        # Archive check
+        with open(a_path, "r", encoding="utf-8") as af:
+            archived = json.load(af)
+        assert len(archived) == 2
+        assert "consumed_at" in archived[0]
+
+        # Ephemeral query fallback when pool empty
+        eq = prov.pop_ephemeral_query()
+        assert "瞬态一致性" in eq or len(eq) > 10
+
+        # Exhaused pool raises RuntimeError
+        try:
+            prov.pop_scenario()
+            assert False, "Should raise RuntimeError on exhausted pool"
+        except RuntimeError as e:
+            assert "场景池已枯竭" in str(e)
+    finally:
+        OnlineScenarioProvider.reset()
+        for p in [p_path, a_path]:
+            if os.path.isfile(p):
+                os.remove(p)
+
+    # 2. Test SessionLifecycleTracker
+    tracker = SessionLifecycleTracker()
+    tracker.track("chat_abc_1")
+    tracker.track("chat_abc_2")
+    tracker.track("chat_abc_1")  # duplicate
+    assert len(tracker._tracked_chat_ids) == 2
+
+    # mark one deleted (e.g. from ephemeral deletion test)
+    tracker.mark_deleted("chat_abc_1")
+    assert "chat_abc_1" in tracker._deleted_chat_ids
+
+    # active chats should be only chat_abc_2
+    assert tracker.get_active_chats() == ["chat_abc_2"]
+
+    # teardown retains active chats without deleting them
+    retained = tracker.teardown()
+    assert retained == 1
+
+    print("  ✓ OnlineScenarioProvider & SessionLifecycleTracker unit tests passed")
+
 
 def test_tour_status_indicator_styling():
     # 1. Ensure options.html does not define unscoped .ok { ... }
@@ -588,19 +742,23 @@ def test_takeout_limit_modal_and_wall_detection():
     assert "gemini_pending_takeout_prompt" in options_code, "options.js should check gemini_pending_takeout_prompt"
     assert "checkPendingTakeoutPrompt" in options_code, "options.js should have checkPendingTakeoutPrompt"
 
-    # 5. Ensure content.js records gemini_pending_takeout_prompt when limit hit
-    content_ts = os.path.join(BASE_DIR, "src/content/content.ts")
-    content_js_path = content_ts if os.path.isfile(content_ts) else os.path.join(BASE_DIR, "src/content/content.js")
-    with open(content_js_path, "r", encoding="utf-8") as f:
-        content_code = f.read()
-    assert "gemini_pending_takeout_prompt" in content_code, "content.js should persist gemini_pending_takeout_prompt"
+    # 5. Ensure syncEngine.js records gemini_pending_takeout_prompt when limit hit
+    sync_ts = os.path.join(BASE_DIR, "src/content/syncEngine.ts")
+    sync_js_path = sync_ts if os.path.isfile(sync_ts) else os.path.join(BASE_DIR, "src/content/syncEngine.js")
+    with open(sync_js_path, "r", encoding="utf-8") as f:
+        sync_code = f.read()
+    assert "gemini_pending_takeout_prompt" in sync_code or "STORAGE_KEYS.PENDING_TAKEOUT_PROMPT" in sync_code, "syncEngine.js should persist gemini_pending_takeout_prompt (literal or via STORAGE_KEYS)"
 
     # 6. Ensure single-time tutorial prompt behavior (isTakeoutPromptCompleted & has_completed_takeout_prompt)
     storage_ts = os.path.join(BASE_DIR, "src/core/storage/storageService.ts")
     storage_path = storage_ts if os.path.isfile(storage_ts) else os.path.join(BASE_DIR, "src/core/storage/storageService.js")
     with open(storage_path, "r", encoding="utf-8") as f:
         storage_code = f.read()
-    assert "has_completed_takeout_prompt" in storage_code, "storageService should track has_completed_takeout_prompt"
+    user_prefs_path = os.path.join(BASE_DIR, "src/core/storage/userPreferences.ts")
+    if os.path.isfile(user_prefs_path):
+        with open(user_prefs_path, "r", encoding="utf-8") as f:
+            storage_code += "\n" + f.read()
+    assert "has_completed_takeout_prompt" in storage_code or "STORAGE_KEYS.HAS_COMPLETED_TAKEOUT_PROMPT" in storage_code, "storageService should track has_completed_takeout_prompt"
     assert "isTakeoutPromptCompleted" in storage_code and "setTakeoutPromptCompleted" in storage_code, "storageService should export takeout prompt completion helpers"
 
     dialog_ts = os.path.join(BASE_DIR, "src/ui/views/dialogView.ts")
@@ -639,12 +797,12 @@ def test_stage1_architecture_ssot_and_state_isolation():
     assert "__slotTakeouts" in takeout_code and "Map" in takeout_code, "takeoutEngine must isolate takeout dictionaries per account slot"
     assert "getStore" in takeout_code, "takeoutEngine must route through getStore(slot)"
 
-    # 3. Verify SSoT compareConversations in content.js and options.js
-    content_ts = os.path.join(BASE_DIR, "src/content/content.ts")
-    content_js_path = content_ts if os.path.isfile(content_ts) else os.path.join(BASE_DIR, "src/content/content.js")
-    with open(content_js_path, "r", encoding="utf-8") as f:
-        content_code = f.read()
-    assert "compareConversations" in content_code, "content.js upsertConversations must use compareConversations SSoT"
+    # 3. Verify SSoT compareConversations in syncEngine.ts and options.js
+    sync_ts = os.path.join(BASE_DIR, "src/content/syncEngine.ts")
+    sync_js_path = sync_ts if os.path.isfile(sync_ts) else os.path.join(BASE_DIR, "src/content/syncEngine.js")
+    with open(sync_js_path, "r", encoding="utf-8") as f:
+        sync_code = f.read()
+    assert "compareConversations" in sync_code, "syncEngine.js upsertConversations must use compareConversations SSoT"
 
     options_ts = os.path.join(BASE_DIR, "src/ui/options/options.ts")
     options_js_path = options_ts if os.path.isfile(options_ts) else os.path.join(BASE_DIR, "src/ui/options/options.js")
@@ -660,6 +818,66 @@ def test_stage1_architecture_ssot_and_state_isolation():
     assert "sanitizeFileName" in export_code, "exportEngine sanitizeFileName must delegate to GeminiUtils SSoT"
 
     print("  ✓ Stage 1 Architecture: SSoT consolidation and per-slot state isolation verified")
+
+def test_storage_keys_and_constants_ssot():
+    constants_path = os.path.join(BASE_DIR, "src/core/utils/constants.ts")
+    with open(constants_path, "r", encoding="utf-8") as f:
+        constants_code = f.read()
+
+    # 1. Verify STORAGE_KEYS completeness in constants.ts
+    required_keys = [
+        "FORMAT", "ZIP", "DEV_MODE", "LANG", "PENDING_TAKEOUT_PROMPT",
+        "SUPPRESS_DIRECT_WRITE_PROMPT", "CREDENTIALS_MAP", "CREDENTIALS",
+        "ACCOUNT_SLOTS", "LAST_SYNC_DIAGNOSTICS", "LAST_EXPORT_SESSION",
+        "LIVE_SAVE_CONFIG", "HAS_COMPLETED_TOUR", "LAST_SEEN_FEATURE_VERSION",
+        "BADGE_POS", "HAS_COMPLETED_TAKEOUT_PROMPT", "HAS_IMPORTED_TAKEOUT"
+    ]
+    for k in required_keys:
+        assert f"{k}:" in constants_code, f"STORAGE_KEYS in constants.ts must define {k}"
+
+    assert "DEFAULT_EXPORT_FOLDER_NAME" in constants_code, "constants.ts must define DEFAULT_EXPORT_FOLDER_NAME"
+    assert "IDB_DATABASES" in constants_code, "constants.ts must define IDB_DATABASES"
+
+    # 2. Verify build.js supports --pack and package script exists in package.json
+    build_path = os.path.join(BASE_DIR, "build.js")
+    with open(build_path, "r", encoding="utf-8") as f:
+        build_code = f.read()
+    assert "--pack" in build_code, "build.js must implement --pack packaging support"
+
+    pkg_path = os.path.join(BASE_DIR, "package.json")
+    with open(pkg_path, "r", encoding="utf-8") as f:
+        pkg_code = f.read()
+    assert '"package":' in pkg_code, 'package.json must declare "package" script'
+
+    # 3. Static Linter: ensure no raw string literals in src/ bypass STORAGE_KEYS
+    forbidden_literals = [
+        ("gemini_dev_mode", "STORAGE_KEYS.DEV_MODE"),
+        ("gemini_export_zip", "STORAGE_KEYS.ZIP"),
+        ("gemini_export_format", "STORAGE_KEYS.FORMAT"),
+        ("gemini_account_slots", "STORAGE_KEYS.ACCOUNT_SLOTS"),
+        ("gemini_last_sync_diagnostics", "STORAGE_KEYS.LAST_SYNC_DIAGNOSTICS"),
+        ("gemini_export_badge_pos", "STORAGE_KEYS.BADGE_POS"),
+        ("has_completed_tour", "STORAGE_KEYS.HAS_COMPLETED_TOUR"),
+        ("last_seen_feature_version", "STORAGE_KEYS.LAST_SEEN_FEATURE_VERSION"),
+        ("has_completed_takeout_prompt", "STORAGE_KEYS.HAS_COMPLETED_TAKEOUT_PROMPT"),
+        ("has_imported_takeout", "STORAGE_KEYS.HAS_IMPORTED_TAKEOUT")
+    ]
+
+    src_dir = os.path.join(BASE_DIR, "src")
+    violations = []
+    for root, _, files in os.walk(src_dir):
+        for f in files:
+            if f.endswith(".ts") and f != "constants.ts":
+                full_p = os.path.join(root, f)
+                with open(full_p, "r", encoding="utf-8") as fp:
+                    content = fp.read()
+                rel_p = os.path.relpath(full_p, BASE_DIR).replace("\\", "/")
+                for lit, s_key in forbidden_literals:
+                    if f"'{lit}'" in content or f'"{lit}"' in content:
+                        violations.append(f"{rel_p}: contains raw literal '{lit}', must use {s_key}")
+
+    assert not violations, "SSoT Storage Key Violations found:\n" + "\n".join(violations)
+    print("  ✓ Storage Keys and Constants SSoT integrity verified (0 raw literals in src/)")
 
 def test_stage2_architecture_improvements():
     # 1. Verify sanitizeRelativePath in utils, zipWriter, fsWriter, and exportEngine
@@ -722,24 +940,203 @@ def test_stage2_architecture_improvements():
 
     print("  ✓ Stage 2 Architecture: Pipeline decoupling, event-driven AsyncQueue, and path sanitization verified")
 
-test_json_files()
-test_manifest_structure()
-test_build_pipeline()
-test_html_includes()
-test_i18n_keys()
-test_content_badge_flicker_prevention()
-test_exported_history_and_slot_fallback()
-test_dataset_freshness_gate()
-test_scenario_pool_pipeline()
-test_tour_status_indicator_styling()
-test_takeout_limit_modal_and_wall_detection()
-test_stage1_architecture_ssot_and_state_isolation()
-test_stage2_architecture_improvements()
-test_javascript_syntax()
-test_javascript_unit_tests()
+def test_serial_pipeline_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_serial_pipeline.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_serial_pipeline.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Serial Action Pipeline & Single-Flight Executor verification passed")
 
-print("=" * 60)
-print("🎉 ALL TESTS PASSED SUCCESSFULLY!")
-print("=" * 60)
+def test_gemini_driver_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_gemini_driver.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_gemini_driver.py failed: {res.stderr or res.stdout}"
+    print("  ✓ High-Level GeminiDriver & ChatSession test suite passed")
+
+def test_selectors_and_gateway_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_selectors_and_gateway.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_selectors_and_gateway.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Central Selectors Registry & SafeInteractionGateway test suite passed")
+
+def test_platform_driver_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_platform_driver.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_platform_driver.py failed: {res.stderr or res.stdout}"
+    print("  ✓ ChatPlatformDriver ABC & ExtensionActions test suite passed")
+
+def test_pipeline_decoupling_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_pipeline_decoupling.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_pipeline_decoupling.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Pipeline Decoupling & StreamSettledConfig test suite passed")
+
+def test_visual_sandbox_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_visual_sandbox.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_visual_sandbox.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Tier 3 Visual Sandbox & Autonomous QA Agent test suite passed")
+
+def test_framework_environment_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_framework_environment.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_framework_environment.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Tier 2 TestEnvironment & Unified Lifecycle test suite passed")
+
+def test_dag_subgraph_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_dag_subgraph.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_dag_subgraph.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Tier 2 Declarative DAG Scheduling & Subgraph Pruning test suite passed")
+
+def test_impact_analyzer_suite():
+    import subprocess
+    cmd = [sys.executable, os.path.join(BASE_DIR, "tests", "test_impact_analyzer.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"test_impact_analyzer.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Test Impact Analyzer & Dependency Graph test suite passed")
+
+def run_all():
+    import argparse
+    import glob
+    parser = argparse.ArgumentParser(description="Gemini Exporter 综合测试套件")
+    parser.add_argument("--changed", action="store_true", help="仅执行当前 Git 改动及其传递依赖影响的测试")
+    parser.add_argument("--filter", default=None, help="按关键字或文件名过滤单元测试 (如 --filter storage)")
+    parser.add_argument("--files", nargs="*", default=None, help="显式指定目标测试文件或变更文件")
+    parser.add_argument("--base", default=None, help="Git 差异基准分支 (默认 origin/main 或 main)")
+    args, _ = parser.parse_known_args()
+
+    if args.filter:
+        print(f"🔍 正在按关键字过滤单元测试: '{args.filter}'")
+        all_test_files = sorted(set(glob.glob(os.path.join(BASE_DIR, "tests", "*.test.js")) + glob.glob(os.path.join(BASE_DIR, "tests", "*.test.ts")) + glob.glob(os.path.join(BASE_DIR, "tests", "arch", "*.test.ts"))))
+        matching = [tf for tf in all_test_files if args.filter.lower() in os.path.relpath(tf, BASE_DIR).lower()]
+        if not matching:
+            print(f"❌ 未找到匹配关键字 '{args.filter}' 的单元测试！")
+            sys.exit(1)
+        print(f"🧪 匹配到 {len(matching)} 个单元测试套件:")
+        for m in matching:
+            print(f"  • {os.path.relpath(m, BASE_DIR)}")
+        test_javascript_unit_tests(target_tests=matching)
+        print("=" * 60)
+        print(f"🎉 全部 {len(matching)} 个过滤测试均顺利通过！")
+        print("=" * 60)
+        return
+
+    if args.changed:
+        scripts_dir = os.path.join(BASE_DIR, "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        try:
+            from test_impact_analyzer import get_git_changed_files, analyze_impact, DependencyGraph
+            changed = set(args.files) if args.files else get_git_changed_files(base_ref=args.base, base_dir=BASE_DIR)
+            graph = DependencyGraph(base_dir=BASE_DIR)
+            result = analyze_impact(changed, graph=graph, base_dir=BASE_DIR)
+
+            if result.is_docs_only:
+                print("⚡ [增量测试] 检测到仅有文档/静态资源改动，无需执行单元测试套件。")
+                print("=" * 60)
+                print("🎉 ALL TESTS PASSED SUCCESSFULLY! (0s)")
+                print("=" * 60)
+                return
+
+            if result.is_all_affected:
+                print("⚠️ [增量测试] 检测到全局核心配置变更，回退执行全量测试套件...")
+            else:
+                print(f"⚡ [增量测试] 识别到 {len(result.changed_files)} 个变更文件，传递闭包覆盖 {len(result.affected_files)} 个模块。")
+                print(f"🧪 即将执行 {len(result.target_unit_tests)} 个受影响单元测试套件...")
+
+                affected = result.affected_files
+                # 执行关联的 Python 规格断言套件
+                if any("manifest.json" in f or "package.json" in f for f in affected):
+                    test_json_files()
+                    test_manifest_structure()
+                if any("build.js" in f or "package.json" in f for f in affected):
+                    test_build_pipeline()
+                if any("options.html" in f or "popup.html" in f for f in affected):
+                    test_html_includes()
+                if any("locales" in f for f in affected):
+                    test_i18n_keys()
+                if any(x in f for f in affected for x in ["badgeView", "content.css", "pageObserver", "syncEngine"]):
+                    test_content_badge_flicker_prevention()
+                if any(x in f for f in affected for x in ["storageService", "conversationsStore"]):
+                    test_exported_history_and_slot_fallback()
+                if any("test_live_chat_and_export.py" in f for f in affected):
+                    test_custom_dataset_loading()
+                if any("scenario" in f for f in affected):
+                    test_scenario_pool_pipeline()
+                    test_online_scenario_provider_and_lifecycle_tracker()
+                if any(x in f for f in affected for x in ["tourGuide", "options.css", "dialogView"]):
+                    test_tour_status_indicator_styling()
+                    test_takeout_limit_modal_and_wall_detection()
+                if any(x in f for f in affected for x in ["background", "takeoutEngine", "syncEngine"]):
+                    test_stage1_architecture_ssot_and_state_isolation()
+                if any(x in f for f in affected for x in ["writers", "exportOrchestrator", "geminiClient", "hookCredentials"]):
+                    test_stage2_architecture_improvements()
+                if any("pipeline" in f for f in affected):
+                    test_serial_pipeline_suite()
+                    test_pipeline_decoupling_suite()
+                if any("driver" in f for f in affected):
+                    test_gemini_driver_suite()
+                    test_platform_driver_suite()
+                if any("selectors" in f for f in affected):
+                    test_selectors_and_gateway_suite()
+                if any("env" in f for f in affected):
+                    test_framework_environment_suite()
+                if any(x in f for f in affected for x in ["framework", "dag", "cases"]):
+                    test_dag_subgraph_suite()
+                if any("impact_analyzer" in f for f in affected):
+                    test_impact_analyzer_suite()
+
+                test_javascript_syntax()
+                test_javascript_unit_tests(target_tests=result.target_unit_tests)
+                print("=" * 60)
+                print(f"🎉 全部受影响单元测试 ({len(result.target_unit_tests)} 个套件) 均顺利通过！")
+                print("=" * 60)
+                return
+        except Exception as e:
+            print(f"⚠️ 依赖分析器出现异常 ({e})，回退执行全量测试套件...")
+
+    # 全量默认执行路径 (Backward Compatible)
+    test_json_files()
+    test_manifest_structure()
+    test_build_pipeline()
+    test_html_includes()
+    test_i18n_keys()
+    test_content_badge_flicker_prevention()
+    test_exported_history_and_slot_fallback()
+    test_custom_dataset_loading()
+    test_scenario_pool_pipeline()
+    test_online_scenario_provider_and_lifecycle_tracker()
+    test_tour_status_indicator_styling()
+    test_takeout_limit_modal_and_wall_detection()
+    test_stage1_architecture_ssot_and_state_isolation()
+    test_storage_keys_and_constants_ssot()
+    test_stage2_architecture_improvements()
+    test_serial_pipeline_suite()
+    test_gemini_driver_suite()
+    test_selectors_and_gateway_suite()
+    test_platform_driver_suite()
+    test_pipeline_decoupling_suite()
+    test_visual_sandbox_suite()
+    test_framework_environment_suite()
+    test_dag_subgraph_suite()
+    test_impact_analyzer_suite()
+    test_javascript_syntax()
+    test_javascript_unit_tests()
+
+    print("=" * 60)
+    print("🎉 ALL TESTS PASSED SUCCESSFULLY!")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    run_all()
 
 

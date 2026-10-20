@@ -2,6 +2,7 @@ export {};
 // tests/feature_walkthrough.test.ts - Unit tests for Two-Track Walkthrough and Feature Releases Architecture
 const test = require('node:test');
 const assert = require('node:assert');
+const { __setModuleOverride } = require('../src/core/utils/moduleOverrides.js');
 
 // Mock browser environment
 let mockStorage: Record<string, any> = {};
@@ -105,9 +106,9 @@ function createMockElement(id: string, tagName: string = 'div') {
     location: { search: '' }
 };
 
-(global as any).I18n = {
+__setModuleOverride('I18n', {
     t: (k: string) => k
-};
+});
 
 const StorageService = require('../src/core/storage/storageService.js');
 const { FEATURE_RELEASES, getLatestEligibleFeature } = require('../src/ui/tour/featureReleases.js');
@@ -137,8 +138,14 @@ test('StorageService - isVersionGreater version comparison', () => {
 test('featureReleases - getLatestEligibleFeature arbitration logic', () => {
     assert.ok(Array.isArray(FEATURE_RELEASES), 'FEATURE_RELEASES should be an array');
     assert.ok(FEATURE_RELEASES.length > 0, 'FEATURE_RELEASES should have at least 1 feature');
-    assert.strictEqual(FEATURE_RELEASES[0].featureId, 'live_save');
-    assert.strictEqual(FEATURE_RELEASES[0].version, '1.5.0');
+    assert.strictEqual(FEATURE_RELEASES[0].featureId, 'pdf_html_export');
+    assert.strictEqual(FEATURE_RELEASES[0].version, '1.7.0');
+
+    for (const lastSeen of ['', '1.4.0', '1.5.0', '1.6.3']) {
+        assert.strictEqual(getLatestEligibleFeature(lastSeen, '1.7.0')?.featureId, 'pdf_html_export');
+    }
+    assert.strictEqual(getLatestEligibleFeature('1.7.0', '1.7.0'), null);
+    assert.strictEqual(getLatestEligibleFeature('1.6.3', '1.6.3'), null);
 
     // Case 1: Returning user with no recorded feature version ('') on v1.5.0 -> Eligible
     const featNew = getLatestEligibleFeature('', '1.5.0');
@@ -186,4 +193,21 @@ test('TourGuide - Feature Spotlight mode activation and dismissal', async () => 
     // Verify storage was updated with version '1.5.0'
     const storedVer = await StorageService.getLastSeenFeatureVersion();
     assert.strictEqual(storedVer, '1.5.0');
+});
+
+test('TourGuide - PDF / HTML spotlight dismisses and focuses format without starting export', async () => {
+    mockStorage = {};
+    const format = createMockElement('format', 'select');
+    let focused = false;
+    format.focus = () => { focused = true; };
+    mockElements.set('format', format);
+    const action = createMockElement('tourSpotlightActionBtn', 'button');
+    mockElements.set('tourSpotlightActionBtn', action);
+    await TourGuide.startFeatureSpotlight('export', '1.7.0');
+    assert.strictEqual(TourGuide.isActive(), true);
+    action.click();
+    for (let i = 0; i < 20 && !focused; i++) await new Promise(r => setTimeout(r, 10));
+    assert.strictEqual(focused, true);
+    assert.strictEqual(TourGuide.isActive(), false);
+    assert.strictEqual(await StorageService.getLastSeenFeatureVersion(), '1.7.0');
 });

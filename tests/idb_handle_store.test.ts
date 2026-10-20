@@ -6,11 +6,9 @@ const {
     IDB_VERSION,
     IDB_STORE,
     IDB_KEY,
-    openHandleDB,
     getStoredDirHandle,
     saveStoredDirHandle,
-    clearStoredDirHandle,
-    IdbHandleStore
+    clearStoredDirHandle
 } = require('../src/core/storage/idbHandleStore.js');
 
 test('idbHandleStore - constants integrity', () => {

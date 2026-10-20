@@ -10,6 +10,10 @@ export {};
  *   - perf_p1_p2_regression.test.ts
  *   - regression_p0.test.ts
  *   - p0_regression_lock.test.ts
+ *
+ * @retire-when: unknown — needs owner
+ *   (per-test locks retire when the guarded behavior is covered by a permanent
+ *   contract test; see tests/README.md §五)
  */
 
 const test = require('node:test');
@@ -17,6 +21,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const { __setModuleOverride, __getModuleOverride } = require('../src/core/utils/moduleOverrides.js');
 
 const SRC = path.join(__dirname, '..', 'src');
 const Proto = require('../src/core/protocol/protocol.js');
@@ -103,26 +108,22 @@ class FakeAssetPipeline {
 async function runExport(chatDetail: any, { useFakePipeline = false }: { useFakePipeline?: boolean } = {}) {
     zipCaptures.length = 0;
     const origChrome = (global as any).chrome;
-    const origStorage = (global as any).StorageService;
-    const origUtils = (global as any).GeminiUtils;
-    const origJSZip = (global as any).JSZip;
-    const origPipeline = (global as any).AssetPipeline;
-    const origTab = (global as any).TabService;
+    const origJSZip = __getModuleOverride('JSZip');
+    const origPipeline = __getModuleOverride('AssetPipeline');
+    const origTab = __getModuleOverride('TabService');
 
     const chromeMock = makeChromeStorage();
     (global as any).chrome = chromeMock;
-    (global as any).StorageService = StorageService;
-    (global as any).GeminiUtils = GeminiUtils;
-    (global as any).JSZip = FakeJSZip;
-    if (useFakePipeline) (global as any).AssetPipeline = FakeAssetPipeline;
-    else delete (global as any).AssetPipeline;
+    __setModuleOverride('JSZip', FakeJSZip);
+    if (useFakePipeline) __setModuleOverride('AssetPipeline', FakeAssetPipeline);
+    else __setModuleOverride('AssetPipeline', undefined);
 
-    (global as any).TabService = {
+    __setModuleOverride('TabService', {
         sendToGeminiTab: async (msg: any) => {
             assert.strictEqual(msg.action, 'getConversationDetail');
             return { success: true, data: chatDetail };
         }
-    };
+    });
 
     try {
         const onItemExportedCalls: any[] = [];
@@ -144,17 +145,22 @@ async function runExport(chatDetail: any, { useFakePipeline = false }: { useFake
                 onTitleUpdated: () => {}
             }
         );
-        // finalizeChatExport is fire-and-forget; let its storage chain settle.
-        await new Promise(r => setTimeout(r, 25));
+        // finalizeChatExport is fire-and-forget; poll until its storage chain
+        // lands instead of a fixed sleep (flaky on slow machines).
+        const deadline = Date.now() + 2000;
+        for (;;) {
+            const ids = await StorageService.getExportedIds('u0');
+            if (ids[chatDetail.id] || ids['c_' + chatDetail.id]) break;
+            if (Date.now() > deadline) break;
+            await new Promise(r => setTimeout(r, 10));
+        }
         const exportedIds = await StorageService.getExportedIds('u0');
         return { result, onItemExportedCalls, exportedIds, chromeData: chromeMock.data };
     } finally {
         (global as any).chrome = origChrome;
-        (global as any).StorageService = origStorage;
-        (global as any).GeminiUtils = origUtils;
-        (global as any).JSZip = origJSZip;
-        (global as any).AssetPipeline = origPipeline;
-        (global as any).TabService = origTab;
+        __setModuleOverride('JSZip', origJSZip);
+        __setModuleOverride('AssetPipeline', origPipeline);
+        __setModuleOverride('TabService', origTab);
     }
 }
 
@@ -267,10 +273,13 @@ test('p0-lock: staged image asset finalizes exactly once via the queue (no dupli
     );
 });
 
-test('Bug repro - pendingAssets leak on asset failure blocks finalize', () => {
+test('regression lock: asset-failure branch must decrement pendingAssetsPerChat (pendingAssets leak fix)', () => {
     const code = readSrc('../src/core/engine/export/exportOrchestrator.js');
+    // 锁的本意不变：add(nid) 之后必须有 decrement，删掉即泄漏。
+    // assetTask 失败分支里 decrement 紧跟 add(nid)（failedAttachments.push 在后），
+    // 300 窗口足够；不要放宽窗口去迁就代码重排。
     const failureBlocks = [...code.matchAll(/chatFailedAssetsSet\.add\(nid\)[\s\S]{0,300}pendingAssetsPerChat/g)];
-    assert.ok(failureBlocks.length >= 1, 'failure branch should also decrement pendingAssetsPerChat, but currently does not (pending leak)');
+    assert.ok(failureBlocks.length >= 1, 'failure branch must decrement pendingAssetsPerChat after chatFailedAssetsSet.add(nid); a regression would reintroduce the pendingAssets leak that blocks finalize');
 });
 
 test('regression: export_engine sanitizeZipPath must sanitize .. and preserve segments', () => {
@@ -314,18 +323,18 @@ test('regression: export abort must broadcast cancelExport and listen to abortSi
 });
 
 test('regression: stop sync must sync window flag and active client', () => {
-    const clientContent = fs.readFileSync(path.join(__dirname, '../src/core/api/geminiClient.js'), 'utf8');
-    const contentContent = fs.readFileSync(path.join(__dirname, '../src/content/content.js'), 'utf8');
+    const clientContent = readSrc('../src/core/api/geminiClient.js');
+    const contentContent = readSrc('../src/content/content.js') + readSrc('../src/content/messageRouter.js') + readSrc('../src/content/contentContext.js');
     assert.ok(clientContent.includes('window.__gemExporterAborted') && clientContent.includes('isAborted'), 'gemini_client should check window abort flag');
     assert.ok(contentContent.includes('__gemExporterActiveClient'), 'content should store active client');
-    assert.ok(contentContent.includes('__gemExporterActiveClient && window.__gemExporterActiveClient.abort()'), 'stopDeepScan should abort active client');
+    assert.ok(contentContent.includes('__gemExporterActiveClient && window.__gemExporterActiveClient.abort()') || contentContent.includes('w.__gemExporterActiveClient && w.__gemExporterActiveClient.abort()'), 'stopDeepScan should abort active client');
 });
 
 test('regression: empty cloud response must be logged as error with debug', () => {
     const expContent = readSrc('../src/core/engine/export/exportOrchestrator.js');
     assert.ok(expContent.includes("'error'") && expContent.includes('logExportSkipped'), 'empty should be error level');
     assert.ok(expContent.includes('_debug') && expContent.includes('_raw'), 'failedChats should carry debug/raw');
-    const bgContent = readSrc('../src/background/background.js');
+    const bgContent = readSrc('../src/background/background.js') + readSrc('../src/background/batchFetcher.js');
     assert.ok(bgContent.includes('_debug'), 'background should preserve _raw debug');
 });
 
@@ -380,29 +389,56 @@ test('p0-lock: hex ids without a GzXR5e anchor never trigger local conversation 
     assert.strictEqual(deletions.length, 0, 'list-RPC responses containing bare hex must not fire deletion events');
 });
 
-test('hookCredentials - broadcastBatchexecute filter only relays LIST and DETAIL payloads', () => {
-    const filterFn = (text: any) => {
-        if (!text || (!text.includes(Proto.RPCS.LIST) && !text.includes(Proto.RPCS.DETAIL))) {
-            return false;
-        }
-        return true;
-    };
-
+test('hookCredentials - broadcastBatchexecute filter only relays LIST and DETAIL payloads', async () => {
+    // Drives the REAL filter inside hookCredentials (via the fetch-interception
+    // sandbox), not a hand copy: batchexecute response text flows through the
+    // actual broadcastBatchexecute, which only relays when the text mentions
+    // the LIST or DETAIL RPC ids.
     const prefix = String.fromCharCode(41, 93, 125, 39) + '\n';
+    const batchexecuteUrl = 'https://gemini.google.com/u/0/batchexecute';
+
+    async function relayedTypesFor(responseText: string): Promise<string[]> {
+        const { posted, win } = createHookSandbox();
+        win.__nextResponseText = responseText;
+        await win.fetch(batchexecuteUrl, { method: 'POST', body: 'f.req=[[["wrb.fr",null]]]' });
+        // The relay resolves in a few ms via the promise chain; 500ms is ample
+        // margin without making negative cases (filtered out) slow.
+        const deadline = Date.now() + 500;
+        for (;;) {
+            const types = posted.map((p: any) => p.msg.type);
+            if (types.includes('GEMINI_NETWORK_BATCHEXECUTE') || Date.now() > deadline) return types;
+            await new Promise(r => setTimeout(r, 10));
+        }
+    }
+    async function wasRelayed(responseText: string): Promise<boolean> {
+        return (await relayedTypesFor(responseText)).includes('GEMINI_NETWORK_BATCHEXECUTE');
+    }
+
     const genericBatchexecute = prefix + JSON.stringify([['wrb.fr', 'generic_rpc', '[]', null]]);
-    assert.strictEqual(filterFn(genericBatchexecute), false, 'Generic wrb.fr response must be filtered out');
+    assert.strictEqual(await wasRelayed(genericBatchexecute), false, 'Generic wrb.fr response must be filtered out');
 
     const deleteBatchexecute = prefix + JSON.stringify([['wrb.fr', 'GzXR5e', ['deleted'], null]]);
-    assert.strictEqual(filterFn(deleteBatchexecute), false, 'Delete RPC response must not pass batchexecute broadcast');
+    assert.strictEqual(await wasRelayed(deleteBatchexecute), false, 'Delete RPC response must not pass batchexecute broadcast');
 
     const listBatchexecute = prefix + JSON.stringify([['wrb.fr', Proto.RPCS.LIST, ['c_123'], null]]);
-    assert.strictEqual(filterFn(listBatchexecute), true, 'List RPC must pass filter');
+    assert.strictEqual(await wasRelayed(listBatchexecute), true, 'List RPC must pass filter');
 
     const detailBatchexecute = prefix + JSON.stringify([['wrb.fr', Proto.RPCS.DETAIL, ['c_123'], null]]);
-    assert.strictEqual(filterFn(detailBatchexecute), true, 'Detail RPC must pass filter');
+    assert.strictEqual(await wasRelayed(detailBatchexecute), true, 'Detail RPC must pass filter');
 });
 
 test('bootstrap - runSerializedCredOp serializes concurrent read-modify-write cycles', async () => {
+    // runSerializedCredOp is module-private in bootstrap.ts, so this test
+    // exercises the identical chain idiom below AND locks the source shape:
+    // if the source stops chaining through _credOpChain and the shared map lock, this
+    // fails instead of silently testing a diverged copy. (readSrc returns the
+    // bundled output for bootstrap.js, hence (let|var).)
+    const src = readSrc('../src/content/bootstrap.js');
+    assert.ok(
+        /(?:let|var) _credOpChain[\s\S]*_credOpChain\.then\([\s\S]{0,160}withCredMapLock/.test(src),
+        'bootstrap.ts must serialize credential operations under the shared map lock'
+    );
+
     let credOpChain: Promise<any> = Promise.resolve();
     function runSerializedCredOp(op: any) {
         const run = credOpChain.then(op, op);
@@ -503,9 +539,10 @@ test('audit fix: isRealTitle fallback filters invalid titles properly', () => {
 
 test('regression: export_engine and options must scrub Google Gemini brand', () => {
     const expContent = readSrc('../src/core/engine/export/batchWorker.js');
+    const titleUtilsContent = readSrc('../src/core/utils/titleUtils.js');
     const optContent = readSrc('../src/ui/options/options.js');
-    assert.ok(expContent.includes('isBadBrand'), 'batchWorker should have isBadBrand scrub');
-    assert.ok(expContent.includes('Google\\s+)?(Gemini|Bard'), 'batchWorker should filter brand regex');
+    assert.ok(expContent.includes('isBadBrand') || expContent.includes('isBrandPlaceholderTitle'), 'batchWorker should have isBadBrand scrub');
+    assert.ok(expContent.includes('Google\\s+)?(Gemini|Bard') || titleUtilsContent.includes('Google\\s+)?(Gemini|Bard'), 'batchWorker/titleUtils should filter brand regex');
     assert.ok(optContent.includes('isBad'), 'options.js should scrub bad titles on load');
     assert.strictEqual(isRealTitle('Google Gemini', 'abc123'), false);
     assert.strictEqual(isRealTitle('Gemini', 'abc123'), false);
@@ -678,7 +715,7 @@ test('P1 regression: AssetPipeline requests native ArrayBuffer (preferBuffer: tr
             currentSlot: 'u0',
             getGeminiTab: async () => ({ id: 12345 }),
             useZip: true,
-            folder: { file: () => {} }
+            writer: { writeFile: async () => 'test.png' }
         });
 
         const item = { url: 'https://lh3.googleusercontent.com/test.png', fileName: 'test.png' };
@@ -806,7 +843,7 @@ test('regression: dom_scraper must try live document before fetch shell', () => 
 });
 
 test('regression: content.js must fallback to DOM when batchexecute returns empty', () => {
-    const ctContent = fs.readFileSync(path.join(__dirname, '../src/content/content.js'), 'utf8');
+    const ctContent = readSrc('../src/content/content.js') + readSrc('../src/content/messageRouter.js');
     assert.ok(ctContent.includes('Array.isArray(detail.messages) && detail.messages.length > 0'), 'should check length>0 before success');
     assert.ok(ctContent.includes('batchexecute returned empty messages, fallback to DOM'), 'should warn and fallback');
 });
@@ -822,16 +859,90 @@ test('regression: background Receiving end error must hint refresh', () => {
 });
 
 test('release workflow - release package excludes TypeScript source and sourcemaps', () => {
+    const buildPath = path.join(__dirname, '../build.js');
+    const buildContent = fs.readFileSync(buildPath, 'utf8');
     const workflowPath = path.join(__dirname, '../.github/workflows/release.yml');
     const workflowContent = fs.readFileSync(workflowPath, 'utf8');
 
-    assert.ok(workflowContent.includes("src -x 'src/*.ts'"), "release.yml must exclude src/*.ts");
-    assert.ok(workflowContent.includes("'src/*/*/*/*.ts'"), "release.yml must exclude nested .ts files");
-    assert.ok(workflowContent.includes('dist \\'), 'release.yml must package dist with whitelist');
-    assert.ok(workflowContent.includes("'dist/background/background.js'"), 'release.yml must include background.js bundle');
-    assert.ok(workflowContent.includes("'dist/content/content.js'"), 'release.yml must include content.js bundle');
-    assert.ok(workflowContent.includes("'dist/content/hook.js'"), 'release.yml must include hook.js bundle');
-    assert.ok(workflowContent.includes("'dist/ui/options.js'"), 'release.yml must include options.js bundle');
-    assert.ok(workflowContent.includes("'dist/ui/popup.js'"), 'release.yml must include popup.js bundle');
-    assert.ok(!workflowContent.includes('\n            dist \\\n            src'), 'release.yml must not blindly zip entire dist/ and src/');
+    // SSoT: build.js defines the exact packaging rules
+    assert.ok(buildContent.includes("src -x 'src/*.ts'"), "build.js must exclude src/*.ts");
+    assert.ok(buildContent.includes("'src/*/*/*/*.ts'"), "build.js must exclude nested .ts files");
+    assert.ok(buildContent.includes("'dist/background/background.js'"), 'build.js must include background.js bundle');
+    assert.ok(buildContent.includes("'dist/content/content.js'"), 'build.js must include content.js bundle');
+    assert.ok(buildContent.includes("'dist/content/hook.js'"), 'build.js must include hook.js bundle');
+    assert.ok(buildContent.includes("'dist/ui/options.js'"), 'build.js must include options.js bundle');
+    assert.ok(buildContent.includes("'dist/ui/popup.js'"), 'build.js must include popup.js bundle');
+
+    // release.yml delegates packaging to npm run package SSoT
+    assert.ok(workflowContent.includes('npm run package'), 'release.yml must delegate packaging to npm run package');
+});
+
+test('architecture doc - all referenced src/ file paths must exist on disk', () => {
+    const docPath = path.join(__dirname, '../docs/architecture.md');
+    const docContent = fs.readFileSync(docPath, 'utf8');
+
+    // Extract all `src/.../*.ts` file references from architecture.md
+    const matches = docContent.matchAll(/`src\/([^`]+\.ts)`/g);
+    const referencedFiles: string[] = [];
+    for (const m of matches) {
+        referencedFiles.push(m[1]);
+    }
+
+    assert.ok(referencedFiles.length >= 60, `architecture.md should reference at least 60 src files (found ${referencedFiles.length})`);
+
+    const missingFiles: string[] = [];
+    for (const relPath of referencedFiles) {
+        const fullPath = path.join(__dirname, '../src', relPath);
+        if (!fs.existsSync(fullPath)) {
+            missingFiles.push(`src/${relPath}`);
+        }
+    }
+
+    assert.deepStrictEqual(
+        missingFiles,
+        [],
+        `The following files referenced in docs/architecture.md do not exist on disk:\n${missingFiles.join('\n')}`
+    );
+});
+
+test('src/README.md - all referenced files in source tree must exist on disk', () => {
+    const docPath = path.join(__dirname, '../src/README.md');
+    const docContent = fs.readFileSync(docPath, 'utf8');
+
+    // Extract all file names matching *.ts, *.d.ts, *.css, *.html
+    const fileMatches = docContent.matchAll(/([a-zA-Z0-9_-]+(?:\.d)?\.(?:ts|css|html))/g);
+    const referencedFiles = new Set<string>();
+    for (const m of fileMatches) {
+        referencedFiles.add(m[1]);
+    }
+
+    assert.ok(referencedFiles.size >= 50, `src/README.md should reference at least 50 src files (found ${referencedFiles.size})`);
+
+    const missingFiles: string[] = [];
+    for (const fileName of referencedFiles) {
+        let found = false;
+        const findRecursive = (dir: string) => {
+            if (found) return;
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (found) return;
+                if (entry.isDirectory()) {
+                    findRecursive(path.join(dir, entry.name));
+                } else if (entry.name === fileName) {
+                    found = true;
+                    return;
+                }
+            }
+        };
+        findRecursive(path.join(__dirname, '../src'));
+        if (!found) {
+            missingFiles.push(fileName);
+        }
+    }
+
+    assert.deepStrictEqual(
+        missingFiles,
+        [],
+        `The following files referenced in src/README.md do not exist on disk:\n${missingFiles.join('\n')}`
+    );
 });

@@ -20,6 +20,7 @@ export interface ExportCallbacks {
     onLog?: (msg: string, level?: string) => void;
     onTitleUpdated?: (id: string, title: string, source?: string) => void;
     onItemExported?: (id: string, record: any) => void;
+    onItemPendingAssets?: (id: string, count: number) => void;
 }
 
 export interface ExportResult {
@@ -33,89 +34,83 @@ export interface ExportResult {
     aborted?: boolean;
 }
 
-export interface ExportOrchestratorModule {
-    ExportOrchestrator: any;
-    AsyncQueue: any;
-    ensureSubDir: (root: any, subPath: string) => Promise<any>;
-    sanitizeFileName: (name?: string | null, fallback?: string) => string;
-    sanitizeZipPath: (p?: string | null) => string;
-    getExtensionVersion: () => string;
-}
-
-declare global {
-    var ExportOrchestrator: any;
-}
-
+import { __resolveModule } from "../../utils/moduleOverrides.js";
+import { AssetPipeline as AssetPipelineStatic } from "../assetPipeline.js";
 import GeminiUtils, {
     type GeminiUtilsModule,
     sanitizeFileName as utilsSanitizeFileName,
     normId as utilsNormId,
     sanitizeRelativePath,
-    getErrorMessage
+    buildExportFileName,
+    resolveExportFileName as utilsResolveExportFileName,
+    getErrorMessage,
+    checkIsUpdated as utilsCheckIsUpdated,
+    getEffectiveTimestamp as utilsGetEffectiveTimestamp,
+    setTitleBySource as utilsSetTitleBySource,
+    cleanTitle as utilsCleanTitle,
+    isRealTitle as utilsIsRealTitle,
+    applyExportTitleWriteback
 } from "../../utils/utils.js";
+export { applyExportTitleWriteback };
+import { stripInternalChipMarkdown } from "../../utils/chipUtils.js";
 import { ExportPipelineError } from "../../../types/errors.js";
 import BatchWorker, { type BatchWorkerModule } from "./batchWorker.js";
 import SessionRecovery, { type SessionRecoveryModule } from "./sessionRecovery.js";
-import rateLimitModule, { RateLimitManager, type RateLimitModule } from "./rateLimiter.js";
-import progressReporterModule, { ProgressReporter, type ProgressReporterModule } from "./progressReporter.js";
+import rateLimitModule, { isRateLimited, calculateBackoff, abortableSleep, type RateLimitModule } from "./rateLimiter.js";
+import progressReporterModule, { ProgressReporter } from "./progressReporter.js";
+import TabService from "../../utils/tabService.js";
+import { ensureSubDir as fsEnsureSubDir } from "../writers/fsWriter.js";
+import { createWriter } from "../writers/writerInterface.js";
+import { SessionStore } from "../../storage/sessionStore.js";
+import { StorageService as StorageServiceStatic } from "../../storage/storageService.js";
+import { ChatFormatter } from "../chatFormatter.js";
+import { shortId } from "../../utils/pathUtils.js";
+import { extractChatParseDrift, chatRecordStatusWithDrift } from "./parseDrift.js";
+import { I18n as I18nStatic } from "../../utils/i18n.js";
+import { assertSchemaWritable } from "../../storage/schemaMigration.js";
+import { FlightRecorder } from "../../diagnostics/flightRecorder.js";
+import {
+    buildExportCompletion,
+    computeExportMessageCount,
+    computeAuthoritativeTimestamp,
+    resolveReliableTitleSource
+} from "./exportCompletion.js";
 
-export const EXT_VERSION: string = typeof __EXT_VERSION__ !== 'undefined' ? __EXT_VERSION__ : '1.4.3';
-export function getExtensionVersion(): string {
-    try {
-        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest) {
-            return chrome.runtime.getManifest().version || EXT_VERSION;
-        }
-    } catch (e) {
-        if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e);
-    }
-    return EXT_VERSION;
-}
+import { EXT_VERSION, getExtensionVersion, DEFAULT_EXPORT_FOLDER_NAME } from "../../utils/constants.js";
+export { EXT_VERSION, getExtensionVersion };
 
-const getUtils = (): GeminiUtilsModule | null => {
-    if (typeof (globalThis as any).GeminiUtils !== 'undefined') return (globalThis as any).GeminiUtils;
-    return GeminiUtils;
-};
+const getUtils = (): GeminiUtilsModule | null => __resolveModule('GeminiUtils', GeminiUtils);
+const getI18n = (): any => __resolveModule('I18n', I18nStatic);
+const getProgressReporter = (): any => progressReporterModule;
+const getBatchWorker = (): BatchWorkerModule => BatchWorker;
+const getSessionRecovery = (): SessionRecoveryModule => SessionRecovery;
+const getRateLimiter = (): RateLimitModule => rateLimitModule;
 
-const getProgressReporter = (): any => {
-    if (typeof (globalThis as any).ProgressReporter !== 'undefined') return (globalThis as any).ProgressReporter;
-    return progressReporterModule;
-};
+export const sanitizeFileName = (name?: string | null, fallback?: string): string =>
+    ((getUtils()?.sanitizeFileName) || utilsSanitizeFileName)(name, fallback);
 
-const getBatchWorker = (): BatchWorkerModule => {
-    if (typeof (globalThis as any).BatchWorker !== 'undefined') return (globalThis as any).BatchWorker;
-    return BatchWorker;
-};
+export const normId = (id?: string | number | null): string =>
+    ((getUtils()?.normId) || utilsNormId)(id);
 
-const getSessionRecovery = (): SessionRecoveryModule => {
-    if (typeof (globalThis as any).SessionRecovery !== 'undefined') return (globalThis as any).SessionRecovery;
-    return SessionRecovery;
-};
+export const sanitizeZipPath = (p?: string | null): string =>
+    ((getUtils()?.sanitizeRelativePath) || sanitizeRelativePath)(p, 'file');
 
-const getRateLimiter = (): RateLimitModule => {
-    if (typeof (globalThis as any).RateLimitModule !== 'undefined') return (globalThis as any).RateLimitModule;
-    return rateLimitModule;
-};
+export const checkIsUpdated = (c: any, rec?: any): boolean =>
+    ((getUtils()?.checkIsUpdated) || utilsCheckIsUpdated)(c, rec);
 
-export const sanitizeFileName = (name?: string | null, fallback?: string): string => {
-    if (typeof (globalThis as any).GeminiUtils?.sanitizeFileName === 'function') {
-        return (globalThis as any).GeminiUtils.sanitizeFileName(name, fallback);
-    }
-    return utilsSanitizeFileName(name, fallback);
-};
+export const getEffectiveTimestamp = (c: any): number =>
+    ((getUtils()?.getEffectiveTimestamp) || utilsGetEffectiveTimestamp)(c);
 
-export const normId = (id?: string | number | null): string => {
-    if (typeof (globalThis as any).GeminiUtils?.normId === 'function') {
-        return (globalThis as any).GeminiUtils.normId(id);
-    }
-    return utilsNormId(id);
-};
+export const setTitleBySource = (chat: any, source?: string, rawTitle?: string): any =>
+    ((getUtils()?.setTitleBySource) || utilsSetTitleBySource)(chat, source, rawTitle);
 
-export const sanitizeZipPath = (p?: string | null): string => {
-    if (typeof (globalThis as any).GeminiUtils?.sanitizeRelativePath === 'function') {
-        return (globalThis as any).GeminiUtils.sanitizeRelativePath(p, 'file');
-    }
-    return sanitizeRelativePath(p, 'file');
-};
+export const cleanTitle = (rawTitle?: string | null): string =>
+    ((getUtils()?.cleanTitle) || utilsCleanTitle)(rawTitle);
+
+export const isRealTitle = (title?: string | null, id?: string | number): boolean =>
+    ((getUtils()?.isRealTitle) || utilsIsRealTitle)(title, id);
+
+
 
     function toIso(v: any): string | null {
         if (!v) return null;
@@ -134,14 +129,15 @@ export const sanitizeZipPath = (p?: string | null): string => {
             this._closed = false;
         }
 
-        push(task: any): void {
-            if (this._closed) return;
+        push(task: any): boolean {
+            if (this._closed) return false;
             if (this._waiters.length > 0) {
                 const waiter = this._waiters.shift()!;
                 waiter(task);
             } else {
                 this._queue.push(task);
             }
+            return true;
         }
 
         async pop(abortSignal?: AbortSignal | null): Promise<any> {
@@ -185,35 +181,14 @@ export const sanitizeZipPath = (p?: string | null): string => {
         }
     }
 
-    async function ensureSubDir(root: any, subPath: string): Promise<any> {
-        const FsWriter = (globalThis as any).FsWriter;
-        if (typeof FsWriter !== 'undefined' && FsWriter.ensureSubDir) {
-            return await FsWriter.ensureSubDir(root, subPath);
-        }
-        let cur = root;
-        const parts = subPath.split('/').filter(Boolean).filter(p => p !== '.' && p !== '..').map(p => sanitizeFileName(p, 'dir'));
-        for (let p of parts) {
-            if (!p || p === '.' || p === '..') continue;
-            cur = await cur.getDirectoryHandle(p, { create: true });
-        }
-        return cur;
-    }
+    const ensureSubDir = fsEnsureSubDir;
 
-    async function getGeminiTab(slot?: string): Promise<any> {
-        const TabService = (globalThis as any).TabService;
-        if (typeof TabService !== 'undefined' && TabService.getGeminiTab) {
-            return await TabService.getGeminiTab(slot);
-        }
-        if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
-            return chrome.tabs.query({ url: 'https://gemini.google.com/*' }).then((tabs: any[]) => tabs?.[0] || null);
-        }
-        return null;
-    }
+    const getGeminiTab = async (slot?: string): Promise<any> =>
+        (__resolveModule('TabService', TabService))?.getGeminiTab?.(slot) ?? null;
+    const sendToGeminiTab = (message: any, slot?: string, timeoutMs?: number): Promise<any> =>
+        (__resolveModule('TabService', TabService)).sendToGeminiTab(message, slot, timeoutMs);
 
-    const getAssetPipelineClass = (): any => {
-        if (typeof (globalThis as any).AssetPipeline !== 'undefined') return (globalThis as any).AssetPipeline;
-        return null;
-    };
+    const getAssetPipelineClass = (): any => __resolveModule('AssetPipeline', AssetPipelineStatic);
 
     class ExportOrchestrator {
         aborted: boolean;
@@ -247,23 +222,11 @@ export const sanitizeZipPath = (p?: string | null): string => {
             } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e); }
             const recovery = getSessionRecovery();
             if (recovery && recovery.updateSessionStatus) {
-                recovery.updateSessionStatus({ status: 'aborted' });
-            } else {
-                try {
-                    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                        chrome.storage.local.get(['gemini_last_export_session'], (data: any) => {
-                            if (data?.gemini_last_export_session) {
-                                chrome.storage.local.set({
-                                    gemini_last_export_session: {
-                                        ...data.gemini_last_export_session,
-                                        status: 'aborted',
-                                        updatedAt: Date.now()
-                                    }
-                                });
-                            }
-                        });
-                    }
-                } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e); }
+                // G2 no-floating-promises: abort() 是同步方法，await 会改接口；
+                // 状态写失败不能 unhandledrejection，catch 里记 debug 日志。
+                recovery.updateSessionStatus({ status: 'aborted' }).catch((e) => {
+                    if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts] updateSessionStatus failed on abort', e);
+                });
             }
         }
 
@@ -272,7 +235,9 @@ export const sanitizeZipPath = (p?: string | null): string => {
                 selected = [],
                 format = 'markdown',
                 useZip = true,
-                currentSlot = 'u0'
+                currentSlot = 'u0',
+                skip = false,
+                conversations = []
             } = options;
 
             if (!selected.length) {
@@ -286,55 +251,88 @@ export const sanitizeZipPath = (p?: string | null): string => {
             this._abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
             const abortSignal = this._abortController ? this._abortController.signal : null;
 
-            const payloadIds = selected.map((s: any) => ({
-                id: s.id,
-                title: s.title,
-                url: s.url || s.href || `https://gemini.google.com/app/${s.id}`,
-                timestamp: s.timestamp,
-                lastSeen: s.lastSeen
-            }));
-
             const slot = currentSlot || 'u0';
-            const Storage = (typeof (globalThis as any).StorageService !== 'undefined') ? (globalThis as any).StorageService : ((globalThis as any).StorageService || null);
-            let curIds = Storage ? await Storage.getExportedIds(slot) : {};
-            if (!Storage && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                const expKey = slot === 'u0' ? 'exportedIds' : `gemini_exported_${slot}`;
-                const store = await chrome.storage.local.get([expKey]);
-                curIds = store[expKey] || {};
+            // Phase A (P1-4): Storage 解析不再允许 null —— 静态 import 做 fallback，
+            // 生产环境永远拿到真正的 StorageService；测试可用 __setModuleOverride 覆盖。
+            // finalizeChatExport 只认 saveExportRecord 一条正式路径（fail-closed）。
+            const Storage = __resolveModule('StorageService', StorageServiceStatic);
+            let curIds = await Storage.getExportedIds(slot);
+            if (options.exportedIds && typeof options.exportedIds === 'object') {
+                curIds = { ...curIds, ...options.exportedIds };
             }
+
+            const payloadIds: any[] = [];
+            const skippedItems: any[] = [];
+
+            const utils = getUtils();
+            const checkUpdatedFn = (utils && typeof utils.checkIsUpdated === 'function')
+                ? utils.checkIsUpdated
+                : checkIsUpdated;
+
+            for (const s of selected) {
+                const sid = typeof s === 'string' ? s : s?.id;
+                const nid = normId(sid);
+                const itemPayload = {
+                    id: sid,
+                    title: s.title || sid,
+                    url: s.url || s.href || `https://gemini.google.com/app/${sid}`,
+                    timestamp: s.timestamp,
+                    lastSeen: s.lastSeen
+                };
+
+                if (skip) {
+                    // Triage #5 read-path fix: curIds is canonical-keyed — the
+                    // StorageService read path collapses legacy alias keys, the
+                    // raw store fallback is written canonical-only by
+                    // setExportedIds/saveExportRecordsBatch, and caller-supplied
+                    // options.exportedIds comes from the normalized in-memory
+                    // store. A single canonical probe is enough.
+                    const rec = curIds[nid] || null;
+                    if (rec) {
+                        const conv = (Array.isArray(conversations) ? conversations.find((c: any) => normId(c.id) === nid) : null) || (typeof s === 'object' ? s : null);
+                        const isUpdated = checkUpdatedFn(conv || itemPayload, rec);
+                        if (!isUpdated) {
+                            skippedItems.push(itemPayload);
+                            FlightRecorder.record('export', 'item_skipped_unmodified', {
+                                id: nid,
+                                chatTime: (rec as any)?.chatTime,
+                                exportedAt: rec.exportedAt
+                            });
+                            continue;
+                        }
+                    }
+                }
+                payloadIds.push(itemPayload);
+                FlightRecorder.record('export', 'item_enqueued', {
+                    id: nid,
+                    hasRecord: !!curIds[nid]
+                });
+            }
+
+            FlightRecorder.record('export', 'pipeline_start', {
+                total: selected.length,
+                skipped: skippedItems.length,
+                enqueued: payloadIds.length,
+                skip
+            });
 
             const recovery = getSessionRecovery();
             if (recovery && recovery.updateSessionStatus) {
                 await recovery.updateSessionStatus({
                     status: 'running',
                     slot,
-                    total: payloadIds.length,
-                    current: 0,
+                    total: selected.length,
+                    current: skippedItems.length,
                     format,
                     useZip,
                     startTime: Date.now()
                 });
-            } else {
-                try {
-                    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                        await chrome.storage.local.set({
-                            gemini_last_export_session: {
-                                status: 'running',
-                                slot,
-                                total: payloadIds.length,
-                                current: 0,
-                                format,
-                                useZip,
-                                startTime: Date.now(),
-                                updatedAt: Date.now()
-                            }
-                        });
-                    }
-                } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e); }
             }
 
             return {
                 payloadIds,
+                skippedItems,
+                totalSelected: selected.length,
                 slot,
                 Storage,
                 curIds,
@@ -343,53 +341,28 @@ export const sanitizeZipPath = (p?: string | null): string => {
         }
 
         async _initWriter(options: ExportOptions, onLog: (msg: string, level?: string) => void): Promise<any> {
+            // P1-13: schema frozen 时写路径 fail-closed（读路径不受影响）
+            await assertSchemaWritable();
             const { useZip = true, dirHandle = null } = options;
-            const exportFolderName = 'gemini_export';
+            const exportFolderName = DEFAULT_EXPORT_FOLDER_NAME;
             let batchDirHandle: any = null;
             let zip: any = null;
             let folder: any = null;
             let zipWriter: any = null;
             let fsWriter: any = null;
+            let writer: any = null;
 
             if (useZip) {
-                const ZipWriterModule = (globalThis as any).ZipWriter;
-                const ZipWriterClass = (typeof ZipWriterModule !== 'undefined' && ZipWriterModule.ZipWriter)
-                    ? ZipWriterModule.ZipWriter
-                    : (typeof ZipWriterModule === 'function' ? ZipWriterModule : null);
-                if (ZipWriterClass) {
-                    zipWriter = new ZipWriterClass(exportFolderName);
-                    zip = zipWriter.zip;
-                    folder = zipWriter.folder;
-                } else {
-                    const JSZip = (globalThis as any).JSZip;
-                    if (typeof JSZip === 'undefined') throw new Error('JSZip library not found');
-                    zip = new JSZip();
-                    folder = zip.folder(exportFolderName);
-                }
+                writer = createWriter('zip', { folderName: exportFolderName });
+                zipWriter = writer;
+                zip = (writer as any).zip;
+                folder = (writer as any).folder;
             } else {
                 if (!dirHandle) throw new Error('Directory handle not provided');
                 try {
-                    const FsWriterModule = (globalThis as any).FsWriter;
-                    const FsWriterClass = (typeof FsWriterModule !== 'undefined' && FsWriterModule.FsWriter)
-                        ? FsWriterModule.FsWriter
-                        : (typeof FsWriterModule === 'function' ? FsWriterModule : null);
-                    if (FsWriterClass) {
-                        fsWriter = new FsWriterClass(dirHandle, exportFolderName);
-                        batchDirHandle = await fsWriter.init();
-                    } else {
-                        if (dirHandle.queryPermission) {
-                            const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
-                            if (perm !== 'granted') {
-                                const req = dirHandle.requestPermission ? await dirHandle.requestPermission({ mode: 'readwrite' }) : perm;
-                                if (req !== 'granted') throw new Error('Directory permission not granted: ' + req);
-                            }
-                        }
-                        if (dirHandle.name === exportFolderName) {
-                            batchDirHandle = dirHandle;
-                        } else {
-                            batchDirHandle = await dirHandle.getDirectoryHandle(exportFolderName, { create: true });
-                        }
-                    }
+                    writer = createWriter('fs', { dirHandle, folderName: exportFolderName });
+                    fsWriter = writer;
+                    batchDirHandle = await (fsWriter as any).init();
                 } catch (e: unknown) {
                     const errMsg = getErrorMessage(e);
                     onLog(`创建子文件夹失败: ${errMsg}`, 'warn');
@@ -402,46 +375,31 @@ export const sanitizeZipPath = (p?: string | null): string => {
                 }
             }
 
-            const writeFileDirect = async (localName: string, data: any): Promise<boolean> => {
-                if (this.aborted) return false;
+            const writeFileDirect = async (localName: string, data: any): Promise<void> => {
+                if (this.aborted) throw new DOMException('Export aborted', 'AbortError');
+                const cleanPath = sanitizeZipPath(localName);
+                if (!writer) {
+                    throw new ExportPipelineError(`无可用写入器，无法保存 (${localName})`, undefined, 'write');
+                }
                 try {
-                    const cleanPath = sanitizeZipPath(localName);
-                    if (fsWriter) {
-                        await fsWriter.writeFile(cleanPath, data);
-                        return true;
-                    }
-                    const parts = cleanPath.split('/').filter(Boolean);
-                    let fileName = parts.pop() || 'file';
-                    const dirPath = parts.join('/');
-                    let targetDir = batchDirHandle;
-                    if (dirPath) {
-                        targetDir = await ensureSubDir(batchDirHandle, dirPath);
-                    }
-                    const fh = await targetDir.getFileHandle(fileName, { create: true });
-                    const wr = await fh.createWritable();
-                    await wr.write(data);
-                    await wr.close();
-                    return true;
+                    await writer.writeFile(cleanPath, data);
                 } catch (e: unknown) {
                     const errMsg = getErrorMessage(e);
                     const errObj = e as any;
                     const isPermissionRevoked = errObj?.name === 'NotAllowedError'
                         || /permission|not\s*allowed/i.test(errMsg);
                     if (isPermissionRevoked) {
-                        const I18n = (globalThis as any).I18n;
-                        const permMsg = typeof I18n !== 'undefined'
-                            ? I18n.t('fsPermissionRevoked')
-                            : '文件夹访问权限已失效或被撤销，导出已中止';
-                        onLog(permMsg, 'error');
+                        const I18n = getI18n();
+                        onLog(I18n.t('fsPermissionRevoked'), 'error');
                         this.abort();
-                        return false;
+                    } else {
+                        onLog(`保存文件失败 (${localName}): ${errMsg}`, 'error');
                     }
-                    onLog(`保存文件失败 (${localName}): ${errMsg}`, 'error');
-                    return false;
+                    throw new ExportPipelineError(`保存文件失败 (${localName}): ${errMsg}`, undefined, 'write', isPermissionRevoked);
                 }
             };
 
-            return { zip, folder, zipWriter, batchDirHandle, fsWriter, writeFileDirect };
+            return { zip, folder, zipWriter, batchDirHandle, fsWriter, writer, writeFileDirect };
         }
 
         async _packageAndDownload(
@@ -453,15 +411,17 @@ export const sanitizeZipPath = (p?: string | null): string => {
             onLog: (msg: string, level?: string) => void,
             onProgress: (progress: any) => void
         ): Promise<void> {
+            // B3: 取消后不再打包/下载 —— 取消是用户意图，不应触发下载回调
+            if (this.aborted || this._abortController?.signal.aborted) return;
             const zipFileName = `gemini_export_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.zip`;
-            const I18n = (globalThis as any).I18n;
-            onLog(typeof I18n !== 'undefined' ? I18n.t('logPackagingZip') : '正在打包 ZIP 压缩包…', 'info');
+            const I18n = getI18n();
+            onLog(I18n.t('logPackagingZip'), 'info');
             const onUpdate = (percent: number) => {
                 onProgress({
                     current: payloadIds.length,
                     total: payloadIds.length,
                     pct: Math.floor(percent),
-                    title: typeof I18n !== 'undefined' ? I18n.t('progPackagingZip', Math.floor(percent)) : `打包 ZIP 中 (${Math.floor(percent)}%)`,
+                    title: I18n.t('progPackagingZip', Math.floor(percent)),
                     assetsDownloaded: downloadedAssets,
                     assetsTotal: totalAssets
                 });
@@ -472,15 +432,6 @@ export const sanitizeZipPath = (p?: string | null): string => {
 
             if (options.downloadHandler && typeof options.downloadHandler === 'function') {
                 await options.downloadHandler(blob, zipFileName);
-            } else if (typeof document !== 'undefined' && document.createElement && document.body) {
-                const blobUrl = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = zipFileName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
             }
         }
 
@@ -489,9 +440,35 @@ export const sanitizeZipPath = (p?: string | null): string => {
             const onLog = callbacks.onLog || (() => {});
             const onTitleUpdated = callbacks.onTitleUpdated || (() => {});
             const onItemExported = callbacks.onItemExported || (() => {});
+            const onItemPendingAssets = callbacks.onItemPendingAssets || (() => {});
 
             const session = await this._initSession(options, callbacks);
-            const { payloadIds, slot, Storage, curIds, abortSignal } = session;
+            const { payloadIds, skippedItems = [], totalSelected = options.selected?.length || 0, slot, Storage, curIds, abortSignal } = session;
+            // B3: _initSession 是异步的，期间用户可能已取消 —— 直接返回，不再初始化 writer/跑导出循环
+            if (this.aborted || (abortSignal && abortSignal.aborted)) {
+                onLog(getI18n().t('logExportAborted') || '导出已取消', 'warn');
+                const earlyRecovery = getSessionRecovery();
+                if (earlyRecovery && earlyRecovery.updateSessionStatus) {
+                    await earlyRecovery.updateSessionStatus({
+                        status: 'aborted',
+                        slot,
+                        total: totalSelected,
+                        current: 0,
+                        failedCount: 0,
+                        skipped: skippedItems.length
+                    });
+                }
+                return {
+                    landedChats: 0,
+                    exportedCount: 0,
+                    failedChats: [],
+                    failedAttachments: [],
+                    skipped: skippedItems.length,
+                    totalAssets: 0,
+                    downloadedAssets: 0,
+                    aborted: true
+                };
+            }
 
             const {
                 format = 'markdown',
@@ -505,16 +482,17 @@ export const sanitizeZipPath = (p?: string | null): string => {
                 takeoutEngine = null
             } = options;
 
-            const { zip, folder, zipWriter, writeFileDirect } = await this._initWriter(options, onLog);
+            const { zip, zipWriter, batchDirHandle, writer, writeFileDirect } = await this._initWriter(options, onLog);
 
             const AssetPipelineClass = getAssetPipelineClass();
             const assetPipeline = AssetPipelineClass ? new AssetPipelineClass({
                 currentSlot,
                 useZip,
-                folder,
+                writer,
                 writeFileDirect,
                 takeoutEngine,
                 getGeminiTab,
+                sendToGeminiTab,
                 onLog
             }) : null;
 
@@ -523,39 +501,36 @@ export const sanitizeZipPath = (p?: string | null): string => {
             let landedChats = 0;
             let failedChats: any[] = [];
             let failedAttachments: any[] = [];
-            let skipped = 0;
+            let parseDriftChats: any[] = [];
+            let skipped = skippedItems.length;
             let metaResults: any[] = [];
 
-            let currentExportTitle = '';
-            let currentExportIdx = 0;
+            const totalChats = totalSelected || payloadIds.length;
+
+            const I18n = getI18n();
+
+            for (const sItem of skippedItems) {
+                const sTitle = sItem.title || sItem.id;
+                onLog(I18n.t('logExportSkippedAlreadyExported', sTitle) || `[${sTitle}] 跳过已导出内容 (无更新)`, 'info');
+            }
+
+            const ProgressReporterClass = getProgressReporter()?.ProgressReporter || ProgressReporter;
+            const reporter = new ProgressReporterClass({
+                totalChats,
+                onProgress,
+                onLog
+            });
 
             const updateProgress = (chatIdx?: number, chatTitle?: string) => {
-                if (typeof chatIdx === 'number') currentExportIdx = chatIdx;
-                if (typeof chatTitle === 'string' && chatTitle) currentExportTitle = chatTitle;
-
-                const totalChats = payloadIds.length;
-                const current = Math.min(currentExportIdx, totalChats);
-                let pct = totalChats ? Math.floor((current / totalChats) * 100) : 0;
-
-                if (totalAssets > 0 && downloadedAssets > 0 && pct < 100) {
-                    const chatWeight = 0.75;
-                    const assetWeight = 0.25;
-                    const chatFraction = totalChats ? (current / totalChats) : 0;
-                    const assetFraction = Math.min(1, downloadedAssets / totalAssets);
-                    pct = Math.min(99, Math.floor((chatFraction * chatWeight + assetFraction * assetWeight) * 100));
-                }
-
-                onProgress({
-                    current,
-                    total: totalChats,
-                    pct,
-                    title: currentExportTitle,
-                    assetsDownloaded: downloadedAssets,
-                    assetsTotal: totalAssets
-                });
+                reporter.update(chatIdx, chatTitle, { downloadedAssets, totalAssets });
             };
 
-            updateProgress(0, 'Preparing...');
+
+            if (payloadIds.length === 0) {
+                updateProgress(totalChats, I18n.t('exportSkippedAll', skipped));
+            } else {
+                updateProgress(skipped, 'Preparing...');
+            }
 
             const attachmentQueue = new AsyncQueue();
             const MAX_CONCURRENT = 4;
@@ -571,6 +546,27 @@ export const sanitizeZipPath = (p?: string | null): string => {
                     try {
                         await task();
                     } catch (e) {
+                        const meta = (task as any)?.__assetMeta || null;
+                        if (meta) {
+                            const errMsg = typeof e === 'object' && e !== null && 'message' in (e as any) ? String((e as any).message) : String(e);
+                            chatFailedAssetsSet.add(meta.nid);
+                            failedAttachments.push({
+                                chatId: meta.chatId,
+                                chatTitle: meta.listTitle,
+                                file: meta.fileName,
+                                error: errMsg || 'asset task threw'
+                            });
+                            if (!this.aborted && !(abortSignal && abortSignal.aborted)) {
+                                onLog(`[${meta.listTitle || meta.chatId}] 附件任务异常，已记为失败: ${errMsg}`, 'warn');
+                            }
+                            const left = (pendingAssetsPerChat.get(meta.nid) || 1) - 1;
+                            pendingAssetsPerChat.set(meta.nid, left);
+                            if (left === 0) {
+                                try { await finalizeChatExport(meta.chatId); } catch (_) { /* intentional */ }
+                            }
+                        } else if (typeof console !== 'undefined' && console.warn) {
+                            console.warn('[GemExporter:exportOrchestrator.ts] attachment task threw without metadata', e);
+                        }
                         if (abortSignal && abortSignal.aborted) break;
                     }
                 }
@@ -601,32 +597,12 @@ export const sanitizeZipPath = (p?: string | null): string => {
                         slot,
                         onItemExported
                     });
-                    return;
                 }
-                const targetNid = normId(targetId);
-                if (finalizedChatsSet.has(targetNid)) return;
-                const rec = chatRecordsMap.get(targetNid);
-                if (!rec || chatFailedAssetsSet.has(targetNid)) return;
-                finalizedChatsSet.add(targetNid);
-                curIds[targetId] = rec;
-                curIds[targetNid] = rec;
-                curIds['c_' + targetNid] = rec;
-                exportedIds[targetId] = rec;
-                exportedIds[targetNid] = rec;
-                exportedIds['c_' + targetNid] = rec;
-                if (Storage) {
-                    await Storage.saveExportRecord(slot, targetId, rec);
-                } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                    const expKey = slot === 'u0' ? 'exportedIds' : `gemini_exported_${slot}`;
-                    chrome.storage.local.set({ [expKey]: curIds });
-                }
-                onItemExported(targetId, rec);
             }
 
-            const CONCURRENCY = 3;
+            const CONCURRENCY = Math.max(1, typeof options.concurrency === 'number' ? options.concurrency : 3);
             let nextIndex = 0;
-            let completedCount = 0;
-            let convsNeedSave = false;
+            let completedCount = skipped;
 
             const exportWorker = async () => {
                 while (nextIndex < payloadIds.length && !this.aborted && !(abortSignal && abortSignal.aborted)) {
@@ -636,7 +612,8 @@ export const sanitizeZipPath = (p?: string | null): string => {
                     } else if (this.rateLimitCooldownUntil && Date.now() < this.rateLimitCooldownUntil) {
                         const waitMs = Math.max(0, this.rateLimitCooldownUntil - Date.now());
                         if (waitMs > 0) {
-                            await new Promise(r => setTimeout(r, waitMs));
+                            // B2: 冷却等待同样可被取消打断，不傻等整个窗口
+                            await abortableSleep(waitMs, abortSignal);
                             if (this.aborted || (abortSignal && abortSignal.aborted)) break;
                         }
                     }
@@ -645,312 +622,416 @@ export const sanitizeZipPath = (p?: string | null): string => {
                     const requestedItem = payloadIds[currentIndex];
                     if (!requestedItem) break;
 
-                    const nid = normId(requestedItem.id);
-                    let res: any = null;
-                    let retryCount = 0;
-                    const maxRateLimitRetries = 3;
+                    // Per-chat error isolation: one failed chat must not abort the entire batch
+                    try {
+                        const nid = normId(requestedItem.id);
+                        let res: any = null;
+                        let retryCount = 0;
+                        const maxRateLimitRetries = 3;
 
-                    const I18n = (globalThis as any).I18n;
+                        const I18n = getI18n();
 
-                    while (retryCount <= maxRateLimitRetries && !this.aborted && !(abortSignal && abortSignal.aborted)) {
-                        res = worker && worker.fetchChatDetail
-                            ? await worker.fetchChatDetail(requestedItem, currentIndex, payloadIds.length, currentSlot, skip, format, abortSignal)
-                            : null;
+                        while (retryCount <= maxRateLimitRetries && !this.aborted && !(abortSignal && abortSignal.aborted)) {
+                            res = worker && worker.fetchChatDetail
+                                ? await worker.fetchChatDetail(requestedItem, currentIndex, totalChats, currentSlot, skip, format, abortSignal)
+                                : null;
+
+                            if (this.aborted || (abortSignal && abortSignal.aborted)) break;
+
+                            const isLimited = (this.rateLimiter && typeof this.rateLimiter.isRateLimited === 'function')
+                                ? this.rateLimiter.isRateLimited(res)
+                                : isRateLimited(res);
+
+                            if (isLimited && retryCount < maxRateLimitRetries) {
+                                const delayMs = (this.rateLimiter && typeof this.rateLimiter.calculateBackoff === 'function')
+                                    ? this.rateLimiter.calculateBackoff(retryCount)
+                                    : calculateBackoff(retryCount);
+                                if (this.rateLimiter && typeof this.rateLimiter.recordRateLimit === 'function') {
+                                    this.rateLimiter.recordRateLimit(delayMs);
+                                } else {
+                                    this.rateLimitCooldownUntil = Date.now() + delayMs;
+                                }
+                                onLog(I18n.t('logRateLimitedBackoff', requestedItem.title || nid, (delayMs / 1000).toFixed(1)), 'warn');
+                                // B2: 退避等待可被取消打断 —— 取消后不再傻等整个退避窗口
+                                const backoffAborted = await abortableSleep(delayMs, abortSignal);
+                                retryCount++;
+                                if (backoffAborted) break;
+                                continue;
+                            }
+                            break;
+                        }
 
                         if (this.aborted || (abortSignal && abortSignal.aborted)) break;
 
-                        const isLimited = (this.rateLimiter && typeof this.rateLimiter.isRateLimited === 'function')
-                            ? this.rateLimiter.isRateLimited(res)
-                            : (res && !res.success && (res.status === 429 || /429|rate\s*limit|quota|too\s*many\s*requests/i.test(res?.error || '')));
-
-                        if (isLimited && retryCount < maxRateLimitRetries) {
-                            const delayMs = (this.rateLimiter && typeof this.rateLimiter.calculateBackoff === 'function')
-                                ? this.rateLimiter.calculateBackoff(retryCount)
-                                : Math.min(30000, 2000 * Math.pow(2, retryCount) + Math.floor(Math.random() * 1000));
-                            if (this.rateLimiter && typeof this.rateLimiter.recordRateLimit === 'function') {
-                                this.rateLimiter.recordRateLimit(delayMs);
-                            } else {
-                                this.rateLimitCooldownUntil = Date.now() + delayMs;
-                            }
-                            onLog(typeof I18n !== 'undefined'
-                                ? I18n.t('logRateLimitedBackoff', requestedItem.title || nid, (delayMs / 1000).toFixed(1))
-                                : `[${requestedItem.title || nid}] ⚠️ 触发 Google 限频 (429)，退避等待 ${(delayMs / 1000).toFixed(1)} 秒后重试...`, 'warn');
-                            await new Promise(r => setTimeout(r, delayMs));
-                            retryCount++;
+                        if (!res || !res.success) {
+                            const fetchErr = res ? res.error : 'unknown';
+                            onLog(I18n.t('logFetchFailed', fetchErr), 'warn');
+                            failedChats.push({ id: requestedItem.id, title: requestedItem.title || requestedItem.id, error: fetchErr });
+                            onLog(I18n.t('logExportSkipped', requestedItem.title || requestedItem.id, fetchErr), 'warn');
+                            completedCount++;
+                            updateProgress(completedCount, requestedItem.title || requestedItem.id);
                             continue;
                         }
-                        break;
-                    }
 
-                    if (this.aborted || (abortSignal && abortSignal.aborted)) break;
+                        skipped += (res.skipped || 0);
+                        const chunkResults = res.results || (res.chat ? [res.chat] : []);
+                        let chat = chunkResults[0] || { id: nid, title: requestedItem.title };
+                        chat.id = nid;
 
-                    if (!res || !res.success) {
-                        const fetchErr = res ? res.error : 'unknown';
-                        onLog(typeof I18n !== 'undefined' ? I18n.t('logFetchFailed', fetchErr) : `抓取对话失败: ${fetchErr}`, 'warn');
-                        failedChats.push({ id: requestedItem.id, title: requestedItem.title || requestedItem.id, error: fetchErr });
-                        onLog(typeof I18n !== 'undefined' ? I18n.t('logExportSkipped', requestedItem.title || requestedItem.id, fetchErr) : `[${requestedItem.title || requestedItem.id}] 导出跳过: ${fetchErr}`, 'warn');
-                        completedCount++;
-                        updateProgress(completedCount, requestedItem.title || requestedItem.id);
-                        continue;
-                    }
+                        const listC = conversations.find((c: any) => normId(c.id) === nid) || null;
+                        const resolvedRes = worker && worker.resolveChat
+                            ? await worker.resolveChat(chat, requestedItem, listC, takeoutEngine, currentSlot, onTitleUpdated, onLog)
+                            : { chat, listTitle: chat.title, displayTitle: chat.title, isError: false, errMsg: null, isConfirmedDeleted: false, convsNeedSave: false };
 
-                    skipped += (res.skipped || 0);
-                    const chunkResults = res.results || (res.chat ? [res.chat] : []);
-                    let chat = chunkResults[0] || { id: nid, title: requestedItem.title };
-                    chat.id = nid;
-
-                    const listC = conversations.find((c: any) => normId(c.id) === nid) || null;
-                    const resolvedRes = worker && worker.resolveChat
-                        ? await worker.resolveChat(chat, requestedItem, listC, takeoutEngine, currentSlot, onTitleUpdated, onLog)
-                        : { chat, listTitle: chat.title, displayTitle: chat.title, isError: false, errMsg: null, isConfirmedDeleted: false, convsNeedSave: false };
-
-                    if (resolvedRes.convsNeedSave) convsNeedSave = true;
-
-                    if (resolvedRes.isError) {
-                        failedChats.push({ id: chat.id || nid, title: resolvedRes.displayTitle, error: resolvedRes.errMsg, debug: chat._debug || null, raw: chat._raw || null, isDeleted: resolvedRes.isConfirmedDeleted });
-                        if (typeof console !== 'undefined' && console.warn) {
-                            console.warn('[Gemini Exporter] export empty detail', nid, resolvedRes.errMsg, 'chat keys', Object.keys(chat || {}));
-                        }
-                        completedCount++;
-                        updateProgress(completedCount, resolvedRes.displayTitle);
-                        continue;
-                    }
-
-                    chat = resolvedRes.chat || chat;
-                    const listTitle = resolvedRes.listTitle;
-                    chat.title = listTitle;
-
-                    // A file reaching disk is not enough to call an export successful.
-                    // If detail pagination did not terminate cleanly, never silently
-                    // promote the partial conversation to status=ok.
-                    if (chat.pagination && chat.pagination.complete === false) {
-                        const paginationReason = chat.pagination.stopReason || 'unknown';
-                        const paginationError = `Incomplete conversation pagination (${paginationReason}) after ${chat.pagination.pagesFetched || 0} pages`;
-                        failedChats.push({
-                            id: chat.id || nid,
-                            title: listTitle,
-                            error: paginationError,
-                            partial: true,
-                            pagination: chat.pagination
-                        });
-                        onLog(`[${listTitle || chat.id}] export blocked: ${paginationError}`, 'error');
-                        completedCount++;
-                        updateProgress(completedCount, listTitle);
-                        continue;
-                    }
-
-                    const ChatFormatter = (globalThis as any).ChatFormatter;
-                    const formatted = typeof ChatFormatter !== 'undefined' && ChatFormatter.formatContent
-                        ? ChatFormatter.formatContent(chat, format)
-                        : { content: JSON.stringify(chat, null, 2), ext: 'json' };
-
-                    const content = formatted.content;
-                    const ext = formatted.ext;
-                    const safeBase = sanitizeFileName(listTitle, chat.id);
-                    const fileName = `${safeBase}_${chat.id.slice(-6)}.${ext}`;
-
-                    let writeOk = true;
-                    if (useZip) {
-                        folder.file(fileName, content);
-                    } else {
-                        writeOk = await writeFileDirect(fileName, content);
-                    }
-
-                    let queuedAssetsForThisChat = 0;
-                    const chatAssetTasks: (() => Promise<void>)[] = [];
-                    const seenAssetKeys = new Set<string>();
-
-                    const getAssetIdentityKeys = (item: any, isImage: boolean): string[] => {
-                        const kind = isImage ? 'image' : 'file';
-                        const keys: string[] = [];
-                        const id = String(item?.id || item?.contentId || '').trim();
-                        const url = String(item?.resolvedUrl || item?.sourceUrl || item?.url || '').trim();
-                        const localName = String(item?.localName || '').trim();
-
-                        if (id) keys.push(`${kind}:id:${id}`);
-                        if (url) keys.push(`${kind}:url:${url}`);
-                        if (localName) keys.push(`${kind}:local:${localName}`);
-
-                        // Filename alone is weak evidence. Only use it when no stronger
-                        // identifier exists, otherwise unrelated uploads named
-                        // "image.png" could be collapsed incorrectly.
-                        if (keys.length === 0) {
-                            const fileName = String(item?.fileName || item?.name || '').trim();
-                            if (fileName) keys.push(`${kind}:name:${fileName}`);
-                        }
-                        return keys;
-                    };
-
-                    const queueAsset = (item: any, isImage: boolean) => {
-                        const identityKeys = getAssetIdentityKeys(item, isImage);
-                        if (identityKeys.some(key => seenAssetKeys.has(key))) {
-                            return;
-                        }
-                        for (const key of identityKeys) seenAssetKeys.add(key);
-
-                        totalAssets++;
-                        queuedAssetsForThisChat++;
-                        updateProgress();
-                        chatAssetTasks.push(async () => {
-                            let assetRes = { saved: false, failReason: '', localName: item.localName || item.fileName || (isImage ? 'image.jpg' : 'file.bin') };
-                            if (assetPipeline) {
-                                assetRes = await assetPipeline.processAsset(item, chat, { isImage, listTitle });
+                        if (resolvedRes.isError) {
+                            failedChats.push({ id: chat.id || nid, title: resolvedRes.displayTitle, error: resolvedRes.errMsg, debug: chat._debug || null, raw: chat._raw || null, isDeleted: resolvedRes.isConfirmedDeleted });
+                            if (typeof console !== 'undefined' && console.warn) {
+                                console.warn('[Gemini Exporter] export empty detail', nid, resolvedRes.errMsg, 'chat keys', Object.keys(chat || {}));
                             }
-                            if (assetRes.saved) {
-                                downloadedAssets++;
-                                updateProgress();
-                                const left = (pendingAssetsPerChat.get(nid) || 1) - 1;
-                                pendingAssetsPerChat.set(nid, left);
-                                if (left === 0) finalizeChatExport(chat.id);
-                            } else {
-                                chatFailedAssetsSet.add(nid);
-                                failedAttachments.push({ chatId: chat.id, chatTitle: listTitle || chat.title || chat.id, file: assetRes.localName, error: assetRes.failReason || 'CDN auth expired' });
-                                const logKey = isImage ? 'logImageFailed' : 'logAssetFailed';
-                                const fallbackMsg = isImage
-                                    ? `[${chat.title || chat.id}] 图片获取失败 (${assetRes.localName}): ${assetRes.failReason || 'CDN鉴权过期或资源不可达'}`
-                                    : `[${chat.title || chat.id}] 附件获取失败 (${assetRes.localName}): ${assetRes.failReason || 'CDN鉴权过期或资源不可达'}`;
-                                onLog(typeof I18n !== 'undefined' ? I18n.t(logKey, chat.title || chat.id, assetRes.localName, assetRes.failReason || 'CDN auth expired') : fallbackMsg, 'warn');
-                                const left = (pendingAssetsPerChat.get(nid) || 1) - 1;
-                                pendingAssetsPerChat.set(nid, left);
-                                if (left === 0) finalizeChatExport(chat.id);
-                            }
-                        });
-                    };
+                            completedCount++;
+                            updateProgress(completedCount, resolvedRes.displayTitle);
+                            continue;
+                        }
 
-                    if (includeAssets && chat.messages && writeOk) {
-                        for (const m of chat.messages) {
-                            if (m.attachments && m.attachments.length) {
-                                for (const att of m.attachments) {
-                                    if (att.type === 'image') {
-                                        if (!m.images || !m.images.some((im: any) => im.localName === att.localName || im.url === att.url || im.fileName === att.fileName)) {
-                                            queueAsset(att, true);
+                        chat = resolvedRes.chat || chat;
+                        const listTitle = resolvedRes.listTitle;
+                        chat.title = listTitle;
+
+                        const actualMsgCount = computeExportMessageCount(chat);
+                        let needUpdateStorage = !!resolvedRes.convsNeedSave;
+                        if (listC && typeof listC === 'object' && actualMsgCount > 0 && listC.messageCount !== actualMsgCount) {
+                            listC.messageCount = actualMsgCount;
+                            needUpdateStorage = true;
+                        }
+
+                        if (needUpdateStorage) {
+                            const storageService = Storage || __resolveModule('StorageService', StorageServiceStatic);
+                            if (storageService && typeof storageService.updateConversation === 'function') {
+                                try {
+                                    await storageService.updateConversation(currentSlot, nid, (existing: any) => {
+                                        if (listC) {
+                                            // Route the title write-back through the canonical tier
+                                            // arbitration: a lower-authority list snapshot must not
+                                            // downgrade a higher-authority stored title.
+                                            applyExportTitleWriteback(existing, listC);
+                                            if (listC.messageCount) existing.messageCount = listC.messageCount;
                                         }
-                                        continue;
+                                        return existing;
+                                    });
+                                } catch (err) {
+                                    if (typeof console !== 'undefined' && console.warn) {
+                                        console.warn('[Gemini Exporter] atomic updateConversation failed for', nid, err);
                                     }
-                                    if (att.type !== 'file') continue;
-                                    if ((att.url && att.url.includes('immersive_entry_chip')) && !att.contentMarkdown) continue;
-                                    if (att.contentMarkdown) {
-                                        if (att.contentMarkdown.includes('immersive_entry_chip') || att.contentMarkdown.includes('googleusercontent.com/immersive')) {
+                                }
+                            }
+                        }
+
+                        let formatted;
+                        if (format === 'html') {
+                            formatted = await ChatFormatter.formatHtmlCanonical(chat);
+                        } else if (format === 'markdown') {
+                            formatted = await ChatFormatter.formatMarkdownCanonical(chat);
+                        } else {
+                            formatted = ChatFormatter.formatContent(chat, format);
+                        }
+
+                        const content = formatted.content;
+                        const ext = formatted.ext;
+                        const safeBase = sanitizeFileName(listTitle, chat.id);
+                        const resolveName = ((getUtils()?.resolveExportFileName) || utilsResolveExportFileName);
+                        const fileName = useZip
+                            ? buildExportFileName(listTitle, chat.id, ext)
+                            : await resolveName(listTitle, chat.id, ext, async (n: string) => {
+                                try {
+                                    if (!batchDirHandle || typeof batchDirHandle.getFileHandle !== 'function') return false;
+                                    await batchDirHandle.getFileHandle(n, { create: false });
+                                    return true;
+                                } catch {
+                                    return false;
+                                }
+                            });
+
+                        let mainWriteError: unknown = null;
+                        try {
+                            await writeFileDirect(fileName, content);
+                        } catch (e) {
+                            mainWriteError = e;
+                        }
+
+                        let queuedAssetsForThisChat = 0;
+                        const chatAssetTasks: (() => Promise<void>)[] = [];
+                        const queueAsset = (item: any, isImage: boolean) => {
+                            totalAssets++;
+                            queuedAssetsForThisChat++;
+                            updateProgress();
+                            const assetTask = async () => {
+                                let assetRes = { saved: false, failReason: '', localName: item.localName || item.fileName || (isImage ? 'image.jpg' : 'file.bin') };
+                                if (assetPipeline) {
+                                    assetRes = await assetPipeline.processAsset(item, chat, { isImage, listTitle, signal: abortSignal });
+                                }
+                                if (assetRes.saved) {
+                                    downloadedAssets++;
+                                    updateProgress();
+                                    const left = (pendingAssetsPerChat.get(nid) || 1) - 1;
+                                    pendingAssetsPerChat.set(nid, left);
+                                    if (left === 0) await finalizeChatExport(chat.id);
+                                } else {
+                                    chatFailedAssetsSet.add(nid);
+                                    // decrement 紧跟 add(nid)：regression lock 要求失败分支必须
+                                    // decrement pendingAssetsPerChat，否则 finalize 永远等不到 left===0。
+                                    const left = (pendingAssetsPerChat.get(nid) || 1) - 1;
+                                    pendingAssetsPerChat.set(nid, left);
+                                    failedAttachments.push({ chatId: chat.id, chatTitle: listTitle || chat.title || chat.id, file: assetRes.localName, error: assetRes.failReason || 'CDN auth expired', sourceUrl: item.sourceUrl || item.src || item.url, sourceEvidence: item.sourceEvidence });
+                                    const logKey = isImage ? 'logImageFailed' : 'logAssetFailed';
+                                    const fallbackMsg = isImage
+                                        ? `[${chat.title || chat.id}] 图片获取失败 (${assetRes.localName}): ${assetRes.failReason || 'CDN鉴权过期或资源不可达'}`
+                                        : `[${chat.title || chat.id}] 附件获取失败 (${assetRes.localName}): ${assetRes.failReason || 'CDN鉴权过期或资源不可达'}`;
+                                    onLog(getI18n().t(logKey, chat.title || chat.id, assetRes.localName, assetRes.failReason || 'CDN auth expired'), 'warn');
+                                    if (left === 0) await finalizeChatExport(chat.id);
+                                }
+                            };
+                            (assetTask as any).__assetMeta = { nid, chatId: chat.id, listTitle, fileName: item.localName || item.fileName || (isImage ? 'image.jpg' : 'file.bin') };
+                            chatAssetTasks.push(assetTask);
+                        };
+
+                        if (includeAssets && chat.messages && !mainWriteError) {
+                            for (const m of chat.messages) {
+                                if (m.attachments && m.attachments.length) {
+                                    for (const att of m.attachments) {
+                                        if (att.type === 'image') {
+                                            if (!m.images || !m.images.some((im: any) => im.localName === att.localName || im.url === att.url || im.fileName === att.fileName)) {
+                                                queueAsset(att, true);
+                                            }
                                             continue;
                                         }
-                                        if (useZip) {
-                                            try {
-                                                folder.file(sanitizeZipPath(att.localName), att.contentMarkdown);
-                                                totalAssets++;
-                                                downloadedAssets++;
-                                                updateProgress();
-                                            } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e); }
-                                        } else {
-                                            totalAssets++;
-                                            queuedAssetsForThisChat++;
-                                            updateProgress();
-                                            chatAssetTasks.push(async () => {
-                                                const ok = await writeFileDirect(att.localName || `${safeBase}_${chat.id.slice(-6)}.md`, att.contentMarkdown);
-                                                if (ok) {
+                                        if (att.type !== 'file') continue;
+                                        if ((att.url && att.url.includes('immersive_entry_chip')) && !att.contentMarkdown) continue;
+                                        if (att.contentMarkdown) {
+                                            const cleanDocMd = stripInternalChipMarkdown(att.contentMarkdown).trim();
+                                            if (!cleanDocMd) {
+                                                continue;
+                                            }
+                                            if (useZip) {
+                                                try {
+                                                    await writeFileDirect(att.localName, cleanDocMd);
+                                                    totalAssets++;
                                                     downloadedAssets++;
+                                                    updateProgress();
+                                                } catch (e) {
+                                                    // 取消不记为资产失败，直接向上传播（B3 会进一步区分取消语义）
+                                                    if ((e as any)?.name === 'AbortError' || this.aborted) throw e;
+                                                    chatFailedAssetsSet.add(nid);
+                                                    failedAttachments.push({ chatId: chat.id, chatTitle: listTitle || chat.title || chat.id, file: att.localName, error: getErrorMessage(e) });
+                                                }
+                                            } else {
+                                                totalAssets++;
+                                                queuedAssetsForThisChat++;
+                                                updateProgress();
+                                                const mdTask = async () => {
+                                                    const docFileName = att.localName || `${safeBase}_${shortId(chat.id)}.md`;
+                                                    try {
+                                                        await writeFileDirect(docFileName, cleanDocMd);
+                                                        downloadedAssets++;
+                                                    } catch (e) {
+                                                        // 取消不记为资产失败，直接向上传播
+                                                        if ((e as any)?.name === 'AbortError' || this.aborted) throw e;
+                                                        chatFailedAssetsSet.add(nid);
+                                                        failedAttachments.push({ chatId: chat.id, chatTitle: listTitle || chat.title || chat.id, file: docFileName, error: getErrorMessage(e) });
+                                                    }
                                                     updateProgress();
                                                     const left = (pendingAssetsPerChat.get(nid) || 1) - 1;
                                                     pendingAssetsPerChat.set(nid, left);
-                                                    if (left === 0) finalizeChatExport(chat.id);
-                                                } else {
-                                                    chatFailedAssetsSet.add(nid);
-                                                    const left = (pendingAssetsPerChat.get(nid) || 1) - 1;
-                                                    pendingAssetsPerChat.set(nid, left);
-                                                    if (left === 0) finalizeChatExport(chat.id);
-                                                }
-                                            });
+                                                    if (left === 0) await finalizeChatExport(chat.id);
+                                                };
+                                                (mdTask as any).__assetMeta = { nid, chatId: chat.id, listTitle, fileName: att.localName || 'doc.md' };
+                                                chatAssetTasks.push(mdTask);
+                                            }
+                                            continue;
                                         }
-                                        continue;
+
+                                        queueAsset(att, false);
                                     }
-
-                                    queueAsset(att, false);
                                 }
-                            }
 
-                            if (m.images && m.images.length) {
-                                for (const img of m.images) {
-                                    queueAsset(img, true);
+                                if (m.images && m.images.length) {
+                                    for (const img of m.images) {
+                                        queueAsset(img, true);
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (writeOk) {
-                        landedChats++;
-                        onLog(typeof I18n !== 'undefined' ? I18n.t('logExportSuccess', listTitle, fileName) : `[${listTitle}] ✓ 文本导出成功 (${fileName})`, 'info');
-                        if (!chat.error && !chat._empty) {
-                            let exportTs = listC?.timestamp || chat.timestamp || Date.now();
-                            if (typeof exportTs === 'string') exportTs = new Date(exportTs).getTime();
-                            const record = {
-                                title: listTitle,
-                                exportedAt: new Date().toISOString(),
-                                messageCount: chat.messageCount || chat.messages?.length || 0,
-                                chatTime: exportTs,
-                                status: 'ok'
-                            };
-                            chatRecordsMap.set(nid, record);
-                            if (queuedAssetsForThisChat === 0) {
-                                finalizeChatExport(chat.id);
-                            } else {
-                                pendingAssetsPerChat.set(nid, queuedAssetsForThisChat);
-                                for (const task of chatAssetTasks) {
-                                    attachmentQueue.push(task);
+                        // P1-8/P1-9: parser 诊断随 chat 透出，不在生产环境静默
+                        const chatDrift = extractChatParseDrift(chat);
+                        const driftNotable = chatDrift.turnsRejected > 0 || chatDrift.schemaDrift.length > 0 || chatDrift.hasHeuristicDocs;
+
+                        if (!mainWriteError) {
+                            landedChats++;
+                            onLog(getI18n().t('logExportSuccess', listTitle, fileName), 'info');
+                            if (!chat.error && !chat._empty) {
+                                if (driftNotable) {
+                                    const bits: string[] = [];
+                                    if (chatDrift.turnsRejected > 0) bits.push(`拒识 ${chatDrift.turnsRejected} 个 turn`);
+                                    if (chatDrift.schemaDrift.length > 0) bits.push(`${chatDrift.schemaDrift.length} 条 schema 漂移告警`);
+                                    if (chatDrift.hasHeuristicDocs) bits.push(`含启发式拼凑文档`);
+                                    const driftStatus = chatRecordStatusWithDrift('ok', chatDrift);
+                                    const statusNote = driftStatus === 'partial' ? '，已记为部分导出' : '（仅告警，导出记录仍为正常）';
+                                    onLog(`[${listTitle}] 解析异常（${bits.join("；")}）${statusNote}`, 'warn');
+                                    parseDriftChats.push({
+                                        id: chat.id || nid,
+                                        title: listTitle,
+                                        schemaDrift: chatDrift.schemaDrift,
+                                        turnsRejected: chatDrift.turnsRejected,
+                                        hasHeuristicDocs: chatDrift.hasHeuristicDocs
+                                    });
                                 }
-                            }
-                        }
-                    } else {
-                        const failReason = this.aborted ? 'Aborted due to permission revocation' : 'File write failed';
-                        failedChats.push({
-                            id: chat.id || nid,
-                            title: listTitle,
-                            error: failReason
-                        });
-                    }
+                                const isChatTruncated = !!(chat.truncated || chat.isTruncated);
+                                if (isChatTruncated) {
+                                    onLog(`[${listTitle}] 会话内容超出最大拉取深度或检测到游标异常，已截断导出并标记为部分导出 (partial)`, 'warn');
+                                }
+                                const baseStatus = (actualMsgCount === 0 || chat.isEmpty) ? 'empty' : 'ok';
+                                const driftStatus = chatRecordStatusWithDrift(baseStatus, chatDrift);
+                                const statusOverride = isChatTruncated
+                                    ? 'partial'
+                                    : (driftStatus === 'partial' ? 'partial' : undefined);
 
-                    metaResults.push({
-                        id: chat.id,
-                        title: listTitle,
-                        url: chat.url || `https://gemini.google.com/app/${chat.id}`,
-                        createdAt: toIso(chat.createdAt || chat.timestamp || listC?.timestamp),
-                        updatedAt: toIso(chat.updatedAt || chat.timestamp || listC?.timestamp),
-                        messageCount: chat.messages ? chat.messages.length : (chat.messageCount || 0),
-                        attachmentCount: queuedAssetsForThisChat || chat.attachmentCount || 0,
-                        exportFile: fileName,
-                        status: writeOk ? 'success' : 'failed'
-                    });
+                                const authoritativeChatTime = Math.max(
+                                    computeAuthoritativeTimestamp(listC) || 0,
+                                    computeAuthoritativeTimestamp(chat) || 0
+                                ) || undefined;
 
-                    completedCount++;
-                    updateProgress(completedCount, listTitle);
-
-                    if (recovery && recovery.updateSessionStatus) {
-                        await recovery.updateSessionStatus({
-                            status: 'running',
-                            slot,
-                            total: payloadIds.length,
-                            current: completedCount,
-                            lastChatId: chat.id,
-                            lastChatTitle: listTitle,
-                            format,
-                            useZip
-                        });
-                    } else {
-                        try {
-                            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                                await chrome.storage.local.set({
-                                    gemini_last_export_session: {
-                                        status: 'running',
-                                        slot,
-                                        total: payloadIds.length,
-                                        current: completedCount,
-                                        lastChatId: chat.id,
-                                        lastChatTitle: listTitle,
-                                        format,
-                                        useZip,
-                                        updatedAt: Date.now()
-                                    }
+                                const completion = buildExportCompletion({
+                                    conversation: chat,
+                                    conversationId: nid,
+                                    format: options.format || 'markdown',
+                                    exportedAt: new Date().toISOString(),
+                                    titleCandidate: listTitle,
+                                    titleProvenance: resolveReliableTitleSource(chat.titleSource, listC?.titleSource),
+                                    titles: { ...(listC?.titles || {}), ...(chat.titles || {}) },
+                                    messageCount: actualMsgCount,
+                                    chatTime: authoritativeChatTime,
+                                    statusOverride,
+                                    isTruncated: isChatTruncated,
+                                    truncateReason: isChatTruncated ? (chat.truncateReason || 'truncated') : undefined
                                 });
+
+                                chatRecordsMap.set(nid, {
+                                    ...completion.exportRecord,
+                                    exportRecord: completion.exportRecord,
+                                    conversationUpdate: completion.conversationUpdate,
+                                    targetId: completion.targetId
+                                });
+                                if (queuedAssetsForThisChat === 0) {
+                                    await finalizeChatExport(chat.id);
+                                } else {
+                                    pendingAssetsPerChat.set(nid, queuedAssetsForThisChat);
+                                    try {
+                                        onItemPendingAssets(chat.id, queuedAssetsForThisChat);
+                                    } catch { /* intentional */ }
+                                    for (const task of chatAssetTasks) {
+                                        const enqueued = attachmentQueue.push(task);
+                                        if (!enqueued) {
+                                            chatFailedAssetsSet.add(nid);
+                                            const meta = (task as any)?.__assetMeta;
+                                            if (meta) {
+                                                failedAttachments.push({
+                                                    chatId: meta.chatId,
+                                                    chatTitle: meta.listTitle,
+                                                    file: meta.fileName,
+                                                    error: 'Queue closed / export cancelled'
+                                                });
+                                            }
+                                            const left = (pendingAssetsPerChat.get(nid) || 1) - 1;
+                                            pendingAssetsPerChat.set(nid, left);
+                                            if (left === 0) {
+                                                await finalizeChatExport(chat.id);
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e); }
+                        } else {
+                            // B3: 区分用户取消 vs 权限被收回 —— 取消是用户意图，不记失败；
+                            // 权限被收回是真实失败（writeFileDirect 已 abort 并记日志），保留失败记录。
+                            const errObj = mainWriteError as any;
+                            const userCancelled = errObj?.name === 'AbortError';
+                            if (userCancelled) {
+                                onLog(`[${listTitle}] 导出已取消`, 'warn');
+                                break;
+                            }
+                            const permissionRevoked = errObj instanceof ExportPipelineError && !!errObj.isPermissionRevoked;
+                            const failReason = permissionRevoked
+                                ? 'Aborted due to permission revocation'
+                                : getErrorMessage(mainWriteError);
+                            failedChats.push({
+                                id: chat.id || nid,
+                                title: listTitle,
+                                error: failReason
+                            });
+                        }
+
+                        metaResults.push({
+                            id: chat.id,
+                            title: listTitle,
+                            url: chat.url || `https://gemini.google.com/app/${chat.id}`,
+                            createdAt: toIso(chat.createdAt || chat.timestamp || listC?.timestamp),
+                            updatedAt: toIso(chat.updatedAt || chat.timestamp || listC?.timestamp),
+                            messageCount: computeExportMessageCount(chat),
+                            attachmentCount: queuedAssetsForThisChat || chat.attachmentCount || 0,
+                            exportFile: fileName,
+                            status: mainWriteError ? 'failed' : 'success',
+                            ...(driftNotable ? {
+                                parseStatus: chatRecordStatusWithDrift('ok', chatDrift),
+                                schemaDrift: chatDrift.schemaDrift,
+                                turnsRejected: chatDrift.turnsRejected,
+                                hasHeuristicDocs: chatDrift.hasHeuristicDocs || void 0
+                            } : {})
+                        });
+
+                        completedCount++;
+                        updateProgress(completedCount, listTitle);
+
+                        if (recovery && recovery.updateSessionStatus) {
+                            await recovery.updateSessionStatus({
+                                status: 'running',
+                                slot,
+                                total: totalChats,
+                                current: completedCount,
+                                lastChatId: chat.id,
+                                lastChatTitle: listTitle,
+                                format,
+                                useZip
+                            });
+                        } else {
+                            try {
+                                await SessionStore.setSession({
+                                    status: 'running',
+                                    slot,
+                                    total: totalChats,
+                                    current: completedCount,
+                                    lastChatId: chat.id,
+                                    lastChatTitle: listTitle,
+                                    format,
+                                    useZip
+                                });
+                            } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e); }
+                        }
+                    } catch (e) {
+                        // B3: AbortError = 用户取消（资产任务/写文件向上抛）—— 不记失败，直接结束
+                        if ((e as any)?.name === 'AbortError') {
+                            onLog(`[${requestedItem.title || requestedItem.id}] 导出已取消`, 'warn');
+                            break;
+                        }
+                        const errMsg = typeof e === 'object' && e !== null && 'message' in (e as any) ? String((e as any).message) : String(e);
+                        const failId = requestedItem.id || 'unknown';
+                        const title = requestedItem.title || failId;
+                        onLog(`[${title}] export failed, skipped: ${errMsg}`, 'error');
+                        if (typeof console !== 'undefined' && console.warn) {
+                            console.warn('[GemExporter:exportOrchestrator.ts] per-chat export failed for', failId, e);
+                        }
+                        failedChats.push({ id: failId, title, error: errMsg });
+                        completedCount++;
+                        try { updateProgress(completedCount, title); } catch (_) { /* intentional */ }
                     }
                 }
             };
@@ -960,52 +1041,51 @@ export const sanitizeZipPath = (p?: string | null): string => {
             for (let w = 0; w < workerCount; w++) {
                 exportWorkers.push(exportWorker());
             }
-            await Promise.all(exportWorkers);
-
-            if (convsNeedSave) {
-                if (Storage) {
-                    await Storage.setConversations(slot, conversations);
-                } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                    const convKey = slot === 'u0' ? 'gemini_conversations' : `gemini_conversations_${slot}`;
-                    chrome.storage.local.set({ [convKey]: conversations });
-                }
+            try {
+                await Promise.all(exportWorkers);
+            } catch (e) {
+                onLog(`导出调度异常: ${typeof e === 'object' && e !== null && 'message' in (e as any) ? (e as any).message : String(e)}`, 'error');
+                throw e;
             }
 
             attachmentQueue.close();
             try {
                 await Promise.all(consumerPool);
             } catch (e) {
-                const I18n = (globalThis as any).I18n;
-                if (this.aborted) onLog(typeof I18n !== 'undefined' ? I18n.t('logAssetsAborted') : '附件下载因终止而中断', 'warn');
+                if (this.aborted) onLog(getI18n().t('logAssetsAborted'), 'warn');
             }
 
             if (includeIndex && metaResults.length > 0) {
                 if (recovery && recovery.writeIndexAndMeta) {
-                    await recovery.writeIndexAndMeta(metaResults, landedChats, downloadedAssets, totalAssets, writeFileDirect, folder, useZip);
+                    try {
+                        await recovery.writeIndexAndMeta(metaResults, landedChats, downloadedAssets, totalAssets, writer);
+                    } catch (e) {
+                        // index 写崩 = 导出契约不完整：记用户可见错误后 fail-closed 外抛
+                        onLog(getErrorMessage(e), 'error');
+                        throw e;
+                    }
                 }
             }
 
-            let isDevMode = false;
-            try {
-                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                    const devData = await chrome.storage.local.get(['gemini_dev_mode']);
-                    isDevMode = !!devData?.gemini_dev_mode;
-                }
-            } catch (e) {
-                if (typeof console !== 'undefined' && console.warn) console.warn('[GemExporter:storage] Storage operation failed:', e);
-            }
+            const isDevMode = Storage && typeof Storage.isDevMode === 'function'
+                ? await Storage.isDevMode()
+                : false;
 
-            if (isDevMode || failedChats.length > 0 || failedAttachments.length > 0) {
+            // B3: 取消时不写 _export_errors.json —— 取消是用户意图，不是失败
+            // P1-8: parser 漂移同样触发诊断文件（成功但 partial 的会话不能静默）
+            if ((isDevMode || failedChats.length > 0 || failedAttachments.length > 0 || parseDriftChats.length > 0)
+                && !this.aborted && !(abortSignal && abortSignal.aborted)) {
                 let fullLogText = '';
                 if (recovery && recovery.buildSessionLogText) {
                     fullLogText = recovery.buildSessionLogText({
                         landedChats,
-                        totalChats: payloadIds.length,
+                        totalChats,
                         downloadedAssets,
                         totalAssets,
                         skipped,
                         failedChats,
                         failedAttachments,
+                        parseDrift: parseDriftChats,
                         isDevMode
                     });
                 }
@@ -1014,7 +1094,7 @@ export const sanitizeZipPath = (p?: string | null): string => {
                     exportedAt: new Date().toISOString(),
                     isDevMode,
                     summary: {
-                        total: payloadIds.length,
+                        total: totalChats,
                         landed: landedChats,
                         failed: failedChats.length,
                         skipped,
@@ -1023,43 +1103,39 @@ export const sanitizeZipPath = (p?: string | null): string => {
                         assetsFailed: failedAttachments.length
                     },
                     failedChats,
-                    failedAttachments
+                    failedAttachments,
+                    parseDrift: parseDriftChats
                 };
 
                 if (recovery && recovery.writeDiagnostics) {
-                    await recovery.writeDiagnostics(isDevMode, sessionJson, fullLogText, writeFileDirect, folder, useZip, onLog);
+                    try {
+                        await recovery.writeDiagnostics(isDevMode, sessionJson, fullLogText, writer, onLog);
+                    } catch (e) {
+                        // 诊断文件是 best-effort：记用户可见错误但不外抛，
+                        // 避免"写错误报告失败后再写错误报告"的递归
+                        onLog(getErrorMessage(e), 'error');
+                    }
                 }
             }
 
-            if (useZip) {
-                await this._packageAndDownload(zipWriter || zip, payloadIds, downloadedAssets, totalAssets, options, onLog, onProgress);
+            // B3: 取消后跳过打包/下载（同 _packageAndDownload 首行判定）—— 无下载回调
+            if (!this.aborted && !(abortSignal && abortSignal.aborted) && useZip) {
+                if (landedChats === 0 && skipped > 0 && failedChats.length === 0) {
+                    onLog(getI18n().t('logExportSkippedAllNoZip'), 'info');
+                } else {
+                    await this._packageAndDownload(zipWriter || zip, payloadIds, downloadedAssets, totalAssets, options, onLog, onProgress);
+                }
             }
 
             if (recovery && recovery.updateSessionStatus) {
                 await recovery.updateSessionStatus({
                     status: this.aborted ? 'aborted' : (failedChats.length > 0 ? 'completed_with_errors' : 'completed'),
                     slot,
-                    total: payloadIds.length,
-                    current: landedChats,
+                    total: totalChats,
+                    current: landedChats + skipped,
                     failedCount: failedChats.length,
                     skipped
                 });
-            } else {
-                try {
-                    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                        await chrome.storage.local.set({
-                            gemini_last_export_session: {
-                                status: this.aborted ? 'aborted' : (failedChats.length > 0 ? 'completed_with_errors' : 'completed'),
-                                slot,
-                                total: payloadIds.length,
-                                current: landedChats,
-                                failedCount: failedChats.length,
-                                skipped,
-                                updatedAt: Date.now()
-                            }
-                        });
-                    }
-                } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[GemExporter:exportOrchestrator.ts]', e); }
             }
 
             return {
@@ -1081,7 +1157,7 @@ export {
     ensureSubDir
 };
 
-export const ExportOrchestratorModule: ExportOrchestratorModule = {
+export const ExportOrchestratorModule = {
     ExportOrchestrator,
     AsyncQueue,
     ensureSubDir,
@@ -1090,18 +1166,6 @@ export const ExportOrchestratorModule: ExportOrchestratorModule = {
     getExtensionVersion
 };
 
-(ExportOrchestratorModule as any).ExportOrchestrator = ExportOrchestrator;
-(ExportOrchestratorModule as any).AsyncQueue = AsyncQueue;
-(ExportOrchestratorModule as any).ensureSubDir = ensureSubDir;
-(ExportOrchestratorModule as any).sanitizeFileName = sanitizeFileName;
-(ExportOrchestratorModule as any).sanitizeZipPath = sanitizeZipPath;
-(ExportOrchestratorModule as any).getExtensionVersion = getExtensionVersion;
-(ExportOrchestratorModule as any).default = ExportOrchestratorModule;
+export type ExportOrchestratorModule = typeof ExportOrchestratorModule;
 
-if (typeof globalThis !== 'undefined') {
-    if (!(globalThis as any).ExportOrchestrator) (globalThis as any).ExportOrchestrator = ExportOrchestrator;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = ExportOrchestratorModule;
-}
 export default ExportOrchestratorModule;

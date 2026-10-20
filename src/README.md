@@ -1,129 +1,218 @@
-# System Architecture & Layering
+# 🏗️ Gemini Exporter — Source Code Architecture & Directory Guide
 
-Gemini Exporter enforces a strict 4-tier modular architecture across Chrome MV3 boundaries and domain responsibilities, fully implemented in TypeScript with strict type checking enabled:
+This document describes the modern directory layout, subsystem boundaries, build artifacts, and development invariants of the `src/` codebase.
+
+For full architectural diagrams, AST logical mapping matrix, sequence diagrams, and testing specifications, refer to [docs/architecture.md](../docs/architecture.md).
+
+---
+
+## 🏛️ Comprehensive Subsystem Layout
+
+Gemini Exporter enforces a strict 4-tier modular architecture across Chrome MV3 boundaries and domain responsibilities, implemented in strict TypeScript:
 
 ```
 src/
-  background/                  Extension Service Worker Subsystem
-    background.ts              Message routing, session monitoring, tab delegation
-                               (Bundled into dist/background/background.js with static ESM imports)
+  background/                  Extension Service Worker Subsystem (MV3 Background)
+    background.ts              Central message routing, lifecycle initialization, keepalive orchestration
+    lifecycle.ts               Install workbench opening, feedback URL, session storage access level
+    keepAlive.ts               Heartbeat ping mechanism for lengthy batch export & deep scan tasks
+    abortManager.ts            Multi-account slot abort flags persisted in chrome.storage.session
+    batchFetcher.ts            Background batchexecute RPC proxy and tab message failover
+    liveSaveHandler.ts         Background FileSystemDirectoryHandle disk save executor
+    tabAction.ts               Dynamic active icon color/gray status listener
 
   content/                     Injected Gemini Content Script Subsystem
-    content.ts                 ISOLATED world entrypoint & sync coordinator (bundled to dist/content/content.js)
-    content.css                Sync status floating UI & badge styles
-    contentContext.ts          Cancellation tokens, timer registries, abort signals
-    hookCredentials.ts         MAIN world network interceptor & credential bridge (bundled to dist/content/hook.js)
-    messageRouter.ts           Message routing between background/options and content script
-    pageObserver.ts            DOM mutation observation, URL change detection, history events
-    syncEngine.ts              Incremental & deep history sync engine (delegates merge/dedup to utils SSoT)
-    domScraper.js              DOM fallback scraper
+    content.ts                 ISOLATED world entrypoint & subsystem coordinator (bundled to dist/content/content.js)
+    content.css                Floating badge styling & live save UI animation
+    hookCredentials.ts         MAIN world network interceptor & credential sniffer (bundled to dist/content/hook.js)
+    accountSniffer.ts          Real Google profile sniffer (email, name, gaiaId) from DOM avatar & WIZ data
+    messageBridge.ts           Cross-world window.postMessage bridge (MAIN -> ISOLATED)
+    liveSaveObserver.ts        Gemini generation completion & DOM mutation debounced observer
+    liveSaveCoordinator.ts     Real-time live auto-save coordinator (RPC/DOM -> IndexedDB & Disk)
+    syncEngine.ts              Incremental & deep history scan coordinator
+    domScraper.ts              DOM fallback scraper when RPC payloads are unavailable
+    badgeView.ts               Floating sync & live save feedback badge in Gemini web UI
     assetFetcher.ts            Media, images, and blob streaming fetcher
+    bootstrap.ts               Page token & initial credential bootstrap
+    cleanupRegistry.ts         Hot reload / re-injection listener cleanup registry
+    contentContext.ts          Cancellation tokens, timer registries, dev mode state
+    messageRouter.ts           Message routing between background/options and content script
+    pageObserver.ts            SPA URL change and sidebar DOM mutation observer
 
-  core/                        Pure Domain Logic & Engine (Decoupled from DOM)
-    api/                       Note: limited DOM access (content script only)
-      geminiClient.ts          batchexecute RPC client & abort handling (facade)
-      geminiParser.ts          Protocol parsing, turns, attachments & title extraction (facade)
-      client/                  Granular RPC & credential sub-modules
-        credentialManager.ts   SNlM0e token & session slot credential resolution
-        pagination.ts          batchexecute pagination & list/detail fetching
-        retryPolicy.ts         Exponential backoff, 400/401/429 HTTP error handling
+  core/                        Pure Domain Logic & Engine (Strictly Decoupled from DOM)
+    provider/                  Universal AI Provider Abstraction Layer
+      aiProvider.ts            Universal AI provider interface, capabilities & data contract
+      providerRegistry.ts      Provider registry with URL matching & auto-registration
+      providerResolver.ts      Active provider resolution & fallback helper
+      index.ts                 Provider subsystem barrel export
+      gemini/                  Gemini platform adapter
+        geminiProvider.ts      batchexecute RPC provider implementation
+
+    api/                       Protocol Communication & Deserialization
+      geminiClient.ts          batchexecute RPC client facade (abort, retry, token refresh)
+      geminiParser.ts          Protocol parsing, turns, attachments & title extraction facade
+      client/                  Granular RPC & Credential Sub-modules
+        credentialManager.ts   SNlM0e token, session slot & credential resolution
+        pagination.ts          batchexecute pagination & list/detail cursor fetching
+        retryPolicy.ts         Exponential backoff, 400 XSRF auto-refresh & 429 backoff
         rpcClient.ts           batchexecute payload construction & envelope parsing
-      parser/                  Granular wire format parsing sub-modules
-        attachments.ts         Image, file, code, and document attachment extraction
-        extractors.ts          Deep walk, thought candidate, timestamp & title extractors
-        parseDetail.ts         Conversation turn recursion & schema drift detection
+        credStorage.ts         Credential cache storage helper
+      parser/                  Granular Wire Format Parsing Sub-modules
         parseList.ts           batchexecute conversation list item extraction
-    engine/
-      exportEngine.ts          Export pipeline coordinator (streaming & recovery facade)
-      takeoutEngine.ts         Google Takeout archive parser & offline fallback (facade)
-      chatFormatter.ts         Markdown, JSON, OpenAI schema formatters
-      assetPipeline.ts         Media asset downloading, C2PA validation & ZIP packaging
-      export/                  Export execution sub-modules
-        exportOrchestrator.ts  Batch export orchestration & async queue management
-        batchWorker.ts         Individual conversation export worker
+        parseDetail.ts         Multi-turn conversation recursion & schema drift detection
+        extractors.ts          Thought blocks, candidate text, citations & title extractors
+        attachments.ts         Image, user file, and Deep Research document attachments
+        payload.ts             Low-level JSPB payload unpackers
+
+    engine/                    Export, Conversion & Packaging Engines
+      exportEngine.ts          Export pipeline coordinator facade (delegates to ExportOrchestrator)
+      export/                  Export Execution Sub-modules
+        exportOrchestrator.ts  Batch export orchestration & AsyncQueue worker pool
+        batchWorker.ts         Individual conversation worker (fetch -> parse)
+        parseDrift.ts          Schema drift telemetry & diagnostic warning tracker
         rateLimiter.ts         Adaptive rate limiting & circuit breaker state machine
-        progressReporter.ts    Real-time export progress calculation & UI notification
-        sessionRecovery.ts     Session recovery persistence, diagnostics & index generation
-      takeout/                 Takeout sub-modules
-        takeoutParser.ts       Takeout ZIP stream parser & HTML stripper
-        mediaIndex.ts          C2PA timestamp indexing & media pool mapping
-        zipBombGuard.ts        ZIP bomb security validation & entry bounds checking
-      writers/
-        zipWriter.ts           JSZip in-memory zip packaging writer
+        progressReporter.ts    Real-time progress, ETA, and throughput calculation
+        sessionRecovery.ts     Session recovery persistence & crash resumption
+      takeoutEngine.ts         Google Takeout archive parser facade
+      takeout/                 Takeout Sub-modules
+        takeoutParser.ts       Takeout ZIP archive parser & entry iterator (in-memory JSZip)
+        takeoutHtmlParser.ts   Offline HTML stripper & prompt title extractor
+        mediaIndex.ts          C2PA metadata timestamp extraction & media pool mapping
+        zipBombGuard.ts        ZIP bomb security validation (entry count, archive & uncompressed bounds)
+      template/                Standalone HTML Rendering Templates
+        htmlTemplate.ts        Shared Canonical HTML styles/scripts and escaping/URL helpers
+      chatFormatter.ts         Async Canonical Markdown/HTML facade; synchronous JSON & OpenAI serialization
+      liveSaveWriter.ts        Async Canonical Markdown live-save formatting and FileSystem disk writes
+      assetPipeline.ts         Media asset downloading & relative-path archive packaging
+      writers/                 Pluggable Storage Writers
+        writerInterface.ts     Unified Writer abstraction & factory
+        zipWriter.ts           JSZip in-memory zip packaging writer (STORE mode for binary media)
         fsWriter.ts            FileSystem Access API directory tree writer
-        writerInterface.ts     Unified writer abstraction & factory
-    storage/
-      storageService.ts        Multi-account slot chrome.storage abstraction
-      formatStore.ts           Export format validation & persistence
-    protocol/
-      protocol.ts              Wire RPC identifiers, limits, deletion anchors & constants
-    utils/
-      utils.ts                 Single Source of Truth: title arbitration, merge & deduplication
-      constants.ts             Enums, format definitions, storage keys
+
+    export/                    Canonical Document Normalization & Rendering
+      canonical/               Shared conversation, block/inline, asset & citation document contract
+        gemini/                Gemini input normalization; diagnostics/raw evidence stay outside the document
+        renderCanonicalHtml.ts HTML renderer
+        renderCanonicalMarkdown.ts Markdown serializer using archive-local assets
+      typst/                   Canonical to Typst payload and PDF rendering
+      pdf/pipeline/            Resource resolution, payload, compile & delivery stages
+
+    storage/                   Storage Abstraction & Persistence Layer
+      storageService.ts        Multi-account slot chrome.storage.local abstraction & two-tier storage coordinator
+      conversationDetailStore.ts IndexedDB heavy turn & message body detail store for two-tier storage architecture
+      liveStorageManager.ts    Live auto-save configuration and FileSystem Directory Handle proxy
+      idbHandleStore.ts        FileSystemDirectoryHandle IndexedDB persistence across sessions
+      schemaMigration.ts       Storage schema version migration & legacy key upgrade runner
+      sessionStore.ts          In-memory and chrome.storage.session recovery cache
+      formatStore.ts           Export format preferences & template persistence
+
+    utils/                     Single Source of Truth (SSoT) & Utilities
+      utils.ts                 SSoT facade: title arbitration, deduplication, path cleaning
+      titleUtils.ts            Multi-tier title arbitration (RPC > Detail > Prompt > Takeout)
+      mergeUtils.ts            SSoT merge & deduplication (preserves highest-rank title & timestamps)
+      pathUtils.ts             Strict relative path sanitization & filename builders
+      chipUtils.ts             Internal chip URL filtering & code chip extraction
+      progressUtils.ts         ETA, bitrate, and byte formatting utilities
       tabService.ts            Tab query, routing, and message failover
-      i18n.ts                  Bilingual dictionary & translation engine
-      locales/
-        zh.ts                  Chinese localization dictionary
-        en.ts                  English localization dictionary
+      messaging.ts             Type-safe chrome.runtime message dispatching
+      moduleOverrides.ts       Dependency injection seam for deterministic unit testing
+      environment.ts           Local development environment & debug flag detector
+      i18n.ts                  Bilingual translation engine (locales/zh.ts, locales/en.ts)
+      constants.ts             System constants, storage keys, format enums, version info
+
+    protocol/                  Wire Protocols & Event Contracts
+      protocol.ts              Wire RPC identifiers (RPCS.LIST, RPCS.DELETE), deletion anchors
+      events.ts                Strongly typed cross-world and internal event interfaces
+
+  types/                       Shared TypeScript Type Contracts
+    index.ts                   Central type barrel export
+    conversation.ts            Conversation, ChatTurn, ChatMessage & Attachment interfaces
+    entrypoints.ts             Module entrypoint & facade type definitions
+    errors.ts                  Structured error codes & custom error contracts
+    global.d.ts                Ambient global & window declarations
+    liveSave.ts                Live auto-save state & configuration types
+    messages.ts                Cross-context runtime message discriminated unions
+    ui.ts                      Workbench & view state interfaces
+    utils.ts                   Utility & title arbitration contract types
 
   ui/                          User Interface Subsystem
-    options/
-      options.html             Options Workbench markup
-      options.ts               Workbench coordinator (bundled into dist/ui/options.js)
-      modules/                 Decomposed Options UI sub-modules
-        optionsInit.ts         Initialization & slot loading
-        optionsExport.ts       Export trigger & progress handling
-        optionsSync.ts         Sync engine coordinator & slot change binding
-        optionsTakeout.ts      Takeout prompt & import workflows
-        optionsSettings.ts     Language, dev mode & diagnostics
-    popup/
-      popup.html               Browser action popup markup
-      popup.ts                 Quick export & popup coordinator (bundled into dist/ui/popup.js)
+    options/                   Workbench Subsystem
+      options.html             Workbench markup
+      options.ts               Workbench entrypoint & module coordinator (bundled to dist/ui/options.js)
+      optionsContext.ts        Shared options page dependency context
+      modules/                 Decomposed Options UI Sub-modules
+        optionsInit.ts         Initialization, slot loading & DOM binding
+        optionsExport.ts       Export button binding & progress orchestration
+        optionsSync.ts         Quick Sync & Deep Scan coordinators
+        optionsTakeout.ts      Takeout drag-and-drop & import coordinator
+        optionsSettings.ts     Language toggle, dev mode & diagnostic console
+    popup/                     Browser Action Popup Subsystem
+      popup.html               Popup markup
+      popup.ts                 Quick export & options launcher (bundled to dist/ui/popup.js)
     state/
-      conversationsStore.ts    Reactive conversation state & slot manager
+      conversationsStore.ts    Reactive conversation state machine, filter & sort manager
     views/
-      listView.ts              Virtual conversation list & selection renderer
-      logView.ts               Diagnostic console log view
+      listView.ts              Conversation list & selection renderer
+      progressView.ts          Batch export & scanning modal progress bar with ETA
       accountView.ts           Multi-account slot selector dropdown
-      dialogView.ts            Session recovery banner & modal view
+      dialogView.ts            Session recovery banner & confirmation modal dialogs
+      logView.ts               Diagnostic console log view
     controllers/
       exportController.ts      Export execution & progress orchestration
       syncController.ts        Incremental & deep history scan coordinator
       takeoutController.ts     Takeout ZIP import & conflict resolution
-      dirHandleController.ts   FileSystem Access API IndexedDB persistence
+      dirHandleController.ts   FileSystem Access API picker & permission coordinator
     tour/
-      tourGuide.ts             5-step onboarding walkthrough & highlight engine
-
-  types/                       TypeScript Declarations & Wire Contracts
-    index.ts                   Aggregated type exports
-    wire.ts                    JSPB wire format types, batchexecute envelopes & type guards
-    models.ts                  Core domain entity interfaces (Conversation, Turn, Attachment)
-    export.ts                  Export options, progress reporting, session recovery types
-    ui.ts                      UI view/controller contracts & store interfaces
-    api.ts                     Client credentials, RPC and pagination options
-    global.d.ts                Ambient type augmentation (Chrome API polyfills, JSZip)
+      tourGuide.ts             6-step onboarding walkthrough & highlight mask engine
+      tourSteps.ts             Step definitions & instructional text
+      tourPosition.ts          Tooltip dynamic geometry & anchor position calculations
+      tourGuide.css            Onboarding spotlight & callout styling
+      featureReleases.ts       Release notes & new feature banners
+    utils/
+      domI18n.ts               DOM-based i18n renderer & language switch UI bindings (isolated from Core)
+    uiCommon.ts                DOM helpers ($) and i18n bridging
 ```
 
-## Build System: Pure Bundle Architecture
+---
 
-Gemini Exporter uses `esbuild` (`build.js`) configured for a high-performance, single-pass pure bundle strategy:
+## ⚡ Build System: esbuild Pure Bundle Architecture
 
-1. **5 Production Bundles (Chrome MV3 Runtime)**:
-   - `src/content/content.ts` -> `dist/content/content.js` (ISOLATED World content script)
-   - `src/content/hookCredentials.ts` -> `dist/content/hook.js` (MAIN World interceptor)
-   - `src/background/background.ts` -> `dist/background/background.js` (Service Worker bundle with static ESM imports, zero `importScripts`)
-   - `src/ui/popup/popup.ts` -> `dist/ui/popup.js` (Popup single-bundle entrypoint)
-   - `src/ui/options/options.ts` -> `dist/ui/options.js` (Options single-bundle entrypoint, JSZip externalized)
-   All 5 entrypoints are compiled in parallel in ~25ms with sourcemaps and minification enabled.
+Gemini Exporter compiles its TypeScript source tree using `esbuild` (`build.js`) in a single pass:
 
-2. **Source-Level Test Execution**:
-   - Node.js unit tests (`tests/*.test.ts`) dynamically load TypeScript sources directly via `tests/ts_register.js` for instant testing without intermediate disk artifacts.
-   - Run `node build.js --per-file` if individual unbundled transpiled modules are needed for offline AST inspection.
+| Output Bundle Artifact | Source Entrypoint | Execution World | Description |
+|---|---|---|---|
+| `dist/content/content.js` | `src/content/content.ts` | ISOLATED World | Content script entrypoint, observers, sync engine & badge view |
+| `dist/content/hook.js` | `src/content/hookCredentials.ts` | MAIN World | Host page XHR/Fetch network interceptor & credential sniffer |
+| `dist/background/background.js` | `src/background/background.ts` | Service Worker | Background worker, lifecycle, keepalive, abort state & batch fetcher |
+| `dist/ui/popup.js` | `src/ui/popup/popup.ts` | Extension Page | Popup action center: quick export & workbench launcher |
+| `dist/ui/options.js` | `src/ui/options/options.ts` | Extension Page | Workbench dashboard: batch selection, Takeout import, sync & export |
 
-## Architectural Rules
+All bundles are generated in `< 30ms` with minification and sourcemaps.
 
-1. **`core` has zero DOM dependencies except the `api/` layer which runs exclusively in content script context**: Core algorithms (parsing, formatting, title arbitration) run identically in Node.js unit tests, extension service workers, and UI pages.
-2. **Strict UI Separation**: `state` handles storage sync, `views` handles HTML rendering, `controllers` orchestrates workflows, and `options.ts` / `popup.ts` act as thin coordinators.
-3. **Single Source of Truth (SSoT)**: All string sanitization, filename cleaning, and multi-tier title arbitration & deduplication logic resides exclusively in `src/core/utils/utils.ts` (`resolveTitle`, `mergeConversation`, `deduplicateConversations`).
-4. **Wire Format Type Safety**: batchexecute RPC payloads are validated using type guards in `src/types/wire.ts` (`isBatchexecuteChunk`, `isJspbArray`, `isRecord`), guaranteeing type safety across Google wire format evolution.
-5. **Two-Tier Test Verification**: All changes are validated by Tier 1 (22 Node.js unit suites + 22 Playwright E2E specs) and Tier 2 live Chrome staging.
+---
+
+## 🛡️ Architectural Rules & Invariants
+
+1. **Zero DOM Dependencies in Core (Zero DOM Baseline & Layered Browser API Policy)**:
+   `src/core/` organizes modules by domain responsibility with a strict boundary on browser API usage:
+   - **Strict Zero-DOM / Zero-Browser-API Layer (Pure Logic)**: Response parsers (`api/parser/*`), formatters (`chatFormatter.ts`, `template/htmlTemplate.ts`), pure utilities (`titleUtils.ts`, `mergeUtils.ts`, `pathUtils.ts`, `progressUtils.ts`, `chipUtils.ts`), protocol constants (`protocol/*`), and provider interfaces (`aiProvider.ts`). These modules never touch `document`, `HTMLElement`, or `window`, running identically in Node.js unit tests, Service Workers, and UI pages.
+   - **Runtime Infrastructure Layer (Standard Browser APIs Allowed, Zero DOM Rendering)**: API client (`api/client/*`), storage (`storage/*`), writers (`writers/*`), tab routing (`tabService.ts`), and export orchestration (`exportOrchestrator.ts`). These may use standard runtime APIs (`fetch`, `chrome.*`, `IndexedDB`, `FileSystem Access API`, plus read-only `querySelectorAll("script")` in `credentialManager.ts` and legacy `(window as any).__gemExporterAborted` fallback in `geminiClient.ts`/`pagination.ts`), but **never perform DOM rendering or mutation**, which belongs exclusively to `src/ui/` (including `src/ui/utils/domI18n.ts`) and `src/content/`.
+2. **Strict UI Separation of Concerns**:
+   - `state/`: Unidirectional data flow and reactive conversation state machine;
+   - `views/`: Stateless DOM template generation, list rendering, and event bubble binding;
+   - `controllers/`: Business workflow orchestration and asynchronous execution;
+   - `options.ts` / `popup.ts`: Pure entrypoint mount and sub-module coordinators.
+3. **Single Source of Truth (SSoT) & Title Anti-Degradation**:
+   Path sanitization (`pathUtils.ts`), title arbitration (`titleUtils.ts`), and list merging (`mergeUtils.ts`) reside exclusively in `src/core/utils/`. No module may roll its own regexes for title cleaning or sorting. Strict priority: `RPC 权威标题 > 详情提取标题 > 提问前缀临时标题 > Takeout 离线导入标题`.
+4. **Sandboxed Interceptors Guard**:
+   Code injected into `MAIN` world (`hookCredentials.ts`) runs in a fail-safe sandbox: any unexpected exception is swallowed silently to guarantee zero degradation of native Google Gemini functionality.
+5. **Event-Driven AsyncQueue & Controlled Polling Boundary**:
+   All batch exports and downloads are driven by `AsyncQueue` worker pools (default concurrency: 3) combined with `RateLimiter` exponential backoff state machines to intelligently avoid HTTP 429 rate limits.
+6. **MV3 Service Worker Keepalive Resilience**:
+   Regular lightweight heartbeat pings keep the MV3 Service Worker alive during lengthy deep scans and multi-megabyte media packaging tasks, preventing unexpected background worker termination by Chromium.
+7. **Two-Tier Storage & Quota Isolation**:
+   `chrome.storage.local` strictly stores lightweight conversation metadata index (`id`, `title`, `timestamp`, `updatedAt`, `snippet`, `count`), maintaining memory well below Chrome's 10MB quota ceiling. Heavy conversation turns, full messages, and media references are persisted in IndexedDB via `conversationDetailStore.ts`, completely eliminating storage quota exhaustion and data truncation.
+8. **Headless FileSystem Permission Resilience**:
+   When Service Worker executes in headless background and directory handle permissions drop to `prompt` upon browser restart (where Chromium forbids headless permission prompting), the system safely returns `permission_prompt_needed` and records `dirError` in live config, allowing 1-click reauthorization via user gesture (`reauthorizeDirHandle()`).
+9. **Multi-Account Strict Isolation & Zero Token Stealing**:
+   The multi-account subsystem is anchored to real Google Profiles (email, name, Gaia ID) sniffed via `accountSniffer.ts`. Each account slot maintains an isolated credential and conversation namespace with zero cross-slot token borrowing. Cross-tab dispatching strictly matches the active account slot, rejecting dispatch if no matching tab is found.
