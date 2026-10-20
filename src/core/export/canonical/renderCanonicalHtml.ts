@@ -488,7 +488,7 @@ export function renderCanonicalHtml(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Gemini Exporter">
+<meta name="generator" content="AI Exporter">
 <title>${safeTitle}</title>
 <style>${GEM_HTML_CSS}
 ${CANONICAL_EXTRA_CSS}</style>

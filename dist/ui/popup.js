@@ -1089,7 +1089,7 @@ a.gem-citation-chip { color: var(--accent-blue); }
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Gemini Exporter">
+<meta name="generator" content="AI Exporter">
 <title>${s}</title>
 <style>${fc}
 ${M2}</style>

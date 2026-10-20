@@ -54,7 +54,7 @@ test('html_export - formatHtmlCanonical returns valid structure, metadata, and s
     // 1. Valid HTML5 Doctype & Meta
     assert.ok(html.startsWith('<!DOCTYPE html>'), 'Must start with <!DOCTYPE html>');
     assert.ok(html.includes('<title>Quantum Computing &amp; Algorithms</title>'), 'Title must be safely escaped in <title>');
-    assert.ok(html.includes('generator" content="Gemini Exporter"'), 'Must contain generator meta');
+    assert.ok(html.includes('generator" content="AI Exporter"'), 'Must contain generator meta');
 
     // 2. High fidelity Print Stylesheet (@media print) & Pure 1:1 Stream
     assert.ok(html.includes('@media print'), 'Must include @media print styles for PDF readiness');

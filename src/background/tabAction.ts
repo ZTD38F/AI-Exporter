@@ -18,7 +18,7 @@ export function updateTabActionState(tabId?: number | null, url?: string | null)
     if (typeof chrome === 'undefined' || !chrome.action || !tabId) return;
     const isGemini = isGeminiTabUrl(url);
     const icons = isGemini ? ACTION_COLOR_ICONS : ACTION_GRAY_ICONS;
-    const title = isGemini ? 'Gemini Exporter (Active)' : 'Gemini Exporter (未激活 - 当前非 Gemini 页面)';
+    const title = isGemini ? 'AI Exporter (Active)' : 'AI Exporter (未激活 - 当前非 Gemini 页面)';
     try {
         chrome.action.setIcon({ tabId, path: icons }).catch(() => {});
         chrome.action.setTitle({ tabId, title }).catch(() => {});
