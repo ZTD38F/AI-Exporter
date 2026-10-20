@@ -1,11 +1,9 @@
-// extractors.ts - JSPB Schema, unified tree walker, candidate, title, and timestamp extractors
-import type { Conversation } from "../../../types/index.js";
-
 export interface JspbTurnSchema {
     ID_META: number;
     TIMESTAMP: number;
     USER_PAYLOAD: number;
     MODEL_PAYLOAD: number;
+    REQUEST_ID_SLOT: number;
 }
 
 export interface JspbModelPayloadSchema {
@@ -13,6 +11,7 @@ export interface JspbModelPayloadSchema {
     SEARCH_QUERIES: number;
     PROVIDER: number;
     TELEMETRY_START: number;
+    STRUCTURED_CONTENT?: number;
 }
 
 export interface JspbCandidateSchema {
@@ -35,12 +34,77 @@ export interface JspbListItemSchema {
     COUNT_ALT2: number;
 }
 
+/**
+ * Inner payload structure after batchexecute envelope unwrap.
+ * Used by both parseList and parseDetail to locate turns, title, conv-id, and pagination token.
+ */
+export interface JspbInnerSchema {
+    /** Primary index for turns array (detail) or conversation list (list) */
+    TURNS_OR_LIST_PRIMARY: number;
+    /** Secondary index (fallback) for conversation list */
+    LIST_SECONDARY: number;
+    /** Candidate indices for conversation title (scanned in order) */
+    TITLE_CANDIDATES: number[];
+    /** Candidate indices for conversation ID */
+    CONV_ID_CANDIDATES: number[];
+    /** Candidate indices for next-page token (scanned in order) */
+    NEXT_TOKEN_CANDIDATES: number[];
+    /** Metadata-only detection: null/null sentinel then list-format row */
+    METADATA_ONLY_LIST: number;
+}
+
+/**
+ * Simple inline image tuple: [url, width, height, token?]
+ */
+export interface JspbInlineImageSchema {
+    URL: number;
+    WIDTH: number;
+    HEIGHT: number;
+    TOKEN: number;
+}
+
+/**
+ * Generated / uploaded media node (complex format):
+ *   [?, ?, filename, url, ?, token, ..., mimeType, ..., ?, ?, ?, dimensions]
+ */
+export interface JspbGeneratedImageSchema {
+    FILENAME: number;
+    URL: number;
+    TOKEN: number;
+    UPSCALE_FACTOR: number;
+    MIME_TYPE: number;
+    DIMENSIONS: number;  // [width, height, size]
+}
+
+/**
+ * Deep Research document metadata chip structure.
+ */
+export interface JspbDeepResearchDocSchema {
+    CHIP_URL: number;     // item[0][0]
+    ID: number;
+    TITLE: number;
+    CONTENT_ID: number;
+    TIMESTAMP: number;    // item[5] → [seconds, ...]
+}
+
+/**
+ * BardErrorInfo position within the batchexecute envelope.
+ */
+export interface JspbErrorInfoSchema {
+    ERROR_SLOT: number;
+}
+
 export interface GeminiJspbSchema {
     TURN: JspbTurnSchema;
     MODEL_PAYLOAD: JspbModelPayloadSchema;
     CANDIDATE: JspbCandidateSchema;
     CANDIDATE_BODY: JspbCandidateBodySchema;
     LIST_ITEM: JspbListItemSchema;
+    INNER: JspbInnerSchema;
+    INLINE_IMAGE: JspbInlineImageSchema;
+    GENERATED_IMAGE: JspbGeneratedImageSchema;
+    DEEP_RESEARCH_DOC: JspbDeepResearchDocSchema;
+    ERROR_INFO: JspbErrorInfoSchema;
 }
 
 export interface TurnDriftReport {
@@ -62,6 +126,7 @@ export interface GeminiParserExtractorsModule {
     GEMINI_JSPB_SCHEMA: GeminiJspbSchema;
     RESEARCH_PROMPT_PREFIX_RE: RegExp;
     detectTurnSchemaDrift: (turn: unknown, convId?: string) => TurnDriftReport;
+    hasTurnContentMarkers: (turn: unknown[]) => boolean;
     extractModelCandidates: (turn: unknown) => unknown[];
     extractCandidateText: (cand: unknown) => string;
     safeStructureClean: (str?: string | null) => string;
@@ -69,6 +134,7 @@ export interface GeminiParserExtractorsModule {
     deepWalk: (root: unknown, visitor: (node: unknown, depth: number) => boolean | void, maxDepth?: number) => void;
     extractThoughts: (candidateBlock: unknown) => string | null;
     extractCitations: (candidateBlock: unknown) => Citation[];
+    extractGroundingCitationMarkers?: (candidate: unknown) => string[];
     extractConversationId: (inner: unknown, turns?: unknown[]) => string;
     smartSummarizePrompt: (rawText?: string | null) => string;
     extractConversationTitle: (inner: unknown, turns?: unknown[]) => TitleResult;
@@ -81,14 +147,10 @@ export interface GeminiParserExtractorsModule {
     getProtocol: () => any;
 }
 
-declare global {
-    var GeminiParserExtractors: GeminiParserExtractorsModule;
-    var GEMINI_JSPB_SCHEMA: GeminiJspbSchema;
-    var detectTurnSchemaDrift: (turn: any, convId?: string) => TurnDriftReport;
-}
-
-import { GeminiUtils, normId as utilsNormId, isRealTitle as utilsIsRealTitle, cleanTitle as utilsCleanTitle } from "../../utils/utils.js";
+import { GeminiUtils, normId, isRealTitle, cleanTitle } from "../../utils/utils.js";
+import { RESEARCH_PROMPT_PREFIX_RE } from "../../utils/titleUtils.js";
 import { GeminiProtocol } from "../../protocol/protocol.js";
+import { payloadToMs, extractInnerPayload, extractCandidateValue, extractWithScan } from "./payload.js";
 
 /**
  * Declarative Schema Specification for Google Gemini JSPB (JavaScript Protocol Buffers)
@@ -100,13 +162,15 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
             ID_META: 0,        // ["c_xxx", "r_xxx"]
             TIMESTAMP: 1,      // [seconds, nanos]
             USER_PAYLOAD: 2,   // User input block
-            MODEL_PAYLOAD: 3   // Model payload container
+            MODEL_PAYLOAD: 3,  // Model payload container
+            REQUEST_ID_SLOT: 1 // Canonical request ID position in ID_META tuple: ["c_xxx", "r_xxx"][1]
         },
         MODEL_PAYLOAD: {
             CANDIDATES: 0,      // repeated Candidate: AI answer drafts
             SEARCH_QUERIES: 1,  // repeated SearchQuery: Grounding search keywords
             PROVIDER: 2,        // string: Grounding provider name ("google")
-            TELEMETRY_START: 3  // Internal routing/status codes ("c", "S", 6, 6, ".")
+            TELEMETRY_START: 3, // Internal routing/status codes ("c", "S", 6, 6, ".")
+            STRUCTURED_CONTENT: 12 // repeated StructuredNode: Wire document tree
         },
         CANDIDATE: {
             ID: 0,             // "rc_xxxx"
@@ -124,10 +188,40 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
             CREATE_TIME_ALT: 3,// Legacy/Alternative create timestamp array
             COUNT_ALT1: 4,     // Optional turn count if number
             COUNT_ALT2: 9      // Optional turn count if number
+        },
+        INNER: {
+            TURNS_OR_LIST_PRIMARY: 0,   // inner[0]: turns array (detail) or list items primary
+            LIST_SECONDARY: 1,          // inner[1]: list items secondary candidate (fallback)
+            TITLE_CANDIDATES: [2, 1],   // Scanned in order for string title
+            CONV_ID_CANDIDATES: [0, 1], // Scanned for "c_..." conversation ID
+            NEXT_TOKEN_CANDIDATES: [1, 2, 3], // Scanned for "tC..." pagination token
+            METADATA_ONLY_LIST: 2       // inner[2]: list-format metadata-only row
+        },
+        INLINE_IMAGE: {
+            URL: 0,            // string: Google media host URL
+            WIDTH: 1,          // number: pixel width
+            HEIGHT: 2,         // number: pixel height
+            TOKEN: 3           // string?: optional dedup token
+        },
+        GENERATED_IMAGE: {
+            FILENAME: 2,       // string: original file name (e.g. "watermarked_img_*.png")
+            URL: 3,            // string: Google media host download URL
+            TOKEN: 5,          // string?: dedup token
+            UPSCALE_FACTOR: 8, // number?: e.g. 2 for 2x upscale derivative rendition
+            MIME_TYPE: 11,     // string: e.g. "image/png"
+            DIMENSIONS: 15     // [width, height, size]
+        },
+        DEEP_RESEARCH_DOC: {
+            CHIP_URL: 0,       // item[0][0]: "...immersive_entry_chip..."
+            ID: 2,             // string: UUID or "rc_xxx"
+            TITLE: 3,          // string: document title
+            CONTENT_ID: 4,     // string?: content lookup key
+            TIMESTAMP: 5       // item[5][0] * 1000 → ms
+        },
+        ERROR_INFO: {
+            ERROR_SLOT: 5      // item[5] → JSON.stringify checks for "BardErrorInfo"
         }
     });
-
-    const RESEARCH_PROMPT_PREFIX_RE = /^(?:我已经完成了研究|我拟定了一个研究方案|I've completed your research|Here is a research plan)/i;
 
     function getUtils(): any {
         return GeminiUtils;
@@ -138,23 +232,6 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
         return GeminiProtocol;
     }
 
-    function normId(id?: string | number | null): string {
-        return utilsNormId(id);
-    }
-
-    function isRealTitle(t?: string | null, fallbackId?: string | number): boolean {
-        return utilsIsRealTitle(t, fallbackId);
-    }
-
-    function cleanTitle(rawTitle?: string | null): string {
-        return utilsCleanTitle(rawTitle);
-    }
-
-
-    /**
-     * Generic depth-bounded recursive walker over nested arrays and objects.
-     * Replaces 8+ duplicate ad-hoc walk() functions across the parsing pipeline.
-     */
     function deepWalk(root: unknown, visitor: (node: unknown, depth: number) => boolean | void, maxDepth: number = 50): void {
         function walk(node: unknown, depth: number) {
             if (!node || typeof node !== "object" || depth > maxDepth) return;
@@ -175,9 +252,35 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
         walk(root, 0);
     }
 
-    /**
-     * Validates turn structure against GEMINI_JSPB_SCHEMA and flags protocol drifts
-     */
+    function hasTurnContentMarkers(turn: unknown[]): boolean {
+        if (Array.isArray(turn[GEMINI_JSPB_SCHEMA.TURN.USER_PAYLOAD])) return true;
+        const modelPayload = turn[GEMINI_JSPB_SCHEMA.TURN.MODEL_PAYLOAD];
+        if (Array.isArray(modelPayload)) {
+            const cands = modelPayload[GEMINI_JSPB_SCHEMA.MODEL_PAYLOAD.CANDIDATES];
+            if (Array.isArray(cands)) {
+                for (const c of cands) {
+                    if (
+                        Array.isArray(c) &&
+                        typeof c[GEMINI_JSPB_SCHEMA.CANDIDATE.ID] === "string" &&
+                        (c[GEMINI_JSPB_SCHEMA.CANDIDATE.ID] as string).startsWith("rc_")
+                    ) return true;
+                }
+            }
+        }
+        let budget = 2000;
+        const stack: unknown[] = [turn];
+        while (stack.length && budget > 0) {
+            const node = stack.pop();
+            if (typeof node === "string") {
+                budget--;
+                if (node.startsWith("rc_") || node.startsWith("c_d")) return true;
+            } else if (Array.isArray(node)) {
+                for (let i = node.length - 1; i >= 0; i--) stack.push(node[i]);
+            }
+        }
+        return false;
+    }
+
     function detectTurnSchemaDrift(turn: unknown, convId?: string): TurnDriftReport {
         const warnings: string[] = [];
         if (!Array.isArray(turn)) {
@@ -195,6 +298,8 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
         }
         if (!idStr || (!idStr.startsWith("c_") && !idStr.startsWith("r_"))) {
             warnings.push(`Turn ID meta at index 0 does not match expected pattern: ${JSON.stringify(head)?.slice(0, 30)}`);
+        } else if (!hasTurnContentMarkers(turn)) {
+            warnings.push(`Turn head '${idStr.slice(0, 32)}' matches turn-id pattern but no rc_/c_d content markers found; isTurn() rejects this element (treated as non-turn)`);
         }
 
         const userPayload = turn[GEMINI_JSPB_SCHEMA.TURN.USER_PAYLOAD];
@@ -226,7 +331,7 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
             const isDev = (typeof globalThis !== "undefined" && ((globalThis as any).__gemExporterDevMode || (globalThis as any).__gemExporterVerboseLog))
                 || (typeof window !== "undefined" && ((window as any).__gemExporterDevMode || (window as any).__gemExporterVerboseLog));
             if (isDev) {
-                console.warn(`[Gemini Exporter][Schema Drift Warning] Detected ${warnings.length} schema drift(s) in conv ${convId || "unknown"}:`, warnings);
+                console.warn("[Gemini Exporter][Schema Drift Warning] Detected %d schema drift(s) in conv %s:", warnings.length, convId || "unknown", warnings);
             }
         }
 
@@ -236,9 +341,6 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
         };
     }
 
-    /**
-     * Safely extracts candidates array from turn according to schema
-     */
     function extractModelCandidates(turn: unknown): unknown[] {
         if (!turn || !Array.isArray(turn)) return [];
         const modelPayload = turn[GEMINI_JSPB_SCHEMA.TURN.MODEL_PAYLOAD];
@@ -246,54 +348,60 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
 
         const candidateBlock = modelPayload[GEMINI_JSPB_SCHEMA.MODEL_PAYLOAD.CANDIDATES];
         if (Array.isArray(candidateBlock)) {
-            // Case 1 (Standard Protobuf): modelPayload[0] is array of candidates [cand0, cand1, ...]
             if (candidateBlock.length > 0 && Array.isArray(candidateBlock[0])) {
                 return candidateBlock;
             }
-            // Case 2 (Single candidate wrapped directly):
             if (typeof candidateBlock[0] === "string") {
                 return [candidateBlock];
             }
         }
-        // Fallback: If turn[3] was a flat candidates array directly (legacy test compatibility)
         if (Array.isArray(modelPayload[0]) && typeof modelPayload[0][0] === "string" && modelPayload[0][0].startsWith("rc_")) {
             return modelPayload;
         }
         return [];
     }
 
-    /**
-     * Cleanly extracts candidate response text without language tag (e.g. "zh") pollution
-     */
+    type CandidateBodyTextExtractor = (body: unknown) => string | null;
+
+    const CANDIDATE_BODY_EXTRACTORS: CandidateBodyTextExtractor[] = [
+        (body) => (typeof body === "string" ? body : null),
+
+        (body) => {
+            if (!Array.isArray(body)) return null;
+            const parts = body[GEMINI_JSPB_SCHEMA.CANDIDATE_BODY.PARTS];
+            if (typeof parts === "string") return parts;
+            if (Array.isArray(parts)) {
+                const textChunks: string[] = [];
+                for (const part of parts) {
+                    if (typeof part === "string") {
+                        textChunks.push(part);
+                    } else if (Array.isArray(part) && typeof part[0] === "string") {
+                        textChunks.push(part[0]);
+                    }
+                }
+                if (textChunks.length) return textChunks.join("");
+            }
+            return null;
+        },
+
+        (body) => {
+            if (Array.isArray(body) && typeof body[0] === "string" && body[0].length > 3) {
+                return body[0];
+            }
+            return null;
+        }
+    ];
+
     function extractCandidateText(cand: unknown): string {
         if (!cand) return "";
         const body = (cand as any)?.[GEMINI_JSPB_SCHEMA.CANDIDATE.BODY] !== undefined
             ? (cand as any)[GEMINI_JSPB_SCHEMA.CANDIDATE.BODY]
             : (Array.isArray(cand) && cand.length === 1 ? cand[0] : cand);
 
-        if (typeof body === "string") return body;
-        if (!Array.isArray(body)) return "";
-
-        // Candidate body: typically [ partsArray, languageCode, ... ]
-        const parts = body[GEMINI_JSPB_SCHEMA.CANDIDATE_BODY.PARTS];
-        if (typeof parts === "string") return parts;
-        if (Array.isArray(parts)) {
-            let textChunks: string[] = [];
-            for (let part of parts) {
-                if (typeof part === "string") {
-                    textChunks.push(part);
-                } else if (Array.isArray(part) && typeof part[0] === "string") {
-                    textChunks.push(part[0]);
-                }
-            }
-            if (textChunks.length) return textChunks.join("");
+        for (const extractor of CANDIDATE_BODY_EXTRACTORS) {
+            const text = extractor(body);
+            if (text !== null) return text;
         }
-
-        // Fallback: if body itself is an array of strings [ "text chunk 1", ... ]
-        if (typeof body[0] === "string" && body[0].length > 3) {
-            return body[0];
-        }
-
         return "";
     }
 
@@ -331,7 +439,6 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
     function robustFirstPayload(text?: string | null): unknown[] | null {
         if (!text || typeof text !== "string") return null;
 
-        // Fast path 1: standard batchexecute response with optional prefix
         let trimmed = text.trim();
         if (trimmed.startsWith(")]}'")) {
             trimmed = trimmed.slice(4).trim();
@@ -455,19 +562,61 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
         return citations;
     }
 
+    function extractGroundingCitationMarkers(candidate: unknown): string[] {
+        const markers = new Set<string>();
+        if (!candidate) return [];
+
+        deepWalk(candidate, (node) => {
+            if (!node || typeof node !== "object") return;
+            const f44 = (node as any)["44"] ?? (node as any)[44];
+            if (Array.isArray(f44)) {
+                for (const item of f44) {
+                    if (Array.isArray(item) && Array.isArray(item[0])) {
+                        const raw = item[0][0];
+                        if (typeof raw === "string") {
+                            const trimmed = raw.trim();
+                            if (/^\[cite:\s*\d+\]$/i.test(trimmed)) {
+                                markers.add(trimmed);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        return Array.from(markers);
+    }
+
     function extractConversationId(inner: unknown, turns?: unknown[]): string {
-        if (Array.isArray(inner)) {
-            if (typeof inner[0] === "string" && inner[0].startsWith("c_")) return inner[0];
-            if (typeof inner[1] === "string" && inner[1].startsWith("c_")) return inner[1];
-        }
+        const idFromCandidates = extractCandidateValue(
+            inner,
+            GEMINI_JSPB_SCHEMA.INNER.CONV_ID_CANDIDATES,
+            val => (typeof val === "string" && val.startsWith("c_") ? val : null)
+        );
+        if (idFromCandidates) return idFromCandidates;
+
         if (Array.isArray(turns)) {
             for (let t of turns) {
                 if (Array.isArray(t) && Array.isArray(t[0]) && typeof t[0][0] === "string" && t[0][0].startsWith("c_")) return t[0][0];
                 if (Array.isArray(t) && typeof t[0] === "string" && t[0].startsWith("c_")) return t[0];
             }
         }
-        let flat = JSON.stringify(inner).match(/"c_[a-zA-Z0-9_-]{8,64}"/);
-        if (flat) return flat[0].replace(/"/g, "");
+        const CONV_ID_STRICT_RE = /^c_[a-zA-Z0-9_-]{8,64}$/;
+        let foundId: string | null = null;
+        deepWalk(inner, (node) => {
+            if (foundId) return false;
+            if (Array.isArray(node)) {
+                for (const el of node) {
+                    if (typeof el === "string" && CONV_ID_STRICT_RE.test(el)) { foundId = el; return false; }
+                }
+            } else if (node && typeof node === "object") {
+                for (const k in (node as Record<string, unknown>)) {
+                    const v = (node as Record<string, unknown>)[k];
+                    if (typeof v === "string" && CONV_ID_STRICT_RE.test(v)) { foundId = v; return false; }
+                }
+            }
+        });
+        if (foundId) return foundId;
         return "c_unknown";
     }
 
@@ -486,24 +635,30 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
 
     function extractConversationTitle(inner: unknown, turns?: unknown[]): TitleResult {
         if (Array.isArray(inner)) {
-            if (typeof inner[2] === "string" && inner[2].length > 0 && !inner[2].startsWith("c_") && !inner[2].startsWith("tC") && !inner[2].startsWith("rc_")) {
-                const clean = cleanTitle(inner[2]);
-                if (isRealTitle(clean)) return { title: clean, source: "rpc" };
-            }
-            if (typeof inner[1] === "string" && inner[1].length > 0 && !inner[1].startsWith("c_") && !inner[1].startsWith("tC") && !inner[1].startsWith("rc_")) {
-                const clean = cleanTitle(inner[1]);
-                if (isRealTitle(clean)) return { title: clean, source: "rpc" };
-            }
-            if (Array.isArray(inner[0]) && typeof inner[0][1] === "string") {
-                const clean = cleanTitle(inner[0][1]);
-                if (isRealTitle(clean)) return { title: clean, source: "rpc" };
-            }
-            for (let i = 0; i < Math.min(inner.length, 6); i++) {
-                if (typeof inner[i] === "string" && (inner[i] as string).length >= 2 && !(inner[i] as string).startsWith("c_") && !(inner[i] as string).startsWith("tC") && !(inner[i] as string).startsWith("rc_")) {
-                    const clean = cleanTitle(inner[i] as string);
-                    if (isRealTitle(clean)) return { title: clean, source: "rpc" };
+            const sanitizeIfTitle = (val: unknown): string | null => {
+                if (typeof val === "string" && val.length > 0 && !val.startsWith("c_") && !val.startsWith("tC") && !val.startsWith("rc_")) {
+                    const clean = cleanTitle(val);
+                    if (isRealTitle(clean)) return clean;
                 }
+                return null;
+            };
+
+            const candidateTitle = extractCandidateValue(inner, GEMINI_JSPB_SCHEMA.INNER.TITLE_CANDIDATES, sanitizeIfTitle);
+            if (candidateTitle) return { title: candidateTitle, source: "rpc" };
+
+            const primary = inner[GEMINI_JSPB_SCHEMA.INNER.TURNS_OR_LIST_PRIMARY];
+            if (Array.isArray(primary) && typeof primary[1] === "string") {
+                const clean = cleanTitle(primary[1]);
+                if (isRealTitle(clean)) return { title: clean, source: "rpc" };
             }
+
+            const first6Indices = Array.from({ length: Math.min(inner.length, 6) }, (_, i) => i);
+            const broadTitle = extractCandidateValue(
+                inner,
+                first6Indices,
+                val => (typeof val === "string" && val.length >= 2 ? sanitizeIfTitle(val) : null)
+            );
+            if (broadTitle) return { title: broadTitle, source: "rpc" };
         }
         if (Array.isArray(turns)) {
             for (let t of turns) {
@@ -527,49 +682,48 @@ import { GeminiProtocol } from "../../protocol/protocol.js";
         const listRpc = protocol ? protocol.RPCS.LIST : "MaZiqc";
         const legacyListRpc = protocol ? protocol.RPCS.LEGACY_LIST : "hXcbkd";
 
-        for (let item of top) {
-            if (Array.isArray(item) && item[0] === wrb && (item[1] === listRpc || item[1] === legacyListRpc) && typeof item[2] === "string") {
-                try {
-                    let metaInner = JSON.parse(item[2]);
-                    let list = Array.isArray(metaInner?.[1]) ? metaInner[1] : (Array.isArray(metaInner?.[2]) ? metaInner[2] : (Array.isArray(metaInner?.[0]) ? metaInner[0] : []));
-                    for (let entry of list) {
-                        if (Array.isArray(entry)) {
-                            let id = entry[0];
-                            let rawTitle = entry[1];
-                            let nid = normId(id);
-                            if (!targetNid || !nid || nid === targetNid) {
-                                let cleanT = cleanTitle(rawTitle);
-                                if (isRealTitle(cleanT, nid || targetNid)) {
-                                    return cleanT;
-                                }
+        const { inner: metaInner } = extractInnerPayload(top, {
+            wrb,
+            rpcId: [listRpc, legacyListRpc]
+        });
+
+        if (metaInner) {
+            try {
+                let list = Array.isArray(metaInner?.[1]) ? metaInner[1] : (Array.isArray(metaInner?.[2]) ? metaInner[2] : (Array.isArray(metaInner?.[0]) ? metaInner[0] : []));
+                for (let entry of list) {
+                    if (Array.isArray(entry)) {
+                        let id = entry[0];
+                        let rawTitle = entry[1];
+                        let nid = normId(id);
+                        if (!targetNid || !nid || nid === targetNid) {
+                            let cleanT = cleanTitle(rawTitle);
+                            if (isRealTitle(cleanT, nid || targetNid)) {
+                                return cleanT;
                             }
                         }
                     }
-                } catch (e) { if (typeof console !== "undefined" && console.debug) console.debug("[GemExporter:extractors.ts]", e); }
-            }
+                }
+            } catch (e) { if (typeof console !== "undefined" && console.debug) console.debug("[GemExporter:extractors.ts]", e); }
         }
         return null;
     }
 
     function extractTurnTimestamp(turnData: unknown): number | null {
         if (!Array.isArray(turnData)) return null;
-        let candidates = [turnData[4], turnData[5], turnData[turnData.length - 1]];
-        for (let candidate of candidates) {
-            if (Array.isArray(candidate) && typeof candidate[0] === "number" && candidate[0] > 1e9) {
-                let val = candidate[0];
-                if (val > 1e11) return Math.round(val);
-                let timestampSec = val;
-                let timestampNano = typeof candidate[1] === "number" ? candidate[1] : 0;
-                return 1000 * timestampSec + Math.floor(timestampNano / 1e6);
-            }
-        }
-        return null;
+        const candidateIndices = [
+            GEMINI_JSPB_SCHEMA.TURN.TIMESTAMP, // index 1 (primary)
+            4,                                  // known alternative
+            5,                                  // known alternative
+            turnData.length - 1                 // last element fallback
+        ];
+        return extractCandidateValue(turnData, candidateIndices, val => payloadToMs(val));
     }
 
 export {
     GEMINI_JSPB_SCHEMA,
     RESEARCH_PROMPT_PREFIX_RE,
     detectTurnSchemaDrift,
+    hasTurnContentMarkers,
     extractModelCandidates,
     extractCandidateText,
     safeStructureClean,
@@ -577,6 +731,7 @@ export {
     deepWalk,
     extractThoughts,
     extractCitations,
+    extractGroundingCitationMarkers,
     extractConversationId,
     smartSummarizePrompt,
     extractConversationTitle,
@@ -593,6 +748,7 @@ export const GeminiParserExtractors: GeminiParserExtractorsModule = {
     GEMINI_JSPB_SCHEMA,
     RESEARCH_PROMPT_PREFIX_RE,
     detectTurnSchemaDrift,
+    hasTurnContentMarkers,
     extractModelCandidates,
     extractCandidateText,
     safeStructureClean,
@@ -600,6 +756,7 @@ export const GeminiParserExtractors: GeminiParserExtractorsModule = {
     deepWalk,
     extractThoughts,
     extractCitations,
+    extractGroundingCitationMarkers,
     extractConversationId,
     smartSummarizePrompt,
     extractConversationTitle,
@@ -611,12 +768,6 @@ export const GeminiParserExtractors: GeminiParserExtractorsModule = {
     getUtils,
     getProtocol
 };
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).GeminiParserExtractors = GeminiParserExtractors;
-    (globalThis as any).GEMINI_JSPB_SCHEMA = GEMINI_JSPB_SCHEMA;
-    (globalThis as any).detectTurnSchemaDrift = detectTurnSchemaDrift;
-}
 if (typeof module === 'object' && module.exports) module.exports = GeminiParserExtractors;
 
 export default GeminiParserExtractors;

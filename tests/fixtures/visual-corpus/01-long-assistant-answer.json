@@ -1,0 +1,463 @@
+{
+  "id": "01-long-assistant-answer",
+  "title": "长 AI 回答",
+  "description": "单条很长的 assistant 回答：多段落、标题、列表、代码块、引用、行内公式，期望多页。",
+  "bundle": {
+    "schemaVersion": 1,
+    "conversation": {
+      "key": {
+        "providerId": "gemini",
+        "conversationId": "vc-01"
+      },
+      "title": {
+        "value": "Transformer 架构详解"
+      },
+      "createdAt": "2026-09-26T10:00:00Z",
+      "updatedAt": "2026-09-26T11:00:00Z",
+      "messages": [
+        {
+          "id": "m1",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "p01-b31",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "请详细解释一下 Transformer 架构，包括注意力机制、前馈网络和位置编码。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "m2",
+          "role": "assistant",
+          "blocks": [
+            {
+              "id": "p01-b1",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "下面从三个核心组件详细解释 Transformer 架构：注意力机制、前馈网络和位置编码。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b2",
+              "type": "heading",
+              "level": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "一、注意力机制（Attention）"
+                }
+              ]
+            },
+            {
+              "id": "p01-b3",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "注意力机制的核心思想是：对于序列中的每个位置，模型都能动态地决定应该关注序列中哪些其他位置。"
+                },
+                {
+                  "type": "text",
+                  "text": "这种机制最早在机器翻译中被提出，后来成为 Transformer 的基石。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b4",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "具体来说，自注意力通过 Query、Key、Value 三个矩阵的交互计算权重："
+                },
+                {
+                  "type": "inlineMath",
+                  "source": "Attention(Q,K,V)"
+                },
+                {
+                  "type": "text",
+                  "text": " 的输出是 Value 的加权和，权重由 Query 和 Key 的相似度决定。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b5",
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "id": "p01-b6",
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "每个注意力头独立学习不同的关注模式，有的关注句法结构，有的关注语义关联"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "id": "p01-b7",
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "多头注意力将多个头的输出拼接后再做线性变换，表达能力显著增强"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "id": "p01-b8",
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "缩放点积注意力通过除以维度平方根来稳定梯度，这是训练稳定性的关键"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "p01-b9",
+              "type": "code",
+              "code": "def scaled_dot_product_attention(Q, K, V, mask=None):\n    d_k = Q.size(-1)\n    scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(d_k)\n    if mask is not None:\n        scores = scores.masked_fill(mask == 0, float('-inf'))\n    weights = torch.softmax(scores, dim=-1)\n    return torch.matmul(weights, V)",
+              "language": "python"
+            },
+            {
+              "id": "p01-b10",
+              "type": "heading",
+              "level": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "二、前馈网络（Feed-Forward Network）"
+                }
+              ]
+            },
+            {
+              "id": "p01-b11",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "前馈网络的核心是一个两层的全连接网络，它对每个位置独立地做非线性变换。"
+                },
+                {
+                  "type": "text",
+                  "text": "虽然结构简单，但它承载了模型的大部分参数，也是知识存储的主要位置。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b13",
+              "type": "quote",
+              "blocks": [
+                {
+                  "id": "p01-b12",
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "研究表明，前馈网络层可以被理解为键值记忆：第一层是键，第二层是值，"
+                    },
+                    {
+                      "type": "text",
+                      "text": "模型在预训练中把事实知识写入了这些参数。"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "p01-b14",
+              "type": "heading",
+              "level": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "三、位置编码（Positional Encoding）"
+                }
+              ]
+            },
+            {
+              "id": "p01-b15",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "由于自注意力本身是置换不变的，模型需要额外的位置信息才能理解词序。"
+                },
+                {
+                  "type": "text",
+                  "text": "原始论文使用正弦余弦函数生成位置编码，后来的模型多改用可学习的位置嵌入或旋转位置编码 RoPE。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b16",
+              "type": "heading",
+              "level": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "四、训练与推理中的实际考量"
+                }
+              ]
+            },
+            {
+              "id": "p01-b17",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "在实际训练中，Transformer 的二次复杂度是主要瓶颈：序列长度翻倍，"
+                },
+                {
+                  "type": "text",
+                  "text": "注意力计算量变为四倍。为此出现了 FlashAttention、滑动窗口注意力、"
+                },
+                {
+                  "type": "text",
+                  "text": "KV 缓存等一系列优化手段，它们在不改变模型数学语义的前提下大幅降低了显存占用。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b18",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "推理时，KV 缓存把历史位置的 Key 和 Value 存下来，避免重复计算，"
+                },
+                {
+                  "type": "text",
+                  "text": "这是大模型流式生成的关键。缓存的显存占用与序列长度成正比，"
+                },
+                {
+                  "type": "text",
+                  "text": "因此长上下文模型的部署往往受限于显存而非算力。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b19",
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "id": "p01-b20",
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "FlashAttention：分块计算 + 在线 softmax，显存从平方降到线性"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "id": "p01-b21",
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "KV 缓存：推理时复用历史 Key/Value，首 token 慢、后续 token 快"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "id": "p01-b22",
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "量化：INT8/INT4 推理在精度损失可控的前提下显著提速"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "id": "p01-b23",
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "text": "推测解码：用小模型草稿、大模型验证，提升吞吐而不改变输出分布"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "p01-b24",
+              "type": "heading",
+              "level": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "五、常见误区"
+                }
+              ]
+            },
+            {
+              "id": "p01-b25",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "初学者常以为注意力头越多越好，实际上头数超过一定阈值后收益迅速递减，"
+                },
+                {
+                  "type": "text",
+                  "text": "反而增加显存和计算开销。另一个误区是把位置编码看作可有可无的装饰："
+                },
+                {
+                  "type": "text",
+                  "text": "去掉位置信息后，模型会把「猫追狗」和「狗追猫」理解为同一句话。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b26",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "还有人认为前馈网络只是简单的 MLP、没什么研究价值。恰恰相反，"
+                },
+                {
+                  "type": "text",
+                  "text": "近年来的知识编辑、模型剪枝工作大多围绕前馈层展开，"
+                },
+                {
+                  "type": "text",
+                  "text": "因为它是模型记忆事实知识的主要载体。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b28",
+              "type": "quote",
+              "blocks": [
+                {
+                  "id": "p01-b27",
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "一句话总结：注意力决定模型「看哪里」，"
+                    },
+                    {
+                      "type": "text",
+                      "text": "前馈网络决定模型「记住什么」，位置编码决定模型「按什么顺序看」。"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "p01-b29",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "总结来说，注意力负责信息路由，前馈网络负责知识存储与变换，位置编码负责顺序感知，"
+                },
+                {
+                  "type": "text",
+                  "text": "三者配合使得 Transformer 能够高效处理长序列依赖。理解这些组件的取舍，"
+                },
+                {
+                  "type": "text",
+                  "text": "是做好大模型训练和推理优化的前提。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b30",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "附：延伸阅读建议——《Attention Is All You Need》原文、"
+                },
+                {
+                  "type": "text",
+                  "text": "Jay Alammar 的图解 Transformer 系列、以及 Lilian Weng 关于大模型推理优化的博客，"
+                },
+                {
+                  "type": "text",
+                  "text": "三者结合可以帮助你从直觉和工程两个层面吃透这一架构。"
+                }
+              ]
+            },
+            {
+              "id": "p01-b22",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "补充一点实操细节。很多人第一次做 RAG 的时候，会把切分长度设得很大，指望一次召回就覆盖全部上下文，结果召回的全是噪音。我的经验是先按 400 到 600 token 切，overlap 留 10% 到 15%，跑一周看 badcase，再决定要不要加小切分索引。另一个常见坑是 embedding 模型和重排模型用两套不同的文本归一化，繁简、全半角、大小写稍有不一致，分数就对不上。建议在入库前就把归一化写死成一个函数，检索和入库都走它。最后，评估集一定要早建，哪怕只有 50 条，也比上线后靠用户投诉驱动靠谱得多。"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "assets": [],
+    "citations": []
+  },
+  "binaries": {},
+  "expect": {
+    "minPages": 2,
+    "phrases": [
+      "前馈网络的核心是一个两层的全连接网络",
+      "缩放点积注意力通过除以维度平方根来稳定梯度",
+      "模型在预训练中把事实知识写入了这些参数",
+      "旋转位置编码 RoPE",
+      "注意力决定模型「看哪里」",
+      "overlap 留 10% 到 15%"
+    ],
+    "exactlyOnce": [
+      "前馈网络的核心是一个两层的全连接网络",
+      "总结来说，注意力负责信息路由",
+      "overlap 留 10% 到 15%"
+    ]
+  }
+}

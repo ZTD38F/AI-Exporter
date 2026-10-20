@@ -1,7 +1,26 @@
-// src/content/bootstrap.ts - Credential bootstrap for ISOLATED world
-import type { GeminiProtocolModule } from '../core/protocol/protocol.js';
+import { CrossWorldEvents, GeminiProtocol, type GeminiProtocolModule } from '../core/protocol/protocol.js';
+import type { GeminiCredentialsPayload } from '../core/protocol/events.js';
+import { STORAGE_KEYS } from '../core/utils/constants.js';
+import {
+    getCredStorage as sharedGetCredStorage,
+    markCredSessionAccessFailed as sharedMarkFailed,
+    withCredMapLock,
+} from '../core/api/client/credStorage.js';
+import { sniffUserProfileFromDom } from './accountSniffer.js';
+import { StorageService } from '../core/storage/storageService.js';
 
-const Proto: GeminiProtocolModule = ((typeof GeminiProtocol !== 'undefined' ? GeminiProtocol : ((typeof window !== 'undefined' && (window as any).GeminiProtocol) || null)) as any);
+export function getCredStorage(): chrome.storage.StorageArea | null {
+    return sharedGetCredStorage();
+}
+
+function markCredSessionFailed(): void {
+    sharedMarkFailed();
+}
+
+const SK_CRED_MAP = STORAGE_KEYS.CREDENTIALS_MAP;
+const SK_CRED = STORAGE_KEYS.CREDENTIALS;
+
+const Proto: GeminiProtocolModule = GeminiProtocol as any;
 
 function isDev(): boolean {
     if (typeof window !== 'undefined') {
@@ -88,7 +107,6 @@ export function extractBlFromPage(): string {
                 const m2 = txt.match(Proto.TOKEN_PATTERNS.boqBuildFromScript);
                 if (m2) return m2[0];
             }
-            // document html fallback
             const html = document.documentElement?.innerHTML || '';
             const m3 = html.match(Proto.TOKEN_PATTERNS.blValueFromHtml);
             if (m3) return m3[1];
@@ -107,7 +125,7 @@ export function detectSlotFromUrl(url?: string): string {
     } catch (e) {
         if (isDev()) console.debug('[GemExporter:bootstrap.ts]', e);
     }
-    return 'default';
+    return 'u0';
 }
 
 export function isExtAlive(): boolean {
@@ -118,59 +136,36 @@ export function isExtAlive(): boolean {
     }
 }
 
-let sessionAccessFailed = false;
-
-export function getCredStorage(): chrome.storage.StorageArea | null {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-        if (!sessionAccessFailed && chrome.storage.session) return chrome.storage.session;
-        return chrome.storage.local;
-    }
-    return null;
-}
-
 export async function loadCredentialsMap(): Promise<Record<string, any>> {
     let storage = getCredStorage();
     if (!storage) return {};
     let mapObj: any = {};
     try {
-        mapObj = await storage.get(['gemini_credentials_map']);
+        mapObj = await storage.get([SK_CRED_MAP]);
     } catch (e: any) {
         if (String(e?.message || e).includes('not allowed')) {
-            sessionAccessFailed = true;
+            markCredSessionFailed();
             storage = chrome.storage.local;
             if (storage) {
-                mapObj = await storage.get(['gemini_credentials_map']);
+                mapObj = await storage.get([SK_CRED_MAP]);
             }
         } else {
             throw e;
         }
     }
-    let map = mapObj.gemini_credentials_map || {};
-    if (Object.keys(map).length === 0 && storage !== chrome.storage.local && chrome.storage.local) {
-        try {
-            const localObj = await chrome.storage.local.get(['gemini_credentials_map']);
-            if (localObj && localObj.gemini_credentials_map) {
-                map = localObj.gemini_credentials_map;
-                await storage.set({ gemini_credentials_map: map });
-                await chrome.storage.local.remove(['gemini_credentials_map', 'gemini_credentials']);
-            }
-        } catch {
-            /* intentional: storage migration fallback */
-        }
-    }
-    return map;
+    return mapObj[SK_CRED_MAP] || {};
 }
 
 export async function saveCredentials(map: Record<string, any>, cred?: any): Promise<void> {
     let storage = getCredStorage();
     if (!storage) return;
-    const toSave: Record<string, any> = { gemini_credentials_map: map };
-    if (cred) toSave.gemini_credentials = cred;
+    const toSave: Record<string, any> = { [SK_CRED_MAP]: map };
+    if (cred) toSave[SK_CRED] = cred;
     try {
         await storage.set(toSave);
     } catch (e: any) {
         if (String(e?.message || e).includes('not allowed')) {
-            sessionAccessFailed = true;
+            markCredSessionFailed();
             storage = chrome.storage.local;
             if (storage) {
                 await storage.set(toSave);
@@ -181,7 +176,7 @@ export async function saveCredentials(map: Record<string, any>, cred?: any): Pro
     }
     if (storage !== chrome.storage.local && chrome.storage.local) {
         try {
-            await chrome.storage.local.remove(['gemini_credentials_map', 'gemini_credentials']);
+            await chrome.storage.local.remove([SK_CRED_MAP, SK_CRED]);
         } catch {
             /* intentional: local purge fallback */
         }
@@ -194,7 +189,7 @@ export async function saveCredentials(map: Record<string, any>, cred?: any): Pro
 // unsynchronized load→save cycles would overwrite each other's map entries.
 let _credOpChain: Promise<any> = Promise.resolve();
 function runSerializedCredOp<T>(op: () => Promise<T>): Promise<T> {
-    const run = _credOpChain.then(op, op);
+    const run = _credOpChain.then(() => withCredMapLock(op), () => withCredMapLock(op));
     _credOpChain = run.then(() => undefined, () => undefined);
     return run;
 }
@@ -206,11 +201,6 @@ async function ensureCredsOnce(): Promise<any> {
         const blFromPage = extractBlFromPage();
         if (blFromPage) {
             updateContextCreds({ bl: blFromPage });
-            try {
-                if (typeof localStorage !== 'undefined') localStorage.setItem('__gemExporterBl', blFromPage);
-            } catch (e) {
-                if (isDev()) console.debug('[GemExporter:bootstrap.ts]', e);
-            }
         }
         if (atFromPage) {
             updateContextCreds({ at: atFromPage });
@@ -232,7 +222,7 @@ async function ensureCredsOnce(): Promise<any> {
                 sid: fakeSid
             });
             updateContextCreds(map[fakeSid]);
-            console.log('[Gemini Exporter] at fallback created fake sid', atFromPage.slice(0, 12) + '... bl ' + (blFromPage || 'fallback').slice(0, 20));
+            if (isDev()) console.log('[Gemini Exporter] at fallback created fake sid', 'atLen', atFromPage.length, 'blLen', (blFromPage || '').length);
             return map[fakeSid];
         }
         if (atFromPage && vals.length > 0) {
@@ -248,7 +238,7 @@ async function ensureCredsOnce(): Promise<any> {
                     sid: best.sid
                 });
                 updateContextCreds(best);
-                console.log('[Gemini Exporter] at refreshed from page', atFromPage.slice(0, 12));
+                if (isDev()) console.log('[Gemini Exporter] at refreshed from page', 'atLen', atFromPage.length);
             } else if (blFromPage && best.bl !== blFromPage) {
                 best.bl = blFromPage;
                 map[best.sid] = best;
@@ -263,7 +253,7 @@ async function ensureCredsOnce(): Promise<any> {
                 map[best.sid] = best;
                 await saveCredentials(map);
                 updateContextCreds({ bl: blFromPage });
-                console.log('[Gemini Exporter] bl refreshed', blFromPage);
+                if (isDev()) console.log('[Gemini Exporter] bl refreshed', 'blLen', blFromPage.length);
             }
         }
     } catch (e) {
@@ -276,45 +266,61 @@ export function ensureCreds(): Promise<any> {
     return runSerializedCredOp(ensureCredsOnce);
 }
 
-// Expose on window for backwards compatibility
 if (typeof window !== 'undefined') {
     const w = window as any;
     w.__gemExporterExtractAt = extractAtFromPage;
     w.__gemExporterExtractBl = extractBlFromPage;
     w.__gemExporterEnsureCreds = ensureCreds;
 
-    ensureCreds();
+    void ensureCreds();
     document.addEventListener('DOMContentLoaded', () => ensureCreds(), { once: true });
     window.addEventListener('load', () => ensureCreds(), { once: true });
 
-    // Listen to GEMINI_CREDENTIALS - only from same-origin window postMessage
+    // Listen to GEMINI_CREDENTIALS from the MAIN-world hook. NOTE (threat model):
+    // same-window page scripts can forge this message indistinguishably
+    // (event.source === window is true for them too), so treat the payload as
+    // untrusted: an empty `at` must never clobber the stored credential.
     window.addEventListener('message', (e: MessageEvent) => {
         if (e.source !== window) return;
         if (typeof location !== 'undefined' && e.origin !== location.origin) return;
-        if (e.data && e.data.type === 'GEMINI_CREDENTIALS') {
+        if (e.data && e.data.type === (CrossWorldEvents?.CREDENTIALS || 'GEMINI_CREDENTIALS')) {
             if (!isExtAlive()) return;
             // Queued behind any in-flight ensureCreds so concurrent load→save
             // cycles cannot overwrite each other's map entries.
-            runSerializedCredOp(async () => {
+            void runSerializedCredOp(async () => {
                 try {
-                    const p = e.data.payload || {};
+                    const p = (e.data.payload || {}) as Partial<GeminiCredentialsPayload>;
                     const sid = p.sid || '';
                     if (!sid) return;
-                    const slot = p.accountSlot || detectSlotFromUrl(e.data.url || location.href) || 'default';
+                    const slot = p.accountSlot || detectSlotFromUrl(p.url || location.href) || 'u0';
+                    const profile = sniffUserProfileFromDom();
                     const map = await loadCredentialsMap();
                     const old = map[sid] || {};
                     map[sid] = {
                         at: p.at || old.at || extractAtFromPage() || '',
                         sid,
-                        accountSlot: slot || old.accountSlot || 'default',
+                        accountSlot: slot || old.accountSlot || 'u0',
+                        accountId: profile?.accountId || (old as any).accountId || slot,
+                        email: profile?.email || (old as any).email,
+                        name: profile?.name || (old as any).name,
                         lastUsed: Date.now(),
-                        bl: old.bl || extractBlFromPage() || (Proto ? Proto.BL_FALLBACK : '')
+                        bl: p.bl || old.bl || extractBlFromPage() || (Proto ? Proto.BL_FALLBACK : '')
                     };
                     await saveCredentials(map, {
                         at: map[sid].at,
                         sid
                     });
                     updateContextCreds(map[sid]);
+                    if (profile?.email || profile?.name) {
+                        try {
+                            const slotUpdate: Record<string, any> = { slot };
+                            if (profile.accountId) slotUpdate.accountId = profile.accountId;
+                            if (profile.email) slotUpdate.email = profile.email;
+                            if (profile.name) slotUpdate.name = profile.name;
+                            if (profile.gaiaId) slotUpdate.gaiaId = profile.gaiaId;
+                            await StorageService.updateAccountSlot(slot, slotUpdate);
+                        } catch { /* best effort */ }
+                    }
                     if (isDev()) {
                         console.log('[Gemini Exporter] stored creds from MAIN hook', sid.slice(0, 8), slot, 'at len', (map[sid].at || '').length);
                     }

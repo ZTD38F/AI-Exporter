@@ -1,0 +1,169 @@
+{
+ "id": "06-span-table",
+ "title": "合并单元格表格",
+ "description": "colspan 表头 + rowspan 合并单元格，覆盖 #621 落地的原生 Typst 合并支持。",
+ "bundle": {
+  "schemaVersion": 1,
+  "conversation": {
+   "key": {
+    "providerId": "gemini",
+    "conversationId": "vc-06"
+   },
+   "title": {
+    "value": "课程表"
+   },
+   "createdAt": "2026-09-26T10:00:00Z",
+   "updatedAt": "2026-09-26T11:00:00Z",
+   "messages": [
+    {
+     "id": "m1",
+     "role": "user",
+     "blocks": [
+      {
+       "id": "p06-b90",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "帮我排一张带合并单元格的课程表。"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "m2",
+     "role": "assistant",
+     "blocks": [
+      {
+       "id": "p06-b88",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "本周课程表（含合并单元格）："
+        }
+       ]
+      },
+      {
+       "id": "p06-t1",
+       "type": "table",
+       "headerRows": [
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "2026 年秋季学期课程表"
+            }
+           ],
+           "colSpan": 3
+          }
+         ]
+        }
+       ],
+       "rows": [
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "08:00-10:00"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "高等数学"
+            }
+           ],
+           "rowSpan": 2
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "大学物理"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "10:00-12:00"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "大学英语"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "14:00-16:00"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "程序设计（双课时连上）"
+            }
+           ],
+           "colSpan": 2
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "p06-b89",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "注：高等数学连上两节，程序设计双课时连上。"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "assets": [],
+  "citations": []
+ },
+ "binaries": {},
+ "expect": {
+  "minPages": 1,
+  "phrases": [
+   "2026 年秋季学期课程表",
+   "高等数学",
+   "程序设计（双课时连上）",
+   "大学英语"
+  ],
+  "exactlyOnce": [
+   "2026 年秋季学期课程表"
+  ]
+ }
+}

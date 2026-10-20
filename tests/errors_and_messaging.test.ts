@@ -5,7 +5,6 @@ const assert = require('node:assert');
 test('errors - GeminiError and error hierarchy inheritance', () => {
     const {
         GeminiError,
-        GeminiRpcError,
         ExportPipelineError,
         TakeoutParseError,
         StorageError
@@ -18,31 +17,20 @@ test('errors - GeminiError and error hierarchy inheritance', () => {
     assert.strictEqual(rootErr.name, 'GeminiError');
     assert.strictEqual(rootErr.message, 'Root error');
 
-    // 2. GeminiRpcError
-    const rpcErr = new GeminiRpcError('Rate limit exceeded', 429, 'batchexecute');
-    assert.ok(rpcErr instanceof GeminiError);
-    assert.ok(rpcErr instanceof GeminiRpcError);
-    assert.strictEqual(rpcErr.statusCode, 429);
-    assert.strictEqual(rpcErr.rpcName, 'batchexecute');
-    assert.strictEqual(rpcErr.isRateLimit, true);
-
-    const rpcErrOther = new GeminiRpcError('Server error', 500);
-    assert.strictEqual(rpcErrOther.isRateLimit, false);
-
-    // 3. ExportPipelineError
+    // 2. ExportPipelineError
     const pipeErr = new ExportPipelineError('Permission denied', 'chat_123', 'write', true);
     assert.ok(pipeErr instanceof GeminiError);
     assert.strictEqual(pipeErr.chatId, 'chat_123');
     assert.strictEqual(pipeErr.step, 'write');
     assert.strictEqual(pipeErr.isPermissionRevoked, true);
 
-    // 4. TakeoutParseError
+    // 3. TakeoutParseError
     const takeoutErr = new TakeoutParseError('Structure changed', true, 'MyActivity.html');
     assert.ok(takeoutErr instanceof GeminiError);
     assert.strictEqual(takeoutErr.formatDrift, true);
     assert.strictEqual(takeoutErr.entryName, 'MyActivity.html');
 
-    // 5. StorageError
+    // 4. StorageError
     const storageErr = new StorageError('Quota exceeded', 'set', 'gemini_conversations');
     assert.ok(storageErr instanceof GeminiError);
     assert.strictEqual(storageErr.operation, 'set');

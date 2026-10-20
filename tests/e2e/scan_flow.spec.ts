@@ -50,7 +50,7 @@ test.describe('Deep E2E: Real Gemini Scanning & Network Pagination', () => {
 
     // 2. Open Workbench Options page
     const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await optionsPage.waitForLoadState('domcontentloaded');
 
     // Ensure list is initially empty

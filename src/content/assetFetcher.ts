@@ -1,8 +1,6 @@
-// src/content/assetFetcher.ts - In-page authenticated blob and asset fetching handler
 import { contentContext } from './contentContext.js';
 
-const MAX_BASE64_BLOB_SIZE = 50 * 1024 * 1024; // 超过50MB避免 FileReader base64 内存翻倍，交由 Takeout 兜底
-const LARGE_FILE_WARN_SIZE = 30 * 1024 * 1024;
+const MAX_BASE64_BLOB_SIZE = 50 * 1024 * 1024;
 const GG_CHAIN_MAX_HOPS = 5;
 
 export function ensureAlr(url: string): string {
@@ -16,6 +14,41 @@ export function isGgChainUrl(url: string): boolean {
     return url.includes('/gg/') || url.includes('/rd-gg/');
 }
 
+export async function fetchWithCredentialFallback(
+    url: string,
+    init?: RequestInit,
+    customFetch?: typeof fetch
+): Promise<Response> {
+    const doFetch = customFetch || fetch;
+    const baseInit = init || {};
+    const primaryCredentials = baseInit.credentials ?? 'include';
+    const primaryInit: RequestInit = {
+        ...baseInit,
+        credentials: primaryCredentials,
+    };
+
+    try {
+        return await doFetch(url, primaryInit);
+    } catch (err: any) {
+        if (baseInit.signal?.aborted) {
+            throw err;
+        }
+
+        if (primaryCredentials === 'include') {
+            const fallbackInit: RequestInit = {
+                ...baseInit,
+                credentials: 'omit',
+            };
+            try {
+                return await doFetch(url, fallbackInit);
+            } catch {
+                throw err;
+            }
+        }
+        throw err;
+    }
+}
+
 export async function fetchGgChain(url: string, init?: RequestInit): Promise<Response> {
     let current = ensureAlr(url);
     let lastRes: Response | null = null;
@@ -23,7 +56,7 @@ export async function fetchGgChain(url: string, init?: RequestInit): Promise<Res
 
     for (let i = 0; i < GG_CHAIN_MAX_HOPS; i++) {
         try {
-            const res = await fetch(current, { ...baseInit, signal: AbortSignal.timeout(8000) });
+            const res = await fetchWithCredentialFallback(current, { ...baseInit, signal: AbortSignal.timeout(8000) });
             lastRes = res;
             if (!res.ok) return res;
 
@@ -64,8 +97,20 @@ export async function fetchGgChain(url: string, init?: RequestInit): Promise<Res
 export function toHighRes(url: string, variant = 's1024-rj'): string {
     try {
         if (!url) return url;
-        if (url.includes('/gg/')) {
-            return url.includes('?') ? (url.includes('alr=yes') ? url : url + '&alr=yes') : url + '?alr=yes';
+        // Match the actual URL hostname, not a substring in a query or attacker host.
+        const parsed = new URL(url);
+        if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+            (parsed.hostname === 'gstatic.com' || parsed.hostname.endsWith('.gstatic.com'))) return url;
+        if (url.includes('/gg/') || url.includes('/rd-gg/')) {
+            const [base, q = ''] = url.split('?');
+            const suffix = q ? (q.includes('alr=yes') ? q : q + '&alr=yes') : 'alr=yes';
+            let normBase = base;
+            if (/=[sw]\d+/i.test(base)) {
+                normBase = base.replace(/=[sw]\d+(?:-[a-z0-9]+)*/i, '=s0');
+            } else if (!normBase.endsWith('=s0')) {
+                normBase = normBase + '=s0';
+            }
+            return normBase + '?' + suffix;
         }
         const [base, q = ''] = url.split('?');
         const stripped = base.replace(/=s\d+(?:-[a-z0-9]+)*/i, '');
@@ -105,7 +150,7 @@ export function extractLh3(text: string): string | null {
 }
 
 export function extractGucUrl(text: string): string | null {
-    const m = text.match(/https:\/\/[^\s"'<>]*googleusercontent[^\s"'<>]*download[^\s"'<>]*/i);
+    const m = text.match(/https:\/\/[^\s"'<>]*(?:googleusercontent|usercontent\.google)[^\s"'<>]*download[^\s"'<>]*/i);
     if (m) return m[0].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
     const m2 = text.match(/https:\/\/lh3\.google(?:usercontent)?\.com\/[^\s"'<>\\]+/i);
     return m2 ? m2[0].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&') : null;
@@ -119,13 +164,13 @@ export async function handleGetFileBlob(msg: any, sendResponse: (resp: any) => v
 
         try {
             if (typeof document !== 'undefined') {
-                const links = document.querySelectorAll('a[href*="googleusercontent"], a[href*="drive.google"], a[download]');
+                const links = document.querySelectorAll('a[href*="googleusercontent"], a[href*="usercontent.google"], a[href*="drive.google"], a[download]');
                 for (const a of Array.from(links)) {
                     const href = (a as HTMLAnchorElement).href || a.getAttribute('href') || '';
                     const txt = (a.textContent || a.getAttribute('aria-label') || '').trim();
                     if (!href) continue;
                     if (msg.fileName && (txt.includes(msg.fileName) || href.includes(encodeURIComponent(msg.fileName)))) candidates.push(href);
-                    else if (href.includes('googleusercontent') && href.includes('download')) candidates.push(href);
+                    else if ((href.includes('googleusercontent') || href.includes('usercontent.google')) && href.includes('download')) candidates.push(href);
                 }
             }
         } catch (e) {
@@ -135,7 +180,7 @@ export async function handleGetFileBlob(msg: any, sendResponse: (resp: any) => v
         try {
             if (typeof document !== 'undefined') {
                 const html = document.documentElement?.innerHTML || '';
-                const m = html.match(/https:\/\/[^\s"'<>]*googleusercontent[^\s"'<>]*download[^\s"'<>]*/i);
+                const m = html.match(/https:\/\/[^\s"'<>]*(?:googleusercontent|usercontent\.google)[^\s"'<>]*download[^\s"'<>]*/i);
                 if (m) candidates.push(m[0].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&'));
             }
         } catch (e) {
@@ -161,7 +206,7 @@ export async function handleGetFileBlob(msg: any, sendResponse: (resp: any) => v
             seen.add(u);
 
             try {
-                const res = await fetch(u, { credentials: 'include', signal: AbortSignal.timeout(15000) });
+                const res = await fetchWithCredentialFallback(u, { credentials: 'include', signal: AbortSignal.timeout(15000) });
                 if (!res.ok) {
                     reasons.push(`${u} -> HTTP ${res.status}`);
                     continue;
@@ -215,7 +260,7 @@ export async function handleGetImageBlob(msg: any, sendResponse: (resp: any) => 
             try {
                 const init: RequestInit = { credentials: 'include', signal: AbortSignal.timeout(15000) };
                 if (contentContext.isDevMode()) console.debug('[GemExporter:assetFetcher] try image', u.slice(0, 120));
-                const res = isGgChainUrl(u) ? await fetchGgChain(u, init) : await fetch(u, init);
+                const res = isGgChainUrl(u) ? await fetchGgChain(u, init) : await fetchWithCredentialFallback(u, init);
                 if (contentContext.isDevMode()) console.debug('[GemExporter:assetFetcher] res image', u.slice(0, 60), res?.status, res?.headers?.get('content-type'));
                 if (!res || !res.ok) {
                     lastErr = `HTTP ${res?.status || 'unknown'}`;
@@ -252,6 +297,11 @@ export async function handleGetImageBlob(msg: any, sendResponse: (resp: any) => 
                     } catch (e) {
                         if (contentContext.isDevMode()) console.debug('[GemExporter:assetFetcher.ts]', e);
                     }
+                }
+                // Size cap applies to base64 path to avoid memory pressure
+                if (blob.size > MAX_BASE64_BLOB_SIZE) {
+                    lastErr = `asset too large (${(blob.size / 1024 / 1024).toFixed(1)}MB > ${MAX_BASE64_BLOB_SIZE / 1024 / 1024}MB cap); use Google Takeout import`;
+                    continue;
                 }
                 const dataUrl = await toDataUrl(blob);
                 sendResponse({
@@ -297,19 +347,13 @@ export async function downloadAssetDirect(msg: any, sendResponse: (resp: any) =>
                 signal: AbortSignal.timeout(15000)
             };
             const isGg = isGgChainUrl(url);
-            const r = isGg ? await fetchGgChain(url, init2) : await fetch(url, init2);
+            const r = isGg ? await fetchGgChain(url, init2) : await fetchWithCredentialFallback(url, init2);
             if (r && r.ok) {
                 const ct = (r.headers.get('content-type') || '').toLowerCase();
                 const isTextResponse = ct.startsWith('text/plain') || ct.startsWith('text/html');
                 if (!isGg || !isTextResponse) {
                     const blob = await r.blob();
-                    if (blob.size > MAX_BASE64_BLOB_SIZE) {
-                        sendResponse({
-                            success: false,
-                            error: `asset too large (${(blob.size / 1024 / 1024).toFixed(1)}MB > ${MAX_BASE64_BLOB_SIZE / 1024 / 1024}MB cap); use Google Takeout import`
-                        });
-                        return;
-                    } else if (blob.size > 0 && (!isTextResponse || blob.size > 2000)) {
+                    if (blob.size > 0 && (!isTextResponse || blob.size > 2000)) {
                         if (msg.preferBuffer === true && typeof blob.arrayBuffer === 'function') {
                             try {
                                 const dataBuffer = await blob.arrayBuffer();
@@ -323,6 +367,13 @@ export async function downloadAssetDirect(msg: any, sendResponse: (resp: any) =>
                             } catch (e) {
                                 if (contentContext.isDevMode()) console.debug('[GemExporter:assetFetcher.ts]', e);
                             }
+                        }
+                        if (blob.size > MAX_BASE64_BLOB_SIZE) {
+                            sendResponse({
+                                success: false,
+                                error: `asset too large (${(blob.size / 1024 / 1024).toFixed(1)}MB > ${MAX_BASE64_BLOB_SIZE / 1024 / 1024}MB cap); use Google Takeout import`
+                            });
+                            return;
                         }
                         const dataUrl = await toDataUrl(blob);
                         sendResponse({
@@ -339,7 +390,7 @@ export async function downloadAssetDirect(msg: any, sendResponse: (resp: any) =>
             if (contentContext.isDevMode()) console.debug('[GemExporter:assetFetcher.ts]', e);
         }
 
-        handleGetImageBlob(msg, (res) => {
+        void handleGetImageBlob(msg, (res) => {
             if (res && res.success && (res.dataBuffer || res.blobBuffer || res.dataBase64 || res.blobBase64)) {
                 sendResponse({
                     success: true,
@@ -352,7 +403,7 @@ export async function downloadAssetDirect(msg: any, sendResponse: (resp: any) =>
                     size: res.size
                 });
             } else {
-                handleGetFileBlob(msg, sendResponse);
+                void handleGetFileBlob(msg, sendResponse);
             }
         });
     } catch (err: any) {
@@ -400,7 +451,7 @@ export async function fetchImageBuffer(url: string, timeoutMs = 12000): Promise<
             }, timeoutMs);
         }
 
-        handleGetImageBlob({ url, preferBuffer: true }, (res: any) => {
+        void handleGetImageBlob({ url, preferBuffer: true }, (res: any) => {
             cleanup();
             if (settled) return;
             settled = true;
@@ -448,19 +499,10 @@ export const AssetFetcher = {
     fetchGgChain,
     isGgChainUrl,
     fetchImageBuffer,
-    inferImageExt
+    inferImageExt,
+    fetchWithCredentialFallback
 };
 
-
-(AssetFetcher as any).AssetFetcher = AssetFetcher;
-(AssetFetcher as any).default = AssetFetcher;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).AssetFetcher = AssetFetcher;
-}
-if (typeof module !== 'undefined' && (module as any).exports) {
-    (module as any).exports = AssetFetcher;
-}
 
 export default AssetFetcher;
 

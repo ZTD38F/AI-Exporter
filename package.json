@@ -1,29 +1,35 @@
 {
   "name": "ai-exporter",
-  "version": "1.5.1",
-  "description": "A privacy-first browser extension for exporting and archiving AI conversations. Built on the original Gemini Exporter design and evolving into a multi-provider AI Exporter.",
+  "version": "1.7.0",
+  "description": "A privacy-first multi-provider AI conversation archiver based on the original Gemini Exporter; Gemini remains the stable baseline.",
   "main": "background.js",
   "scripts": {
     "type-check": "tsc --noEmit",
     "build": "node build.js",
+    "package": "node build.js --pack",
+    "release:prepare": "node scripts/release-prepare.js",
     "test:unit": "python3 tests/run_tests.py",
+    "test:release-gates": "node scripts/release-gate-checks/check-no-cjk-fonts.js",
     "test:e2e": "node build.js && playwright test",
     "test": "npm run type-check && python3 tests/run_tests.py && node build.js && playwright test",
+    "test:changed": "python3 scripts/run_changed_tests.py",
+    "test:impact": "python3 scripts/test_impact_analyzer.py --summary",
     "test:manual": "./scripts/open_test_chrome.sh",
     "test:manual:win": "powershell -ExecutionPolicy Bypass -File ./scripts/open_test_chrome.ps1",
     "test:generate-chats": "python3 scripts/generate_scenario_chats.py",
     "test:live": "python3 scripts/test_live_chat_and_export.py",
     "test:live:pool": "python3 scripts/test_live_chat_and_export.py --pool",
-    "test:live:local": "python3 scripts/test_live_chat_and_export.py --allow-stale-dataset",
+    "test:live:local": "python3 scripts/test_live_chat_and_export.py",
     "pool:status": "python3 scripts/manage_scenario_pool.py status",
     "pool:validate": "python3 scripts/manage_scenario_pool.py validate",
-    "test:visual": "python3 scripts/test_visual_agent.py",
-    "test:visual:full": "python3 scripts/test_visual_agent.py --full",
-    "release": "gh workflow run release.yml --ref main"
+    "test:visual": "python3 scripts/test_visual_agent.py --playground",
+    "test:visual:custom": "python3 scripts/test_visual_agent.py --api",
+    "test:corpus": "node -r ./tests/ts_register.js ./scripts/parser_migration/run_corpus.ts",
+    "provenance:summary": "python3 ./scripts/parser_migration/test_provenance.py --summary",
+    "release": "gh workflow run release.yml --ref main",
+    "lint": "oxlint -A all -D typescript/no-floating-promises --type-aware src/"
   },
   "keywords": [
-    "ai-exporter",
-    "multi-provider",
     "gemini",
     "google-gemini",
     "exporter",
@@ -36,8 +42,23 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/chrome": "^0.2.9",
+    "@types/katex": "^0.16.8",
     "@types/node": "^26.5.0",
     "esbuild": "^0.28.2",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2002",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@myriaddreamin/typst-ts-renderer": "0.7.0",
+    "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
+    "@myriaddreamin/typst.ts": "0.7.0",
+    "@types/mdast": "^4.0.4",
+    "katex": "^0.18.9",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-math": "^3.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-math": "^3.1.0"
   }
 }

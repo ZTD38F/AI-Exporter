@@ -16,8 +16,25 @@ import base64
 import struct
 import urllib.request
 import urllib.error
+import urllib.parse
 
 CDP_DEFAULT_PORT = 9222
+
+
+def is_gemini_url(url: str) -> bool:
+    """严格校验 URL 主机名是否为 Gemini 官方站点，杜绝不安全子串匹配，并排除内置 glic 侧边栏浮窗"""
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.hostname not in ("gemini.google.com", "bard.google.com"):
+            return False
+        # 排除 Chrome 侧边栏/系统内置 glic 浮窗 (webview / chrome://glic)
+        if parsed.path.startswith("/glic"):
+            return False
+        return True
+    except Exception:
+        return False
 
 
 class CDPConnection:
@@ -129,14 +146,17 @@ class CDPConnection:
             received += len(chunk)
         return b"".join(chunks)
 
-    def eval(self, expr, await_promise=False, timeout=30):
+    def eval(self, expr, await_promise=False, timeout=30, user_gesture=False):
         params = {"expression": expr, "returnByValue": True}
         if await_promise:
             params["awaitPromise"] = True
+        if user_gesture:
+            params["userGesture"] = True
         res = self.call("Runtime.evaluate", params, timeout=timeout)
         result = res.get("result", {})
         if "exceptionDetails" in result:
-            desc = result["exceptionDetails"].get("text") or result["exceptionDetails"].get("exception", {}).get("description")
+            exc = result["exceptionDetails"].get("exception", {})
+            desc = exc.get("description") or result["exceptionDetails"].get("text")
             print(f"    ⚠️ JS 执行异常: {desc}")
         return result.get("result", {}).get("value")
 
@@ -185,7 +205,7 @@ def get_extension_id(port=CDP_DEFAULT_PORT):
                 return ext
 
     for t in tabs:
-        if "gemini.google.com" in t.get("url", ""):
+        if t.get("type", "page") == "page" and is_gemini_url(t.get("url", "")):
             cdp = CDPConnection(t["webSocketDebuggerUrl"])
             try:
                 eid = cdp.eval("typeof chrome !== 'undefined' && chrome.runtime ? chrome.runtime.id : null")
@@ -199,14 +219,15 @@ def get_extension_id(port=CDP_DEFAULT_PORT):
 
 def ensure_extension_loaded(port=CDP_DEFAULT_PORT, repo_path=None):
     """
-    确保工作区扩展已加载到 Chrome 中。若未加载，直接通过 Chrome Browser WebSocket
-    调用 Extensions.loadUnpacked 原生静默挂载，杜绝一切系统文件弹窗。
+    确保工作区扩展已加载到 Chrome 中。优先通过 Chrome Browser WebSocket
+    调用 Extensions.loadUnpacked 原生静默挂载当前 repo_path，返回权威 extension ID。
     """
-    eid = get_extension_id(port)
-    if eid:
-        return eid
-
     repo_path = os.path.abspath(repo_path or os.path.join(os.path.dirname(__file__), ".."))
+    try:
+        import subprocess
+        subprocess.run(["node", "build.js"], cwd=repo_path, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
     browser_ws = get_browser_ws_url(port)
     if browser_ws:
         cdp = None

@@ -1,16 +1,11 @@
-/**
- * src/types/liveSave.ts
- * Types for Live Auto-Save system.
- */
-
 export interface LiveSaveConfig {
-    enabledDisk: boolean;       // Direct disk auto-save (default: false)
-    format: 'markdown' | 'json'; // Format for disk auto-save (default: 'markdown')
-    includeAssets: boolean;     // Download images to assets/ (default: true)
-    dirName?: string;           // Display name of saved directory
-    lastSavedAt?: number;       // Timestamp of last successful live save
-    lastSavedTitle?: string;    // Title of last saved conversation
-    dirError?: string | null;   // Error status if directory is missing or invalid
+    enabledDisk: boolean;
+    format: 'markdown' | 'json';
+    includeAssets: boolean;
+    dirName?: string;
+    lastSavedAt?: number;
+    lastSavedTitle?: string;
+    dirError?: string | null;
 }
 
 export interface LiveConversationRecord {

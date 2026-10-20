@@ -1,0 +1,2664 @@
+{
+  "schemaVersion": 1,
+  "conversation": {
+    "key": {
+      "providerId": "gemini",
+      "accountId": "acct-parity-001",
+      "conversationId": "conv-long-121-001"
+    },
+    "title": "长会话：121 消息 parity 语料",
+    "createdAt": "2026-09-26T14:00:00-07:00",
+    "updatedAt": "2026-09-26T16:02:00-07:00",
+    "messages": [
+      {
+        "id": "u1",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:01-07:00",
+        "blocks": [
+          {
+            "id": "u1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 1 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a1",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:01-07:00",
+        "blocks": [
+          {
+            "id": "a1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 1 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u2",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:02-07:00",
+        "blocks": [
+          {
+            "id": "u2:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 1 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a2",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:02-07:00",
+        "blocks": [
+          {
+            "id": "a2:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 1 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u3",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:03-07:00",
+        "blocks": [
+          {
+            "id": "u3:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 2: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a3",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:03-07:00",
+        "blocks": [
+          {
+            "id": "a3:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 2 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u4",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:04-07:00",
+        "blocks": [
+          {
+            "id": "u4:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 2: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a4",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:04-07:00",
+        "blocks": [
+          {
+            "id": "a4:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 2 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u5",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:05-07:00",
+        "blocks": [
+          {
+            "id": "u5:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 3 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a5",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:05-07:00",
+        "blocks": [
+          {
+            "id": "a5:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 3 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u6",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:06-07:00",
+        "blocks": [
+          {
+            "id": "u6:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 3: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a6",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:06-07:00",
+        "blocks": [
+          {
+            "id": "a6:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 3 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u7",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:07-07:00",
+        "blocks": [
+          {
+            "id": "u7:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 4: how is message order preserved during export?"
+              }
+            ]
+          },
+          {
+            "id": "u7:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_4"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a7",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:07-07:00",
+        "blocks": [
+          {
+            "id": "a7:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 4 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u8",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:08-07:00",
+        "blocks": [
+          {
+            "id": "u8:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 4: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a8",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:08-07:00",
+        "blocks": [
+          {
+            "id": "a8:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 4 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u9",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:09-07:00",
+        "blocks": [
+          {
+            "id": "u9:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 5 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a9",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:09-07:00",
+        "blocks": [
+          {
+            "id": "a9:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 5 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u10",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:10-07:00",
+        "blocks": [
+          {
+            "id": "u10:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 5 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a10",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:10-07:00",
+        "blocks": [
+          {
+            "id": "a10:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 5 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          },
+          {
+            "id": "a10:b1",
+            "type": "code",
+            "language": "python",
+            "code": "def round_5():\n    return 'parity-check-5'\n"
+          }
+        ]
+      },
+      {
+        "id": "u11",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:11-07:00",
+        "blocks": [
+          {
+            "id": "u11:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 6 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a11",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:11-07:00",
+        "blocks": [
+          {
+            "id": "a11:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 6 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u12",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:12-07:00",
+        "blocks": [
+          {
+            "id": "u12:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 6: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a12",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:12-07:00",
+        "blocks": [
+          {
+            "id": "a12:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 6 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u13",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:13-07:00",
+        "blocks": [
+          {
+            "id": "u13:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 7: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a13",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:13-07:00",
+        "blocks": [
+          {
+            "id": "a13:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 7 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u14",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:14-07:00",
+        "blocks": [
+          {
+            "id": "u14:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 7 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          },
+          {
+            "id": "u14:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_7"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a14",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:14-07:00",
+        "blocks": [
+          {
+            "id": "a14:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 7 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u15",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:15-07:00",
+        "blocks": [
+          {
+            "id": "u15:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 8 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a15",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:15-07:00",
+        "blocks": [
+          {
+            "id": "a15:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 8 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          },
+          {
+            "id": "a15:b2",
+            "type": "table",
+            "columns": [
+              {
+                "align": "left"
+              },
+              {
+                "align": "right"
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "指标"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "第 8 轮"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "消息数"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "15"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u16",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:16-07:00",
+        "blocks": [
+          {
+            "id": "u16:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 8: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a16",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:16-07:00",
+        "blocks": [
+          {
+            "id": "a16:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 8 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u17",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:17-07:00",
+        "blocks": [
+          {
+            "id": "u17:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 9 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a17",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:17-07:00",
+        "blocks": [
+          {
+            "id": "a17:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 9 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u18",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:18-07:00",
+        "blocks": [
+          {
+            "id": "u18:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 9 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a18",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:18-07:00",
+        "blocks": [
+          {
+            "id": "a18:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 9 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u19",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:19-07:00",
+        "blocks": [
+          {
+            "id": "u19:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 10 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a19",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:19-07:00",
+        "blocks": [
+          {
+            "id": "a19:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 10 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u20",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:20-07:00",
+        "blocks": [
+          {
+            "id": "u20:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 10 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a20",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:20-07:00",
+        "blocks": [
+          {
+            "id": "a20:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 10 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          },
+          {
+            "id": "a20:b1",
+            "type": "code",
+            "language": "python",
+            "code": "def round_10():\n    return 'parity-check-10'\n"
+          }
+        ]
+      },
+      {
+        "id": "u21",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:21-07:00",
+        "blocks": [
+          {
+            "id": "u21:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 11 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          },
+          {
+            "id": "u21:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_11"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a21",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:21-07:00",
+        "blocks": [
+          {
+            "id": "a21:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 11 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          },
+          {
+            "id": "a21:b3",
+            "type": "math",
+            "source": "\\sum_{i=1}^{11} i = 66"
+          }
+        ]
+      },
+      {
+        "id": "u22",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:22-07:00",
+        "blocks": [
+          {
+            "id": "u22:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 11: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a22",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:22-07:00",
+        "blocks": [
+          {
+            "id": "a22:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 11 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u23",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:23-07:00",
+        "blocks": [
+          {
+            "id": "u23:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 12: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a23",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:23-07:00",
+        "blocks": [
+          {
+            "id": "a23:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 12 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u24",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:24-07:00",
+        "blocks": [
+          {
+            "id": "u24:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 12 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a24",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:24-07:00",
+        "blocks": [
+          {
+            "id": "a24:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 12 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u25",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:25-07:00",
+        "blocks": [
+          {
+            "id": "u25:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 13: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a25",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:25-07:00",
+        "blocks": [
+          {
+            "id": "a25:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 13 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u26",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:26-07:00",
+        "blocks": [
+          {
+            "id": "u26:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 13: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a26",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:26-07:00",
+        "blocks": [
+          {
+            "id": "a26:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 13 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u27",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:27-07:00",
+        "blocks": [
+          {
+            "id": "u27:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 14: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a27",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:27-07:00",
+        "blocks": [
+          {
+            "id": "a27:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 14 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u28",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:28-07:00",
+        "blocks": [
+          {
+            "id": "u28:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 14 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          },
+          {
+            "id": "u28:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_14"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a28",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:28-07:00",
+        "blocks": [
+          {
+            "id": "a28:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 14 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u29",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:29-07:00",
+        "blocks": [
+          {
+            "id": "u29:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 15 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a29",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:29-07:00",
+        "blocks": [
+          {
+            "id": "a29:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 15 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u30",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:30-07:00",
+        "blocks": [
+          {
+            "id": "u30:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 15: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a30",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:30-07:00",
+        "blocks": [
+          {
+            "id": "a30:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 15 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          },
+          {
+            "id": "a30:b1",
+            "type": "code",
+            "language": "python",
+            "code": "def round_15():\n    return 'parity-check-15'\n"
+          },
+          {
+            "id": "a30:b2",
+            "type": "table",
+            "columns": [
+              {
+                "align": "left"
+              },
+              {
+                "align": "right"
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "指标"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "第 15 轮"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "消息数"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "30"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u31",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:31-07:00",
+        "blocks": [
+          {
+            "id": "u31:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 16 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a31",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:31-07:00",
+        "blocks": [
+          {
+            "id": "a31:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 16 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u32",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:32-07:00",
+        "blocks": [
+          {
+            "id": "u32:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 16: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a32",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:32-07:00",
+        "blocks": [
+          {
+            "id": "a32:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 16 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u33",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:33-07:00",
+        "blocks": [
+          {
+            "id": "u33:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 17 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a33",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:33-07:00",
+        "blocks": [
+          {
+            "id": "a33:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 17 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u34",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:34-07:00",
+        "blocks": [
+          {
+            "id": "u34:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 17 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a34",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:34-07:00",
+        "blocks": [
+          {
+            "id": "a34:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 17 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u35",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:35-07:00",
+        "blocks": [
+          {
+            "id": "u35:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 18 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          },
+          {
+            "id": "u35:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_18"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a35",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:35-07:00",
+        "blocks": [
+          {
+            "id": "a35:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 18 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u36",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:36-07:00",
+        "blocks": [
+          {
+            "id": "u36:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 18 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a36",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:36-07:00",
+        "blocks": [
+          {
+            "id": "a36:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 18 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u37",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:37-07:00",
+        "blocks": [
+          {
+            "id": "u37:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 19 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a37",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:37-07:00",
+        "blocks": [
+          {
+            "id": "a37:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 19 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u38",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:38-07:00",
+        "blocks": [
+          {
+            "id": "u38:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 19: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a38",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:38-07:00",
+        "blocks": [
+          {
+            "id": "a38:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 19 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u39",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:39-07:00",
+        "blocks": [
+          {
+            "id": "u39:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 20: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a39",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:39-07:00",
+        "blocks": [
+          {
+            "id": "a39:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 20 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u40",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:40-07:00",
+        "blocks": [
+          {
+            "id": "u40:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 20 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a40",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:40-07:00",
+        "blocks": [
+          {
+            "id": "a40:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 20 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          },
+          {
+            "id": "a40:b1",
+            "type": "code",
+            "language": "python",
+            "code": "def round_20():\n    return 'parity-check-20'\n"
+          }
+        ]
+      },
+      {
+        "id": "u41",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:41-07:00",
+        "blocks": [
+          {
+            "id": "u41:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 21 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a41",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:41-07:00",
+        "blocks": [
+          {
+            "id": "a41:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 21 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u42",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:42-07:00",
+        "blocks": [
+          {
+            "id": "u42:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 21: how is message order preserved during export?"
+              }
+            ]
+          },
+          {
+            "id": "u42:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_21"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a42",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:42-07:00",
+        "blocks": [
+          {
+            "id": "a42:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 21 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          },
+          {
+            "id": "a42:b3",
+            "type": "math",
+            "source": "\\sum_{i=1}^{21} i = 231"
+          }
+        ]
+      },
+      {
+        "id": "u43",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:43-07:00",
+        "blocks": [
+          {
+            "id": "u43:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 22: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a43",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:43-07:00",
+        "blocks": [
+          {
+            "id": "a43:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 22 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u44",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:44-07:00",
+        "blocks": [
+          {
+            "id": "u44:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 22: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a44",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:44-07:00",
+        "blocks": [
+          {
+            "id": "a44:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 22 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u45",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:45-07:00",
+        "blocks": [
+          {
+            "id": "u45:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 23 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a45",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:45-07:00",
+        "blocks": [
+          {
+            "id": "a45:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 23 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          },
+          {
+            "id": "a45:b2",
+            "type": "table",
+            "columns": [
+              {
+                "align": "left"
+              },
+              {
+                "align": "right"
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "指标"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "第 23 轮"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "消息数"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "45"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u46",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:46-07:00",
+        "blocks": [
+          {
+            "id": "u46:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 23 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a46",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:46-07:00",
+        "blocks": [
+          {
+            "id": "a46:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 23 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u47",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:47-07:00",
+        "blocks": [
+          {
+            "id": "u47:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 24 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a47",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:47-07:00",
+        "blocks": [
+          {
+            "id": "a47:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 24 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u48",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:48-07:00",
+        "blocks": [
+          {
+            "id": "u48:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 24 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a48",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:48-07:00",
+        "blocks": [
+          {
+            "id": "a48:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 24 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u49",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:49-07:00",
+        "blocks": [
+          {
+            "id": "u49:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 25: compare the trade-offs of bundling CJK fonts vs local-first loading."
+              }
+            ]
+          },
+          {
+            "id": "u49:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_25"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a49",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:49-07:00",
+        "blocks": [
+          {
+            "id": "a49:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 25 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u50",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:50-07:00",
+        "blocks": [
+          {
+            "id": "u50:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 25 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a50",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:50-07:00",
+        "blocks": [
+          {
+            "id": "a50:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 25 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          },
+          {
+            "id": "a50:b1",
+            "type": "code",
+            "language": "python",
+            "code": "def round_25():\n    return 'parity-check-25'\n"
+          }
+        ]
+      },
+      {
+        "id": "u51",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:51-07:00",
+        "blocks": [
+          {
+            "id": "u51:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 26: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a51",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:51-07:00",
+        "blocks": [
+          {
+            "id": "a51:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 26 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u52",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:52-07:00",
+        "blocks": [
+          {
+            "id": "u52:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 26 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a52",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:52-07:00",
+        "blocks": [
+          {
+            "id": "a52:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 26 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u53",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:53-07:00",
+        "blocks": [
+          {
+            "id": "u53:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 27 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a53",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:53-07:00",
+        "blocks": [
+          {
+            "id": "a53:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 27 轮回答：跨页表格应在每一页重复表头行；Typst 与 HTML 打印都支持 `repeat-header` 语义，parity 对比时以「每页首行是否为表头」作为断言。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u54",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:54-07:00",
+        "blocks": [
+          {
+            "id": "u54:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 27 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a54",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:54-07:00",
+        "blocks": [
+          {
+            "id": "a54:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 27 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u55",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:55-07:00",
+        "blocks": [
+          {
+            "id": "u55:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 28: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a55",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:55-07:00",
+        "blocks": [
+          {
+            "id": "a55:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 28 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u56",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:56-07:00",
+        "blocks": [
+          {
+            "id": "u56:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 28: how is message order preserved during export?"
+              }
+            ]
+          },
+          {
+            "id": "u56:b1",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "补充："
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "这一轮还请覆盖 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "中英文混排"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 与 "
+              },
+              {
+                "type": "inlineCode",
+                "code": "round_28"
+              },
+              {
+                "type": "text",
+                "text": " 的行内代码。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a56",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:56-07:00",
+        "blocks": [
+          {
+            "id": "a56:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 28 answer: messages are exported in source array order. The message array is the sole authoritative order."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u57",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:57-07:00",
+        "blocks": [
+          {
+            "id": "u57:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 29: how is message order preserved during export?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a57",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:57-07:00",
+        "blocks": [
+          {
+            "id": "a57:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 29 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u58",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:58-07:00",
+        "blocks": [
+          {
+            "id": "u58:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 29 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a58",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:58-07:00",
+        "blocks": [
+          {
+            "id": "a58:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 29 轮回答：停止条件以「上次扫描的最大时间戳」为准——扫描按时间倒序进行，一旦遇到更新时间早于（或等于）该时间戳且内容未变更的记录即停止，保证增量扫描收敛。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u59",
+        "role": "user",
+        "createdAt": "2026-09-26T14:00:59-07:00",
+        "blocks": [
+          {
+            "id": "u59:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 30 轮：请解释一下增量同步里「上次扫描的最大时间戳」作为停止条件的含义。"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a59",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:00:59-07:00",
+        "blocks": [
+          {
+            "id": "a59:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Round 30 answer: bundling CJK fonts makes PDFs self-contained but adds ~15MB per export; local-first keeps the bundle small and reuses system fonts, at the cost of machine-dependent rendering. P0 chose local-first."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u60",
+        "role": "user",
+        "createdAt": "2026-09-26T14:01:00-07:00",
+        "blocks": [
+          {
+            "id": "u60:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 30 轮：如果导出中途用户取消了，失败的条目应该怎么标记？"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a60",
+        "role": "assistant",
+        "createdAt": "2026-09-26T14:01:00-07:00",
+        "blocks": [
+          {
+            "id": "a60:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 30 轮回答：取消是协作式的——导出循环每次迭代检查取消标志；已标记失败的条目保持 {failed} 状态并可重试，绝不能被标成成功。"
+              }
+            ]
+          },
+          {
+            "id": "a60:b1",
+            "type": "code",
+            "language": "python",
+            "code": "def round_30():\n    return 'parity-check-30'\n"
+          },
+          {
+            "id": "a60:b2",
+            "type": "table",
+            "columns": [
+              {
+                "align": "left"
+              },
+              {
+                "align": "right"
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "指标"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "第 30 轮"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "消息数"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "60"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "u61",
+        "role": "user",
+        "createdAt": "2026-09-26T14:01:01-07:00",
+        "blocks": [
+          {
+            "id": "u61:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "第 31 轮：表格超过一页时，表头应该怎么处理？"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [],
+  "citations": []
+}

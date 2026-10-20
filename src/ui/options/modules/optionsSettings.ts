@@ -1,116 +1,27 @@
-// src/ui/options/modules/optionsSettings.ts - Language, dev mode, diagnostics, and storage cleanup
 import type { OptionsSettingsOptions } from '../../../types/ui.js';
-import { ConversationsStore as DefaultConversationsStore } from '../../state/conversationsStore.js';
-import { ListView as DefaultListView } from '../../views/listView.js';
-import { TourGuide as DefaultTourGuide } from '../../tour/tourGuide.js';
-import { StorageService as DefaultStorageService } from '../../../core/storage/storageService.js';
-import { FormatStore as DefaultFormatStore } from '../../../core/storage/formatStore.js';
-import { GeminiUtils as DefaultGeminiUtils } from '../../../core/utils/utils.js';
-import { I18n as DefaultI18n } from '../../../core/utils/i18n.js';
-import { LiveStorageManager as DefaultLiveStorageManager } from '../../../core/storage/liveStorageManager.js';
-import { DirHandleController as DefaultDirHandleController } from '../../controllers/dirHandleController.js';
-import { FsWriter as DefaultFsWriter } from '../../../core/engine/writers/fsWriter.js';
-import { ChatFormatter as DefaultChatFormatter } from '../../../core/engine/chatFormatter.js';
+import {
+    getI18n,
+    t,
+    getStore,
+    getList,
+    getFormats,
+    getStorage,
+    getTour,
+    getDirHandle as getDirHandleController,
+    getLiveStorage,
+    getProgressView,
+    getExportCtrl,
+    getLogView
+} from '../optionsContext.js';
 import { getLatestEligibleFeature } from '../../tour/featureReleases.js';
+import { $ } from '../../uiCommon.js';
+import { normId } from '../../../core/utils/pathUtils.js';
+import { cleanTitle, resolveTitle } from '../../../core/utils/utils.js';
+import { getExtensionVersion, STORAGE_KEYS } from '../../../core/utils/constants.js';
+import { isLocalDevelopment } from '../../../core/utils/environment.js';
+import { buildDiagnosticSnapshot } from '../../../core/diagnostics/diagnosticSnapshot.js';
 
-function $(id: string): HTMLElement | null {
-    return typeof document !== 'undefined' ? document.getElementById(id) : null;
-}
-
-const getI18n = () => {
-    if (typeof I18n !== 'undefined' && I18n) return I18n;
-    if (typeof DefaultI18n !== 'undefined' && DefaultI18n) return DefaultI18n;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).I18n) return (globalThis as any).I18n;
-    return null;
-};
-
-const t = (key: string, ...args: any[]): string => {
-    const i18n = getI18n();
-    if (i18n && typeof i18n.t === 'function') {
-        return i18n.t(key, ...args);
-    }
-    return key;
-};
-
-const getStore = () => {
-    if (typeof DefaultConversationsStore !== 'undefined' && DefaultConversationsStore) return DefaultConversationsStore;
-    if (typeof ConversationsStore !== 'undefined') return ConversationsStore;
-    return null;
-};
-
-const getList = () => {
-    if (typeof DefaultListView !== 'undefined' && DefaultListView) return DefaultListView;
-    if (typeof ListView !== 'undefined') return ListView;
-    return null;
-};
-
-const getFormats = () => {
-    if (typeof FormatStore !== 'undefined' && FormatStore) return FormatStore;
-    if (typeof DefaultFormatStore !== 'undefined' && DefaultFormatStore) return DefaultFormatStore;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).FormatStore) return (globalThis as any).FormatStore;
-    return null;
-};
-
-const getStorage = () => {
-    if (typeof StorageService !== 'undefined' && StorageService) return StorageService;
-    if (typeof DefaultStorageService !== 'undefined' && DefaultStorageService) return DefaultStorageService;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).StorageService) return (globalThis as any).StorageService;
-    return null;
-};
-
-const getTour = () => {
-    if (typeof DefaultTourGuide !== 'undefined' && DefaultTourGuide) return DefaultTourGuide;
-    if (typeof TourGuide !== 'undefined') return TourGuide;
-    return null;
-};
-
-const getUtils = () => {
-    if (typeof GeminiUtils !== 'undefined' && GeminiUtils) return GeminiUtils;
-    if (typeof DefaultGeminiUtils !== 'undefined' && DefaultGeminiUtils) return DefaultGeminiUtils;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils) return (globalThis as any).GeminiUtils;
-    return null;
-};
-
-const getDirHandleController = () => {
-    if (typeof DirHandleController !== 'undefined' && DirHandleController) return DirHandleController;
-    if (typeof DefaultDirHandleController !== 'undefined' && DefaultDirHandleController) return DefaultDirHandleController;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).DirHandleController) return (globalThis as any).DirHandleController;
-    return null;
-};
-
-const getFsWriter = () => {
-    if (typeof FsWriter !== 'undefined' && FsWriter) return FsWriter;
-    if (typeof DefaultFsWriter !== 'undefined' && DefaultFsWriter) return DefaultFsWriter;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).FsWriter) return (globalThis as any).FsWriter;
-    return null;
-};
-
-const getChatFormatter = () => {
-    if (typeof ChatFormatter !== 'undefined' && ChatFormatter) return ChatFormatter;
-    if (typeof DefaultChatFormatter !== 'undefined' && DefaultChatFormatter) return DefaultChatFormatter;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).ChatFormatter) return (globalThis as any).ChatFormatter;
-    return null;
-};
-
-export const normId = (id?: string | null): string => {
-    const utils = getUtils();
-    if (utils && typeof utils.normId === 'function') return utils.normId(id);
-    return String(id || '').replace(/^c_/, '');
-};
-
-export const cleanTitle = (tStr?: string | null): string => {
-    const utils = getUtils();
-    if (utils && typeof utils.cleanTitle === 'function') return utils.cleanTitle(tStr);
-    return (tStr || '').trim();
-};
-
-export const resolveTitle = (chat: any): { title: string; source: string } => {
-    const utils = getUtils();
-    if (utils && typeof utils.resolveTitle === 'function') return utils.resolveTitle(chat);
-    return { title: cleanTitle(chat?.title) || '未命名对话', source: chat?.titleSource || 'legacy' };
-};
-
-let __loadStore: ((force?: boolean) => Promise<any> | void) | null = null;
+export { normId, cleanTitle, resolveTitle };
 let __log: ((msg: string, level?: 'info' | 'warn' | 'error') => void) | null = null;
 let __clearLog: (() => void) | null = null;
 let __renderLog: (() => void) | null = null;
@@ -118,6 +29,10 @@ let __updateZipUi: (() => void) | null = null;
 let __checkExportSession: (() => Promise<void> | void) | null = null;
 let __updateAccountSlotSelector: (() => void) | null = null;
 let __getSearchFilter: () => string = () => '';
+let __getChatFilterType: () => string = () => {
+    const sel = $('chatFilterSelect') as HTMLSelectElement | null;
+    return (sel && sel.value) ? sel.value.trim() : 'all';
+};
 
 export function log(msg: string, level: 'info' | 'warn' | 'error' = 'info'): void {
     if (__log) __log(msg, level);
@@ -134,12 +49,21 @@ export async function handleLangChange(targetLang: 'zh' | 'en'): Promise<void> {
     if (i18n && i18n.setLang) {
         await i18n.setLang(targetLang);
     }
+    document.documentElement.lang = targetLang === 'zh' ? 'zh-CN' : 'en';
+    if (i18n && typeof i18n.applyI18n === 'function') {
+        i18n.applyI18n();
+    }
+
+    const Progress = getProgressView();
+    if (Progress && typeof Progress.reset === 'function') {
+        Progress.reset();
+    }
 
     if (__updateAccountSlotSelector) __updateAccountSlotSelector();
     const convs = Store ? Store.getConversations() : [];
     const expMap = Store ? Store.getExportedIds() : {};
     if (List) {
-        List.render(convs, expMap, currentSelected, __getSearchFilter());
+        List.render(convs, expMap, currentSelected, __getSearchFilter(), __getChatFilterType());
         List.updateStat(convs);
     }
     if (__updateZipUi) __updateZipUi();
@@ -176,14 +100,21 @@ export async function handleDevChange(devOn: boolean): Promise<void> {
 
 export async function exportDiagnostics(): Promise<void> {
     try {
-        const d = await chrome.storage.local.get(['gemini_last_sync_diagnostics']);
-        const diag = d.gemini_last_sync_diagnostics;
-        if (!diag) {
-            const noDataMsg = typeof t === 'function' ? t('noDiagData') : 'No diagnostic data yet.';
-            log(noDataMsg, 'info');
-            return;
-        }
-        const jsonStr = JSON.stringify(diag, null, 2);
+        const Store = getStore();
+        const slot = Store ? Store.getCurrentSlot() : 'u0';
+        const convs = Store ? Store.getConversations() : [];
+        const expMap = Store ? Store.getExportedIds() : {};
+        const LogView = getLogView();
+        const logs = typeof LogView?.getBuffer === 'function' ? LogView.getBuffer() : [];
+
+        const snapshot = await buildDiagnosticSnapshot({
+            slot,
+            conversations: convs,
+            exportedIds: expMap,
+            workbenchLogs: logs
+        });
+
+        const jsonStr = JSON.stringify(snapshot, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -191,27 +122,27 @@ export async function exportDiagnostics(): Promise<void> {
         a.download = `gemini_diagnostics_${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 3000);
-        log('已生成诊断数据文件', 'info');
+        log(typeof t === 'function' ? t('diagExportSuccess') : '已生成诊断数据文件', 'info');
     } catch (e: any) {
-        log('导出诊断失败: ' + e.message, 'error');
+        log(typeof t === 'function' ? t('diagExportFailed', e?.message || String(e)) : ('导出诊断失败: ' + (e?.message || String(e))), 'error');
     }
 }
 
 function bindLanguageControls(): void {
     $('langToggle')?.addEventListener('change', (e: Event) => {
-        handleLangChange((e.target as HTMLInputElement).checked ? 'en' : 'zh');
+        void handleLangChange((e.target as HTMLInputElement).checked ? 'en' : 'zh');
     });
     $('labelLangZh')?.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();
         const toggle = $('langToggle') as HTMLInputElement | null;
         if (toggle) toggle.checked = false;
-        handleLangChange('zh');
+        void handleLangChange('zh');
     });
     $('labelLangEn')?.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();
         const toggle = $('langToggle') as HTMLInputElement | null;
         if (toggle) toggle.checked = true;
-        handleLangChange('en');
+        void handleLangChange('en');
     });
 }
 
@@ -221,7 +152,7 @@ function bindDevControls(): void {
         const dt = $('devToggle') as HTMLInputElement | null;
         if (dt) {
             dt.checked = !dt.checked;
-            handleDevChange(dt.checked);
+            void handleDevChange(dt.checked);
         }
     });
 }
@@ -248,31 +179,66 @@ function bindStorageCleanup(): void {
     const List = getList();
     const Store = getStore();
 
-    $('btnClearExported')?.addEventListener('click', async () => {
+    $('btnClearExported')?.addEventListener('click', async (e?: Event) => {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
         const slot = Store ? Store.getCurrentSlot() : 'u0';
         if (Store) await Store.clearExported(slot);
         const convs = Store ? Store.getConversations() : [];
         const expMap = Store ? Store.getExportedIds() : {};
-        const currentSelected = new Set(List ? List.getSelected(convs).map((x: any) => x.id) : []);
         if (List) {
-            List.render(convs, expMap, currentSelected, __getSearchFilter());
+            if (typeof List.setSelectedIds === 'function') List.setSelectedIds(null);
+            List.render(convs, expMap, null, __getSearchFilter(), __getChatFilterType());
             List.updateStat(convs);
         }
         log(typeof t === 'function' ? t('confirmClearExported') : '已清空已导出记录', 'info');
     });
 
-    $('btnClearAll')?.addEventListener('click', async () => {
-        const confirmMsg = typeof t === 'function' ? t('confirmClearAll') : '确定清空本地所有会话数据？';
-        if (!confirm(confirmMsg)) return;
+    const btnClearAll = $('btnClearAll') as HTMLButtonElement | null;
+    let clearAllTimeout: any = null;
+    let isConfirmingClear = false;
+
+    const resetClearBtn = () => {
+        if (!btnClearAll) return;
+        isConfirmingClear = false;
+        if (clearAllTimeout) {
+            clearTimeout(clearAllTimeout);
+            clearAllTimeout = null;
+        }
+        btnClearAll.textContent = typeof t === 'function' ? t('btnClearAll') : '清空全部';
+        btnClearAll.style.background = 'transparent';
+        btnClearAll.style.color = '#ff8a8a';
+        btnClearAll.style.borderColor = '#5a2a2a';
+    };
+
+    btnClearAll?.addEventListener('click', async () => {
+        if (!isConfirmingClear) {
+            isConfirmingClear = true;
+            btnClearAll.textContent = typeof t === 'function' ? (t('confirmClearAllInPlace') || '⚠️ 确认清空? (3s)') : '⚠️ 确认清空? (3s)';
+            btnClearAll.style.background = '#dc2626';
+            btnClearAll.style.color = '#ffffff';
+            btnClearAll.style.borderColor = '#ef4444';
+            clearAllTimeout = setTimeout(resetClearBtn, 3500);
+            return;
+        }
+
+        resetClearBtn();
         const slot = Store ? Store.getCurrentSlot() : 'u0';
         if (Store) await Store.clearAll(slot);
         const convs = Store ? Store.getConversations() : [];
         const expMap = Store ? Store.getExportedIds() : {};
         if (List) {
-            List.render(convs, expMap, null, __getSearchFilter());
+            if (typeof List.setSelectedIds === 'function') List.setSelectedIds(null);
+            List.render(convs, expMap, null, __getSearchFilter(), __getChatFilterType());
             List.updateStat(convs);
         }
         log(typeof t === 'function' ? t('confirmClearAll') : '本地会话数据已清空');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (isConfirmingClear && e.target !== btnClearAll) {
+            resetClearBtn();
+        }
     });
 }
 
@@ -294,6 +260,23 @@ async function initLanguage(): Promise<void> {
 
 async function initDevMode(): Promise<void> {
     try {
+        const isDevEnv = isLocalDevelopment();
+        const devWrapper = $('devModeWrapper');
+        if (!isDevEnv) {
+            if (devWrapper) {
+                devWrapper.style.setProperty('display', 'none', 'important');
+            }
+            document.body.classList.remove('dev-mode');
+            const Store = getStore();
+            if (Store && Store.setDevMode) {
+                await Store.setDevMode(false);
+            }
+            return;
+        }
+
+        if (devWrapper) {
+            devWrapper.style.display = 'inline-flex';
+        }
         const Store = getStore();
         const devOn = Store ? await Store.getDevMode() : false;
         const devToggle = $('devToggle') as HTMLInputElement | null;
@@ -313,42 +296,30 @@ export function checkWalkthroughOnOpen(): void {
         if (typeof window === 'undefined') return;
         const urlParams = new URLSearchParams(window.location.search);
         const isExplicitTour = urlParams.get('tour') === '1';
-        const isWelcome = urlParams.get('welcome') === '1' || urlParams.get('onboarding') === '1';
+        if (urlParams.get('notour') === '1') return;
 
         setTimeout(async () => {
             const Storage = getStorage();
             const Tour = getTour();
             if (!Tour) return;
 
-            // 1. Explicit user request to run full tour
-            if (isExplicitTour) {
-                if (Tour.startTour) Tour.startTour(0);
-                return;
-            }
-
             const tourDone = (Storage && Storage.isTourCompleted)
                 ? await Storage.isTourCompleted()
                 : false;
 
-            // 2. Track A: New user onboarding (only on install / welcome URL)
-            if (isWelcome) {
-                if (!tourDone || isExplicitTour) {
-                    if (Tour.startTour) Tour.startTour(0);
-                }
+            if (isExplicitTour || !tourDone) {
+                if (Tour.startTour) void Tour.startTour(0);
                 return;
             }
 
-            // 3. Track B: Returning user major feature spotlight (on normal workbench open)
-            if (tourDone) {
-                const currentAppVersion = (typeof chrome !== 'undefined' && chrome.runtime?.getManifest?.()?.version) || '1.5.0';
-                const lastSeenVersion = (Storage && Storage.getLastSeenFeatureVersion)
-                    ? await Storage.getLastSeenFeatureVersion()
-                    : '';
+            const currentAppVersion = getExtensionVersion();
+            const lastSeenVersion = (Storage && Storage.getLastSeenFeatureVersion)
+                ? await Storage.getLastSeenFeatureVersion()
+                : '';
 
-                const eligibleFeature = getLatestEligibleFeature(lastSeenVersion, currentAppVersion);
-                if (eligibleFeature && Tour.startFeatureSpotlight) {
-                    Tour.startFeatureSpotlight(eligibleFeature.stepId, eligibleFeature.version);
-                }
+            const eligibleFeature = getLatestEligibleFeature(lastSeenVersion, currentAppVersion);
+            if (eligibleFeature && Tour.startFeatureSpotlight) {
+                void Tour.startFeatureSpotlight(eligibleFeature.stepId, eligibleFeature.version);
             }
         }, 400);
     } catch (e) {
@@ -359,16 +330,15 @@ export function checkWalkthroughOnOpen(): void {
 export const checkOnboardingTour = checkWalkthroughOnOpen;
 
 export async function init({
-    loadStore,
     log: logFn,
     clearLog: clearFn,
     renderLog: renderFn,
     updateZipUi: zipFn,
     checkExportSession: expSessFn,
     updateAccountSlotSelector: slotSelFn,
-    getSearchFilter: filterFn
+    getSearchFilter: filterFn,
+    getChatFilterType: filterTypeFn
 }: OptionsSettingsOptions = {}): Promise<void> {
-    __loadStore = loadStore || null;
     __log = logFn || null;
     __clearLog = clearFn || null;
     __renderLog = renderFn || null;
@@ -376,6 +346,7 @@ export async function init({
     __checkExportSession = expSessFn || null;
     __updateAccountSlotSelector = slotSelFn || null;
     if (filterFn) __getSearchFilter = filterFn;
+    if (filterTypeFn) __getChatFilterType = filterTypeFn;
 
     await initLanguage();
     await initDevMode();
@@ -387,13 +358,29 @@ export async function init({
     if (__updateZipUi) __updateZipUi();
 }
 
+export function updateLiveSaveFormatAvailability(): void {
+    const format = ($('format') as HTMLSelectElement | null)?.value || 'markdown';
+    const toggle = $('liveSaveDiskToggle') as HTMLInputElement | null;
+    if (!toggle) return;
+    const disabled = format !== 'markdown';
+    toggle.disabled = disabled;
+    if (disabled) toggle.checked = false;
+    const label = toggle.closest?.('label');
+    if (label) {
+        label.style.opacity = disabled ? '0.45' : '';
+        label.style.cursor = disabled ? 'not-allowed' : 'pointer';
+        label.setAttribute('data-i18n-title', disabled ? 'liveSaveMarkdownOnly' : 'liveSaveDiskTip');
+        label.title = t(disabled ? 'liveSaveMarkdownOnly' : 'liveSaveDiskTip');
+    }
+    if (__updateZipUi) __updateZipUi();
+}
+
 export async function initLiveSaveSettings(): Promise<void> {
-    const liveStorage = (typeof LiveStorageManager !== 'undefined' ? LiveStorageManager : DefaultLiveStorageManager);
+    const liveStorage = getLiveStorage();
     if (!liveStorage) return;
 
     const diskToggle = $('liveSaveDiskToggle') as HTMLInputElement | null;
     const dirLabel = $('dirLabel');
-    const statusTag = $('liveSaveStatusTag');
     const DirHandle = getDirHandleController();
 
     try {
@@ -407,6 +394,31 @@ export async function initLiveSaveSettings(): Promise<void> {
         if (savedHandle && dirLabel) {
             dirLabel.textContent = typeof t === 'function' ? t('dirCurrent', savedHandle.name || cfg.dirName || 'Folder') : `已选目录: ${savedHandle.name || cfg.dirName || 'Folder'}`;
             if (dirLabel.style) dirLabel.style.color = '';
+        } else if (cfg.dirError === 'permission_prompt_needed' || (DirHandle && typeof DirHandle.getPendingPermissionHandle === 'function' && DirHandle.getPendingPermissionHandle())) {
+            if (dirLabel) {
+                const folderName = cfg.dirName || 'Folder';
+                dirLabel.textContent = typeof t === 'function' ? t('dirPromptNeeded', folderName) : `目录权限待续期: ${folderName}（点击恢复授权）`;
+                if (dirLabel.style) {
+                    dirLabel.style.color = '#f59e0b';
+                    dirLabel.style.cursor = 'pointer';
+                }
+                dirLabel.onclick = async () => {
+                    if (DirHandle && typeof DirHandle.reauthorizeDirHandle === 'function') {
+                        const ok = await DirHandle.reauthorizeDirHandle();
+                        if (ok) {
+                            const h = DirHandle.getDirHandle();
+                            if (h && dirLabel) {
+                                dirLabel.textContent = typeof t === 'function' ? t('dirCurrent', h.name) : `已选目录: ${h.name}`;
+                                dirLabel.style.color = '';
+                                dirLabel.style.cursor = 'default';
+                                dirLabel.onclick = null;
+                                await liveStorage.setLiveConfig({ enabledDisk: true, dirName: h.name, dirError: null });
+                                log(typeof t === 'function' ? t('logFolderSelected', h.name) : `已恢复目录权限: ${h.name}`);
+                            }
+                        }
+                    }
+                };
+            }
         } else if (cfg.dirError === 'not_found' || (!savedHandle && cfg.dirName)) {
             if (diskToggle) diskToggle.checked = false;
             if (dirLabel) {
@@ -414,36 +426,33 @@ export async function initLiveSaveSettings(): Promise<void> {
                 if (dirLabel.style) dirLabel.style.color = '#f59e0b';
             }
         }
-
-        if (statusTag && cfg.lastSavedAt) {
-            const timeStr = new Date(cfg.lastSavedAt).toLocaleTimeString();
-            statusTag.textContent = `${t('liveSaveActive')} (${timeStr})`;
-        }
     } catch (e) {
         if (typeof console !== 'undefined' && console.debug) console.debug('[OptionsSettings] initLiveSaveSettings error:', e);
+    }
+
+    updateLiveSaveFormatAvailability();
+    if (diskToggle?.disabled) await liveStorage.setLiveConfig({ enabledDisk: false });
+    const formatSelect = $('format') as HTMLSelectElement | null;
+    if (formatSelect && !formatSelect.dataset.liveSaveBound) {
+        formatSelect.dataset.liveSaveBound = 'true';
+        formatSelect.addEventListener('change', updateLiveSaveFormatAvailability);
     }
 
     if (diskToggle && !diskToggle.dataset.bound) {
         diskToggle.dataset.bound = 'true';
         diskToggle.addEventListener('change', async () => {
+            updateLiveSaveFormatAvailability();
+            if (diskToggle.disabled) return;
             if (diskToggle.checked) {
                 let handle = DirHandle ? DirHandle.getDirHandle() : null;
                 if (!handle && DirHandle && typeof DirHandle.restoreSavedDirHandle === 'function') {
                     handle = await DirHandle.restoreSavedDirHandle();
-                }
-                if (!handle && DirHandle && typeof DirHandle.getStoredDirHandle === 'function') {
-                    handle = await DirHandle.getStoredDirHandle();
                 }
 
                 if (!handle) {
                     try {
                         if (DirHandle && typeof DirHandle.requestDirHandle === 'function') {
                             handle = await DirHandle.requestDirHandle();
-                        } else if (typeof window !== 'undefined' && (window as any).showDirectoryPicker) {
-                            handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-                            if (DirHandle && typeof DirHandle.saveStoredDirHandle === 'function') {
-                                await DirHandle.saveStoredDirHandle(handle);
-                            }
                         }
                     } catch (err: any) {
                         diskToggle.checked = false;
@@ -470,7 +479,7 @@ export async function initLiveSaveSettings(): Promise<void> {
                 }
             } else {
                 await liveStorage.setLiveConfig({ enabledDisk: false });
-                log('[LiveSave] Live disk sync disabled');
+                log(typeof t === 'function' ? t('logLiveSaveDisabled') : '[LiveSave] Live disk sync disabled');
             }
             if (__updateZipUi) __updateZipUi();
         });
@@ -479,9 +488,21 @@ export async function initLiveSaveSettings(): Promise<void> {
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged && !(globalThis as any).__liveSaveStorageWatcherBound) {
         (globalThis as any).__liveSaveStorageWatcherBound = true;
         chrome.storage.onChanged.addListener((changes: any, area: string) => {
-            if (area === 'local' && changes.live_save_config?.newValue) {
-                const val = changes.live_save_config.newValue;
-                if (val.dirError === 'not_found') {
+            if (area === 'local' && changes[STORAGE_KEYS.LIVE_SAVE_CONFIG]?.newValue) {
+                if (diskToggle) diskToggle.checked = !!changes[STORAGE_KEYS.LIVE_SAVE_CONFIG].newValue.enabledDisk;
+                updateLiveSaveFormatAvailability();
+                const val = changes[STORAGE_KEYS.LIVE_SAVE_CONFIG].newValue;
+                if (val.dirError === 'permission_prompt_needed') {
+                    if (dirLabel) {
+                        const folderName = val.dirName || 'Folder';
+                        dirLabel.textContent = typeof t === 'function' ? t('dirPromptNeeded', folderName) : `目录权限待续期: ${folderName}（点击恢复授权）`;
+                        if (dirLabel.style) {
+                            dirLabel.style.color = '#f59e0b';
+                            dirLabel.style.cursor = 'pointer';
+                        }
+                    }
+                    log(typeof t === 'function' ? t('dirPromptNeeded', val.dirName || 'Folder') : `目录权限待续期: ${val.dirName || 'Folder'}，已暂存至下载目录`, 'warn');
+                } else if (val.dirError === 'not_found') {
                     if (diskToggle) diskToggle.checked = false;
                     if (dirLabel) {
                         dirLabel.textContent = typeof t === 'function' ? t('dirNotFound') : '所选目录已被删除或失效，请重新选择';
@@ -489,15 +510,29 @@ export async function initLiveSaveSettings(): Promise<void> {
                     }
                     log(typeof t === 'function' ? t('dirNotFound') : '所选目录已被删除或失效，实时落盘已暂停', 'warn');
                 } else if (val.lastSavedAt && val.lastSavedTitle) {
-                    const statusTagEl = $('liveSaveStatusTag');
-                    if (statusTagEl) {
-                        const timeStr = new Date(val.lastSavedAt).toLocaleTimeString();
-                        statusTagEl.textContent = `${t('liveSaveActive')} (${timeStr})`;
-                    }
-                    log(`[实时落盘] 自动保存成功: ${val.lastSavedTitle}`);
+                    log(typeof t === 'function' ? t('logLiveSaveSuccess', val.lastSavedTitle) : `[实时落盘] 自动保存成功: ${val.lastSavedTitle}`);
                 }
             }
-            if (area === 'local' && (changes.exportedIds || Object.keys(changes).some(k => k.startsWith('gemini_exported_')))) {
+            if (area === 'local' && changes[STORAGE_KEYS.LANG]) {
+                const newLang = changes[STORAGE_KEYS.LANG].newValue;
+                const i18n = getI18n();
+                if (newLang && i18n && typeof i18n.getLang === 'function' && i18n.getLang() !== newLang) {
+                    void handleLangChange(newLang as 'zh' | 'en');
+                }
+            }
+            if (area === 'local' && changes[STORAGE_KEYS.FORMAT]) {
+                const newFmt = String(changes[STORAGE_KEYS.FORMAT].newValue || 'markdown');
+                const fmtSelect = $('format') as HTMLSelectElement | null;
+                if (fmtSelect && fmtSelect.value !== newFmt) {
+                    fmtSelect.value = newFmt;
+                }
+                updateLiveSaveFormatAvailability();
+            }
+            if (area === 'local' && (changes.exportedIds || Object.keys(changes).some(k => k.startsWith('gemini_exported_') || k.startsWith('gemini_conversations')))) {
+                const exportCtrl = getExportCtrl();
+                if (exportCtrl && typeof exportCtrl.isRunning === 'function' && exportCtrl.isRunning()) {
+                    return;
+                }
                 if (typeof (window as any).__workbenchLoadStore === 'function') {
                     (window as any).__workbenchLoadStore();
                 }
@@ -516,14 +551,6 @@ export const OptionsSettings = {
     checkOnboardingTour
 };
 
-(OptionsSettings as any).OptionsSettings = OptionsSettings;
-(OptionsSettings as any).default = OptionsSettings;
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).OptionsSettings = OptionsSettings;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = OptionsSettings;
-}
 
 export default OptionsSettings;

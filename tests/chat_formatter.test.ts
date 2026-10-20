@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const ChatFormatter = require('../src/core/engine/chatFormatter.js');
 
-test('chat_formatter - formatContent markdown', () => {
+test('chat_formatter - formatMarkdownCanonical', async () => {
     const mockChat = {
         id: '12345678',
         title: 'Quantum Physics Guide',
@@ -15,11 +15,24 @@ test('chat_formatter - formatContent markdown', () => {
         ]
     };
 
-    const res = ChatFormatter.formatContent(mockChat, 'markdown');
+    const res = await ChatFormatter.formatMarkdownCanonical(mockChat);
     assert.strictEqual(res.ext, 'md');
-    assert.ok(res.content.includes('# Quantum Physics Guide'));
-    assert.ok(res.content.includes('What is superposition?'));
-    assert.ok(res.content.includes('Superposition is a fundamental principle'));
+    // Frontmatter structure assertions
+    assert.ok(res.content.startsWith('---\n'), 'Markdown must start with YAML frontmatter delimiter');
+    assert.ok(res.content.includes('\n---\n\n'), 'YAML frontmatter must close with --- delimiter');
+    assert.ok(res.content.includes('title: "Quantum Physics Guide"'), 'Frontmatter must contain title key');
+    assert.ok(res.content.includes('id: "12345678"'), 'Frontmatter must contain id key');
+    assert.ok(res.content.includes('url: "https://gemini.google.com/app/12345678"'), 'Frontmatter must contain url key');
+    assert.ok(res.content.includes('tags:\n  - gemini-export'), 'Frontmatter must contain gemini-export tag');
+    // Heading and content assertions
+    assert.ok(res.content.includes('# Quantum Physics Guide'), 'Must render H1 title');
+    assert.ok(res.content.includes('What is superposition?'), 'Must contain user message');
+    assert.ok(res.content.includes('Superposition is a fundamental principle'), 'Must contain model message');
+    // Role ordering assertion
+    const userIdx = res.content.search(/## 👤/);
+    const modelIdx = res.content.search(/## 🤖/);
+    assert.ok(userIdx !== -1 && modelIdx !== -1, 'Must include both user and model role headings');
+    assert.ok(userIdx < modelIdx, 'User heading must precede model heading');
 });
 
 test('chat_formatter - formatContent json_openai', () => {
@@ -49,34 +62,23 @@ test('chat_formatter - convertHtmlToMarkdown converts html elements safely', () 
     assert.ok(md.includes('console.log("hello");'), 'Entities should be unescaped');
     assert.ok(md.includes('**bold**'), 'Bold should be markdown');
     assert.ok(md.includes('*italic*'), 'Italic should be markdown');
+    const fenceCount = (md.match(/```/g) || []).length;
+    assert.strictEqual(fenceCount % 2, 0, 'Code fence backticks must be properly paired');
 });
 
-test('chat_formatter - adjustHeadingHierarchy shifts headings outside code blocks', () => {
-    const md = '# Title\n## Subtitle\n```\n# Not a heading\n```\n### Inner';
-    const shifted = ChatFormatter.adjustHeadingHierarchy(md, 2);
-    const lines = shifted.split('\n');
-    assert.strictEqual(lines[0], '### Title');
-    assert.strictEqual(lines[1], '#### Subtitle');
-    assert.strictEqual(lines[3], '# Not a heading');
-    assert.strictEqual(lines[5], '##### Inner');
+test('htmlConverter preserves emphasis on strong and em tags with attributes', () => {
+    const { convertHtmlToMarkdown } = require('../src/core/engine/formatters/htmlConverter.js');
+    assert.strictEqual(convertHtmlToMarkdown('<strong class="x">bold</strong>'), '**bold**');
+    assert.strictEqual(convertHtmlToMarkdown('<em data-x="1">italics</em>'), '*italics*');
 });
 
-test('chat_formatter - cleanMessageBody strips placeholder urls and chips', () => {
-    const text = 'Hello world\nhttps://googleusercontent.com/immersive_entry_chip/12345\nNext line';
-    const cleaned = ChatFormatter.cleanMessageBody(text);
-    assert.ok(!cleaned.includes('immersive_entry_chip'), 'Immersive chip url should be stripped');
-    assert.ok(cleaned.includes('Hello world'));
-    assert.ok(cleaned.includes('Next line'));
-});
-
-test('chat_formatter - renderAttachments renders images and file attachments', () => {
-    const atts = [
-        { type: 'image', localName: 'assets/cat.png', alt: 'Cute cat', src: 'https://images.google.com/cat.png' },
-        { type: 'file', localName: 'files/data.csv', name: 'data.csv', title: 'Data File' }
-    ];
-    const rendered = ChatFormatter.renderAttachments(atts, true);
-    assert.ok(rendered.includes('![Cute cat](assets/cat.png)'), 'Image markdown should be rendered');
-    assert.ok(rendered.includes('- 📎 [Data File](files/data.csv)'), 'File attachment should be rendered');
+test('chat_formatter - convertHtmlToMarkdown converts html tables to GFM tables', () => {
+    const tableHtml = '<table><thead><tr><th align="left">维度</th><th align="left">经典</th><th align="left">量子</th></tr></thead><tbody><tr><td>状态</td><td>0 或 1</td><td>叠加态<br>|psi></td></tr></tbody></table>';
+    const md = ChatFormatter.convertHtmlToMarkdown(tableHtml);
+    assert.ok(md.includes('| 维度 | 经典 | 量子 |'), 'Table header should be converted');
+    assert.ok(md.includes('| --- | --- | --- |'), 'Table separator should be present');
+    assert.ok(md.includes('| 状态 | 0 或 1 | 叠加态<br>\\|psi> |'), 'Table cells with pipe and br should be properly formatted');
+    assert.ok(/\|\s*:?-{3,}:?\s*\|/.test(md), 'Matches table markdown regex');
 });
 
 test('engine - AsyncQueue supports concurrent queueing, abort signals, and closing', async () => {
@@ -179,6 +181,39 @@ test('engine - SessionRecovery.updateSessionStatus updates chrome.storage.local 
     } finally {
         (global as any).chrome = origChrome;
     }
+});
+
+test('chat_formatter - natural language prompt > 400 chars with code keywords is never mangled into javascript fence', async () => {
+    const longPrompt = 'Please explain the following architectural concepts in detail. In JavaScript and TypeScript, developers often ask why const and let were introduced to replace var in ES6, and how lexical scoping works with closures inside a function() declaration. ' + 'Extra discussion text for length padding. '.repeat(10);
+    assert.ok(longPrompt.length > 400);
+    const mockChat = {
+        id: 'natural_lang_prompt_test',
+        title: 'Variable Scoping',
+        messages: [
+            { role: 'user', content: longPrompt },
+            { role: 'model', content: 'Here is the detailed explanation of const vs var.' }
+        ]
+    };
+    const res = await ChatFormatter.formatMarkdownCanonical(mockChat);
+    assert.ok(!res.content.includes('```javascript\nPlease explain'), 'Natural language prompt must not be wrapped in javascript code block');
+    assert.ok(res.content.includes('Please explain the following architectural concepts'), 'Prompt content must remain plain text');
+});
+
+test('chat_formatter - decoupled formatters export valid focused functions', async () => {
+    const { toOpenAIJson, toJsonStandard, toJsonRaw } = require('../src/core/engine/formatters/jsonFormatter.js');
+    const { convertHtmlToMarkdown } = require('../src/core/engine/formatters/htmlConverter.js');
+
+    assert.strictEqual(typeof toOpenAIJson, 'function');
+    assert.strictEqual(typeof toJsonStandard, 'function');
+    assert.strictEqual(typeof toJsonRaw, 'function');
+    assert.strictEqual(typeof convertHtmlToMarkdown, 'function');
+
+    const testChat = { id: 'c1', title: 'Test', messages: [{ role: 'user', content: 'hello' }] };
+    assert.ok((await ChatFormatter.formatMarkdownCanonical(testChat)).content.includes('title: "Test"'));
+    assert.throws(() => ChatFormatter.formatContent(testChat, 'markdown'), /unsupported format/);
+    assert.ok(toOpenAIJson(testChat).includes('"content": "hello"'));
+    assert.ok(toJsonStandard(testChat).includes('"id": "c1"'));
+    assert.ok(convertHtmlToMarkdown('<b>bold</b>').includes('**bold**'));
 });
 
 

@@ -5,7 +5,7 @@ test.describe('E2E: Legacy Dirty Data Self-Healing & Migration', () => {
     const optionsPage = await context.newPage();
 
     // 1. Seed storage with dirty historical titles left over by older versions
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await optionsPage.waitForLoadState('domcontentloaded');
 
     await optionsPage.evaluate(async () => {
@@ -17,7 +17,9 @@ test.describe('E2E: Legacy Dirty Data Self-Healing & Migration', () => {
       ];
       await chrome.storage.local.set({
         gemini_conversations: dirtyLegacyConvs,
-        exportedIds: {}
+        exportedIds: {},
+        has_completed_tour: true,
+        last_seen_feature_version: '999.0.0'
       });
       // Trigger loadStore to simulate user opening options workbench on upgrade
       if (typeof window.__workbenchLoadStore === 'function') {

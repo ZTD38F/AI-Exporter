@@ -1,6 +1,4 @@
-// progressReporter.ts - Progress calculation, logging callbacks, and session state persistence
-
-import type { ExportProgressMessage } from '../../../types/index.js';
+import { SessionStore } from '../../storage/sessionStore.js';
 
 export interface ProgressReporterOptions {
     totalChats?: number;
@@ -12,10 +10,6 @@ export interface ProgressReporterModule {
     ProgressReporter: typeof ProgressReporter;
     calculateProgress: typeof calculateProgress;
     updateStorageSession: typeof updateStorageSession;
-}
-
-declare global {
-    var ProgressReporter: ProgressReporterModule;
 }
 
 function calculateProgress(current: number, total: number, downloadedAssets: number = 0, totalAssets: number = 0): number {
@@ -31,20 +25,7 @@ function calculateProgress(current: number, total: number, downloadedAssets: num
 }
 
 async function updateStorageSession(sessionData: any): Promise<void> {
-    try {
-        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-            await chrome.storage.local.set({
-                gemini_last_export_session: {
-                    ...sessionData,
-                    updatedAt: Date.now()
-                }
-            });
-        }
-    } catch (e) {
-        if (typeof console !== 'undefined' && console.debug) {
-            console.debug('[GemExporter:progressReporter.js]', e);
-        }
-    }
+    await SessionStore.updateSession(sessionData);
 }
 
 class ProgressReporter {
@@ -53,6 +34,8 @@ class ProgressReporter {
     currentExportTitle: string;
     onProgress: (info: any) => void;
     onLog: (msg: string, level?: string) => void;
+    // Monotonic percentage tracker to prevent backward progress jumps
+    private lastPct: number = 0;
 
     static ProgressReporter = ProgressReporter;
     static calculateProgress = calculateProgress;
@@ -81,7 +64,9 @@ class ProgressReporter {
         if (typeof chatTitle === 'string' && chatTitle) this.currentExportTitle = chatTitle;
 
         const current = Math.min(this.currentExportIdx, this.totalChats);
-        const pct = calculateProgress(current, this.totalChats, downloadedAssets, totalAssets);
+        const rawPct = calculateProgress(current, this.totalChats, downloadedAssets, totalAssets);
+        const pct = Math.max(this.lastPct, rawPct);
+        this.lastPct = pct;
 
         try {
             this.onProgress({
@@ -117,15 +102,4 @@ export const progressReporterModule: ProgressReporterModule = {
     updateStorageSession
 };
 
-(progressReporterModule as any).ProgressReporter = ProgressReporter;
-(progressReporterModule as any).calculateProgress = calculateProgress;
-(progressReporterModule as any).updateStorageSession = updateStorageSession;
-(progressReporterModule as any).default = progressReporterModule;
-
-if (typeof globalThis !== 'undefined' && !(globalThis as any).ProgressReporter) {
-    (globalThis as any).ProgressReporter = progressReporterModule;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = progressReporterModule;
-}
 export default progressReporterModule;

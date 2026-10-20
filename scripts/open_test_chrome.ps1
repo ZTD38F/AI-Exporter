@@ -47,6 +47,15 @@ if (-not (Test-Path -LiteralPath $ProfileDir)) {
     New-Item -ItemType Directory -Path $ProfileDir -Force | Out-Null
 }
 
+# 4b. Ensure production bundles are fresh
+Write-Host "🔨 Building extension bundles (node build.js)..." -ForegroundColor Cyan
+Push-Location $RepoDir
+try {
+    node build.js
+} finally {
+    Pop-Location
+}
+
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "🚀 Launching Gemini Exporter Isolated Test Browser" -ForegroundColor Cyan
 Write-Host "📁 Profile Directory : $ProfileDir" -ForegroundColor Gray

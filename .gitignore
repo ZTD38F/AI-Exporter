@@ -33,3 +33,4 @@ __pycache__/
 *.pyc
 *.pyo
 tests/output/
+artifacts/gemini-renderer-probe/

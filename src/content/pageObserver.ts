@@ -1,8 +1,23 @@
-// src/content/pageObserver.ts - Page lifecycle, URL mutation watcher, and timer cleanup
 import { contentContext } from './contentContext.js';
+import { registerCleanup } from './cleanupRegistry.js';
 
 let __syncDebounceTimer: any = null;
 let __lastObservedUrl = typeof location !== 'undefined' ? location.href : '';
+let __historyUrlCallback: (() => void) | null = null;
+
+function __handleLocationChange(): void {
+    if (typeof location === 'undefined') return;
+    if (location.href !== __lastObservedUrl) {
+        __lastObservedUrl = location.href;
+        if (typeof __historyUrlCallback === 'function') __historyUrlCallback();
+    }
+}
+
+function removeHistoryListeners(): void {
+    if (typeof window === 'undefined' || !window.removeEventListener) return;
+    window.removeEventListener('popstate', __handleLocationChange);
+    window.removeEventListener('gemini:locationchange', __handleLocationChange);
+}
 
 export function cleanup(): void {
     contentContext.clearTimer('urlWatcher');
@@ -23,6 +38,7 @@ export function cleanup(): void {
         w.__gemExporterSyncInterval = null;
         w.__gemExporterTitleObserver = null;
         w.__gemExporterDebounceTimer = null;
+        removeHistoryListeners();
     }
 }
 
@@ -62,17 +78,13 @@ export function hookHistoryEvents(onUrlChanged: () => void): void {
             return res;
         };
 
-        const handleLocationChange = () => {
-            if (typeof location === 'undefined') return;
-            if (location.href !== __lastObservedUrl) {
-                __lastObservedUrl = location.href;
-                onUrlChanged();
-            }
-        };
-
-        window.addEventListener('popstate', handleLocationChange);
-        window.addEventListener('gemini:locationchange', handleLocationChange);
     }
+
+    removeHistoryListeners();
+    __historyUrlCallback = onUrlChanged;
+    window.addEventListener('popstate', __handleLocationChange);
+    window.addEventListener('gemini:locationchange', __handleLocationChange);
+    registerCleanup(removeHistoryListeners);
 }
 
 export function observeTitleChanges(onTitleChanged: () => void): void {
@@ -125,15 +137,5 @@ export const PageObserver = {
     startPeriodicSync
 };
 
-
-(PageObserver as any).PageObserver = PageObserver;
-(PageObserver as any).default = PageObserver;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).PageObserver = PageObserver;
-}
-if (typeof module !== 'undefined' && (module as any).exports) {
-    (module as any).exports = PageObserver;
-}
 
 export default PageObserver;

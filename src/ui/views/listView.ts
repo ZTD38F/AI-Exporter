@@ -1,78 +1,56 @@
-// src/ui/views/listView.ts - List rendering, no storage
 import type { Conversation } from '../../types/conversation.js';
+import { __resolveModule } from '../../core/utils/moduleOverrides.js';
+import { I18n as I18nStatic } from '../../core/utils/i18n.js';
+
+const gu = (): any => __resolveModule('GeminiUtils', null);
 import type { ExportRecord, IListView } from '../../types/ui.js';
 
-import GeminiUtils, {
+import {
     isRealTitle as utilsIsRealTitle,
     cleanTitle as utilsCleanTitle,
     resolveTitle as utilsResolveTitle,
-    getEffectiveTimestamp as utilsGetEffectiveTimestamp
+    getEffectiveTimestamp as utilsGetEffectiveTimestamp,
+    checkIsUpdated as utilsCheckIsUpdated,
+    resolveConversationExportState as utilsResolveConversationExportState,
+    type ConversationExportState
 } from '../../core/utils/utils.js';
+import { $, t } from '../uiCommon.js';
+import { normId } from '../../core/utils/pathUtils.js';
 
-function $(id: string): HTMLElement | null {
-    return document.getElementById(id);
-}
+export const isRealTitle = (title?: string | null, id?: string | null): boolean =>
+    gu()?.isRealTitle ? gu().isRealTitle(title, id) : utilsIsRealTitle(title, id || undefined);
 
-const t = (key: string, ...args: any[]): string => {
-    if (typeof I18n !== 'undefined' && I18n.t) {
-        return I18n.t(key, ...args);
-    }
-    return key;
-};
+export const cleanTitle = (tStr?: string | null): string =>
+    gu()?.cleanTitle ? gu().cleanTitle(tStr) : utilsCleanTitle(tStr);
 
-export const isRealTitle = (title?: string | null, id?: string | null): boolean => {
-    if (typeof (globalThis as any).GeminiUtils?.isRealTitle === 'function') {
-        return (globalThis as any).GeminiUtils.isRealTitle(title as unknown as string, id as unknown as string);
-    }
-    return utilsIsRealTitle(title, id || undefined);
-};
+export const resolveTitle = (chat: any): { title: string; source: string } =>
+    gu()?.resolveTitle ? gu().resolveTitle(chat) : utilsResolveTitle(chat);
 
-export const cleanTitle = (tStr?: string | null): string => {
-    if (typeof (globalThis as any).GeminiUtils?.cleanTitle === 'function') {
-        return (globalThis as any).GeminiUtils.cleanTitle(tStr);
-    }
-    return utilsCleanTitle(tStr);
-};
-
-export const resolveTitle = (chat: any): { title: string; source: string } => {
-    if (typeof (globalThis as any).GeminiUtils?.resolveTitle === 'function') {
-        return (globalThis as any).GeminiUtils.resolveTitle(chat);
-    }
-    return utilsResolveTitle(chat);
-};
-
-export const getEffectiveTimestamp = (chat?: any): number => {
-    if (typeof (globalThis as any).GeminiUtils?.getEffectiveTimestamp === 'function') {
-        return (globalThis as any).GeminiUtils.getEffectiveTimestamp(chat);
-    }
-    return utilsGetEffectiveTimestamp(chat);
-};
+export const getEffectiveTimestamp = (chat?: any): number =>
+    gu()?.getEffectiveTimestamp ? gu().getEffectiveTimestamp(chat) : utilsGetEffectiveTimestamp(chat);
 
 export function checkIsUpdated(c: any, rec?: ExportRecord | null): boolean {
-    if (!c || !rec) return false;
-    try {
-        const cTs = getEffectiveTimestamp(c) || (c.updatedAt ? new Date(c.updatedAt).getTime() : 0) || (c.timestamp ? new Date(c.timestamp).getTime() : 0);
-        const rTs = rec.exportedAt ? (typeof rec.exportedAt === 'string' ? new Date(rec.exportedAt).getTime() : Number(rec.exportedAt)) : 0;
-        const rChatTime = (rec as any).chatTime ? (typeof (rec as any).chatTime === 'string' ? new Date((rec as any).chatTime).getTime() : Number((rec as any).chatTime)) : 0;
+    return gu()?.checkIsUpdated
+        ? gu().checkIsUpdated(c, rec)
+        : utilsCheckIsUpdated(c, rec);
+}
 
-        // Check message count increase if both records have message counts
-        const curMsgCount = c.messageCount || (Array.isArray(c.messages) ? c.messages.length : 0);
-        const recMsgCount = (rec as any).messageCount || 0;
-        if (curMsgCount > 0 && recMsgCount > 0 && curMsgCount > recMsgCount) {
-            return true;
-        }
-
-        // Timestamp check with a 2000ms grace buffer for clock skew / write latency
-        if (cTs > 0 && rChatTime > 0 && cTs > rChatTime + 2000) {
-            return true;
-        }
-        if (cTs > 0 && rTs > 0 && cTs > rTs + 2000) {
-            return true;
-        }
-    } catch {
-        /* intentional */
+export function resolveConversationExportState(
+    c: any,
+    rec?: Partial<ExportRecord> | null,
+    options?: { isFailedInSession?: boolean }
+): ConversationExportState {
+    const customResolve = gu()?.resolveConversationExportState;
+    if (typeof customResolve === 'function') {
+        return customResolve(c, rec, options);
     }
-    return false;
+    const customCheck = gu()?.checkIsUpdated;
+    return utilsResolveConversationExportState(c, rec, {
+        ...options,
+        customHasNewerActivity: typeof customCheck === 'function'
+            ? (conv, record) => customCheck(conv, { ...record, status: 'ok', hasFailedAssets: false })
+            : undefined
+    });
 }
 
 function escapeHtml(str?: string | null): string {
@@ -85,13 +63,11 @@ function escapeHtml(str?: string | null): string {
         .replace(/'/g, '&#39;');
 }
 
-let onDeleteCallback: ((chatId: string) => void) | null = null;
-export function setOnDelete(cb: (chatId: string) => void): void {
-    onDeleteCallback = cb;
-}
-
 let currentConversationsRef: Conversation[] = [];
-let currentOnDeleteChatRef: ((chatId: string) => void) | null = null;
+let canonicalSelectedIds: Set<string> | null = null;
+let currentFilterType: string = 'all';
+let currentFailedChatIds: Set<string> | null = null;
+let currentSearchFilter: string = '';
 
 function ensureListDelegation(list: HTMLElement & { _delegated?: boolean }): void {
     if (!list || list._delegated) return;
@@ -104,16 +80,16 @@ function ensureListDelegation(list: HTMLElement & { _delegated?: boolean }): voi
             return;
         }
 
-        // If clicking directly on checkbox, let native toggle proceed and updateStat
+        if (list.dataset?.selectionDisabled === 'true') return;
+
         if (target.matches('input[type=checkbox]')) {
             return;
         }
 
-        // Clicking anywhere else in the item row toggles selection
         const item = target.closest('.item') as HTMLElement | null;
         if (item) {
             const cb = item.querySelector('input[type=checkbox]') as HTMLInputElement | null;
-            if (cb) {
+            if (cb && !cb.disabled) {
                 cb.checked = !cb.checked;
                 cb.dispatchEvent(new Event('change', { bubbles: true }));
             }
@@ -121,11 +97,31 @@ function ensureListDelegation(list: HTMLElement & { _delegated?: boolean }): voi
     });
 
     list.addEventListener('change', (e: Event) => {
+        if (list.dataset?.selectionDisabled === 'true') return;
         const target = e.target as HTMLElement;
         if (target.matches('input[type=checkbox]')) {
+            const item = (typeof (target as any).closest === 'function' ? (target as any).closest('.item') : null) as HTMLElement | null;
+            const chatId = item?.dataset?.chatId;
+            const cb = target as HTMLInputElement;
+            if (chatId) {
+                const nid = normId(chatId);
+                if (!canonicalSelectedIds) canonicalSelectedIds = new Set<string>();
+                if (cb.checked) {
+                    canonicalSelectedIds.add(chatId);
+                    canonicalSelectedIds.add(nid);
+                } else {
+                    canonicalSelectedIds.delete(chatId);
+                    canonicalSelectedIds.delete(nid);
+                    canonicalSelectedIds.delete('c_' + nid);
+                }
+            }
             updateStat(currentConversationsRef);
         }
     });
+}
+
+export function setSelectedIds(ids: Set<string> | null): void {
+    canonicalSelectedIds = ids ? new Set(ids) : null;
 }
 
 export function render(
@@ -133,46 +129,100 @@ export function render(
     exportedIds: Record<string, ExportRecord> = {},
     prevSelectedSet?: Set<string> | null,
     searchFilter: string = '',
-    onDeleteChat?: (id: string) => void
+    filterType: string = 'all',
+    failedChatIds?: Set<string>
 ): void {
     const list = $('list') as (HTMLElement & { _delegated?: boolean }) | null;
     if (!list) return;
     currentConversationsRef = conversations || [];
-    currentOnDeleteChatRef = onDeleteChat || onDeleteCallback;
+    currentFilterType = filterType || 'all';
+    currentFailedChatIds = failedChatIds || null;
+    currentSearchFilter = searchFilter || '';
     ensureListDelegation(list);
+
+    const expMap = exportedIds || {};
+
+    if (prevSelectedSet instanceof Set) {
+        canonicalSelectedIds = new Set(prevSelectedSet);
+    } else if (prevSelectedSet === null || canonicalSelectedIds === null) {
+        canonicalSelectedIds = new Set<string>();
+        for (const c of currentConversationsRef) {
+            const nid = normId(c.id);
+            const rec = expMap[nid] || null;
+            const st = resolveConversationExportState(c, rec);
+            if (st.needsIncrementalExport) {
+                canonicalSelectedIds.add(c.id);
+                canonicalSelectedIds.add(nid);
+            }
+        }
+    }
 
     if (!conversations || !conversations.length) {
         list.innerHTML = `<div style="color:var(--muted); padding:16px; text-align:center; font-size:12px;">${typeof t === 'function' ? t('emptyList') : 'No conversations found.'}</div>`;
         return;
     }
     const q = (searchFilter || '').trim().toLowerCase();
-    const filtered = q
-        ? conversations.filter(c => (resolveTitle(c).title || '').toLowerCase().includes(q) || String(c.id || '').toLowerCase().includes(q))
-        : conversations;
+
+    const filtered = conversations.filter(c => {
+        const nid = normId(c.id);
+        const rec = expMap[nid] || null;
+        const isFailedInSession = !!(
+            failedChatIds && (failedChatIds.has(c.id) || failedChatIds.has(nid) || failedChatIds.has('c_' + nid))
+        );
+        const st = resolveConversationExportState(c, rec, { isFailedInSession });
+
+        let matchesType = true;
+        if (filterType === 'unexported') {
+            matchesType = st.isUnexported;
+        } else if (filterType === 'failed') {
+            matchesType = st.isFailed;
+        } else if (filterType === 'unexported_or_failed') {
+            matchesType = st.isUnexported || st.isFailed;
+        } else if (filterType === 'exported') {
+            matchesType = st.isExportedClean;
+        }
+
+        if (!matchesType) return false;
+        if (!q) return true;
+        let effectiveTitle = resolveTitle(c).title || '';
+        if (!isRealTitle(effectiveTitle, c.id) && rec?.title && isRealTitle(rec.title, c.id)) {
+            effectiveTitle = cleanTitle(rec.title);
+        }
+        return effectiveTitle.toLowerCase().includes(q) || String(c.id || '').toLowerCase().includes(q);
+    });
+
     if (!filtered.length) {
-        list.innerHTML = `<div style="color:var(--muted); padding:16px; text-align:center; font-size:12px;">${typeof t === 'function' ? t('emptyList') : 'No matching conversations found.'}</div>`;
+        list.innerHTML = `<div style="color:var(--muted); padding:16px; text-align:center; font-size:12px;">${typeof t === 'function' ? t('emptySearchList') : 'No matching conversations found.'}</div>`;
         return;
     }
 
-    const expMap = exportedIds || {};
     const htmlArr: string[] = [];
     const idxMap = new Map(conversations.map((c, idx) => [c as object, idx] as const));
 
     filtered.forEach((c) => {
         const origIdx = idxMap.get(c as object) ?? -1;
-        const nid = String(c.id || '').replace(/^c_/, '');
-        const rec = expMap[c.id] || expMap['c_' + nid] || expMap[nid] || null;
-        const isUpdated = checkIsUpdated(c, rec);
+        const nid = normId(c.id);
+        const rec = expMap[nid] || null;
+        const isFailedInSession = !!(
+            failedChatIds && (failedChatIds.has(c.id) || failedChatIds.has(nid) || failedChatIds.has('c_' + nid))
+        );
+        const st = resolveConversationExportState(c, rec, { isFailedInSession });
         let isChecked = false;
-        if (prevSelectedSet instanceof Set) {
+        if (canonicalSelectedIds) {
+            isChecked = canonicalSelectedIds.has(c.id) || canonicalSelectedIds.has(nid) || canonicalSelectedIds.has('c_' + nid);
+        } else if (prevSelectedSet instanceof Set) {
             isChecked = prevSelectedSet.has(c.id) || prevSelectedSet.has(nid) || prevSelectedSet.has('c_' + nid);
         } else {
-            isChecked = !rec || isUpdated;
+            isChecked = st.needsIncrementalExport;
         }
 
         const resolved = resolveTitle(c);
-        const displayTitle = escapeHtml(resolved.title);
-        const isBad = !isRealTitle(resolved.title, c.id);
+        let finalTitle = resolved.title;
+        if (!isRealTitle(finalTitle, c.id) && rec?.title && isRealTitle(rec.title, c.id)) {
+            finalTitle = cleanTitle(rec.title);
+        }
+        const displayTitle = escapeHtml(finalTitle);
+        const isBad = !isRealTitle(finalTitle, c.id);
         const titleStyle = isBad ? 'color:var(--warn); opacity:0.85;' : '';
 
         let dateStr = '';
@@ -184,40 +234,41 @@ export function render(
                 if (!isNaN(d.getTime())) {
                     dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 }
-            } catch { /* intentional */ }
+            } catch {}
         }
 
         let badgeHtml = '';
-        if (rec) {
+        if (st.badge && st.badge.kind !== 'none') {
             let expDateStr = '';
-            if (rec.exportedAt) {
+            if (rec && rec.exportedAt) {
                 try {
                     const ed = typeof rec.exportedAt === 'string' ? new Date(rec.exportedAt) : new Date(Number(rec.exportedAt));
                     if (!isNaN(ed.getTime())) {
                         expDateStr = ed.toLocaleDateString();
                     }
-                } catch { /* intentional */ }
+                } catch {}
             }
-            if (isUpdated) {
-                const badgeLabel = (typeof t === 'function' && (t('badgeUpdated') || t('badgeNeedsReexport'))) || 'Updated';
-                badgeHtml = `<span class="badge badge-updated" style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(245,158,11,0.15); color:#f59e0b; margin-left:8px; border:1px solid rgba(245,158,11,0.35);">${badgeLabel}${expDateStr ? ` (${expDateStr})` : ''}</span>`;
-            } else {
-                const badgeLabel = typeof t === 'function' ? t('badgeExported') : 'Exported';
-                badgeHtml = `<span class="badge badge-exported" style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.15); color:#10b981; margin-left:8px; border:1px solid rgba(16,185,129,0.3);">${badgeLabel}${expDateStr ? ` (${expDateStr})` : ''}</span>`;
-            }
+            const b = st.badge;
+            const badgeLabel = b.kind === 'updated'
+                ? ((typeof t === 'function' && (t('badgeUpdated') || t('badgeNeedsReexport'))) || b.defaultLabel)
+                : (typeof t === 'function' ? (t(b.i18nKey) || b.defaultLabel) : b.defaultLabel);
+            badgeHtml = `<span class="${b.className}" style="font-size:10px; padding:2px 6px; border-radius:4px; background:${b.bg}; color:${b.color}; margin-left:8px; border:1px solid ${b.border};">${badgeLabel}${expDateStr ? ` (${expDateStr})` : ''}</span>`;
         }
 
-        const url = (c as any).url || `https://gemini.google.com/app/${c.id}`;
+        const rawUrl = (c as any).url;
+        const url = (typeof rawUrl === 'string' && /^https?:\/\//i.test(rawUrl.trim()))
+            ? rawUrl.trim()
+            : `https://gemini.google.com/app/${encodeURIComponent(c.id)}`;
 
         htmlArr.push(`
             <div class="item" data-chat-id="${escapeHtml(c.id)}" style="display:flex; align-items:center; padding:8px 12px; border-bottom:1px solid var(--border); font-size:13px; cursor:pointer; user-select:none;">
-                <input type="checkbox" data-idx="${origIdx}" ${isChecked ? 'checked' : ''} style="margin-right:10px; cursor:pointer;" />
+                <input type="checkbox" data-idx="${origIdx}" ${isChecked ? 'checked' : ''} ${list.dataset?.selectionDisabled === 'true' ? 'disabled' : ''} style="margin-right:10px; cursor:pointer;" />
                 <div style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                     <span class="chat-title" style="${titleStyle}">${displayTitle}</span>
                     ${badgeHtml}
                 </div>
                 <span style="font-size:11px; color:var(--muted); margin-left:12px; white-space:nowrap;">${escapeHtml(dateStr)}</span>
-                <a href="${escapeHtml(url)}" target="_blank" class="open-link" style="color:var(--muted); margin-left:10px; text-decoration:none; font-size:12px;" title="Open in Gemini">↗</a>
+                <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="open-link" style="color:var(--muted); margin-left:10px; text-decoration:none; font-size:12px;" title="${escapeHtml(typeof t === 'function' ? t('openInGemini') : 'Open in Gemini')}">↗</a>
             </div>
         `);
     });
@@ -226,37 +277,40 @@ export function render(
 }
 
 export function updateItemExportStatus(chatId: string, exportRecord?: ExportRecord | null): void {
-    if (!chatId || typeof document === 'undefined') return;
-    const nid = String(chatId).replace(/^c_/, '');
-    const item = (document.querySelector && (
-        document.querySelector(`#list .item[data-chat-id="${nid}"]`)
-        || document.querySelector(`.item[data-chat-id="${nid}"]`)
-        || document.querySelector(`[data-chat-id="${chatId}"]`)
-        || document.querySelector(`[data-chat-id="c_${nid}"]`)
-        || document.querySelector(`[data-chat-id="${nid}"]`)
-    ));
+    if (!chatId) return;
+    const nid = normId(chatId);
+    const esc = (v: string): string =>
+        (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') ? CSS.escape(v) : String(v).replace(/["\\]/g, '\\$&');
+    const list = typeof document !== 'undefined'
+        ? ((typeof document.getElementById === 'function' ? document.getElementById('list') : null) || document)
+        : null;
+    if (!list || !list.querySelector) return;
+    const item = list.querySelector(`[data-chat-id="${esc(nid)}"], [data-chat-id="${esc(chatId)}"], [data-chat-id="${esc('c_' + nid)}"]`);
     if (!item) return;
 
-    const bExported = (typeof I18n !== 'undefined' && I18n.t)
-        ? I18n.t('badgeExported')
-        : (typeof t === 'function' ? t('badgeExported') : 'Exported');
-    const badgeText = (bExported && bExported !== 'badgeExported') ? bExported : 'Exported';
+    const st = resolveConversationExportState({ id: chatId }, exportRecord || { status: 'ok' });
+    const b = st.badge.kind !== 'none' ? st.badge : resolveConversationExportState({ id: chatId }, { status: 'ok' }).badge;
+    const _i18n = __resolveModule('I18n', I18nStatic);
+    const bText = (_i18n.t)
+        ? _i18n.t(b.i18nKey)
+        : (typeof t === 'function' ? t(b.i18nKey) : b.defaultLabel);
+    const badgeText = (bText && bText !== b.i18nKey) ? bText : b.defaultLabel;
 
     let badge = item.querySelector ? item.querySelector('.badge') as HTMLElement | null : null;
     if (badge) {
-        badge.className = 'badge badge-exported';
+        badge.className = b.className;
         badge.textContent = badgeText;
         if ((badge as HTMLElement).style) {
-            (badge as HTMLElement).style.background = 'rgba(16,185,129,0.15)';
-            (badge as HTMLElement).style.borderColor = 'rgba(16,185,129,0.3)';
-            (badge as HTMLElement).style.color = '#10b981';
+            (badge as HTMLElement).style.background = b.bg;
+            (badge as HTMLElement).style.borderColor = b.border;
+            (badge as HTMLElement).style.color = b.color;
         }
     } else {
         const titleContainer = item.querySelector ? item.querySelector('div') : null;
         if (titleContainer && document.createElement) {
             const span = document.createElement('span');
-            span.className = 'badge badge-exported';
-            span.style.cssText = 'font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.15); color:#10b981; margin-left:8px; border:1px solid rgba(16,185,129,0.3);';
+            span.className = b.className;
+            span.style.cssText = `font-size:10px; padding:2px 6px; border-radius:4px; background:${b.bg}; color:${b.color}; margin-left:8px; border:1px solid ${b.border};`;
             span.textContent = badgeText;
             titleContainer.appendChild(span);
         }
@@ -265,30 +319,45 @@ export function updateItemExportStatus(chatId: string, exportRecord?: ExportReco
 
 export function updateStat(conversations?: Conversation[]): void {
     const list = $('list');
-    if (!list || typeof document === 'undefined') return;
-    const total = (conversations || currentConversationsRef || []).length;
-    const checked = document.querySelectorAll('#list input[type=checkbox]:checked').length;
-    const statEl = $('selectedStat') || $('stat');
+    if (!list) return;
+    const convs = conversations || currentConversationsRef || [];
+    const total = convs.length;
+    let checked = 0;
+    if (canonicalSelectedIds && canonicalSelectedIds.size > 0 && convs.length > 0) {
+        checked = convs.filter(c => {
+            const nid = normId(c.id);
+            return canonicalSelectedIds!.has(c.id) || canonicalSelectedIds!.has(nid) || canonicalSelectedIds!.has('c_' + nid);
+        }).length;
+    } else {
+        checked = document.querySelectorAll('#list input[type=checkbox]:checked').length;
+    }
+    const statEl = $('selectedStat');
     if (statEl) {
         statEl.textContent = typeof t === 'function' ? t('selectedStat', checked, total) : `${checked} of ${total} selected`;
     }
 }
 
 export function getSelected(conversations?: Conversation[]): Conversation[] {
-    if (typeof document === 'undefined') return [];
     const convs = conversations || currentConversationsRef || [];
+    if (canonicalSelectedIds && canonicalSelectedIds.size > 0) {
+        const selected = convs.filter(c => {
+            const nid = normId(c.id);
+            return canonicalSelectedIds!.has(c.id) || canonicalSelectedIds!.has(nid) || canonicalSelectedIds!.has('c_' + nid);
+        });
+        if (selected.length > 0) return selected;
+    }
     const selected: Conversation[] = [];
     document.querySelectorAll('#list input[type=checkbox]:checked').forEach((cb) => {
         const item = typeof (cb as any).closest === 'function' ? ((cb as any).closest('.item') as HTMLElement | null) : null;
         const chatId = item?.dataset?.chatId;
         if (chatId) {
-            const found = convs.find(c => c.id === chatId || String(c.id).replace(/^c_/, '') === String(chatId).replace(/^c_/, ''));
+            const found = convs.find(c => normId(c.id) === normId(chatId));
             if (found) {
                 selected.push(found);
                 return;
             }
         }
-        const idx = parseInt((cb as HTMLElement).dataset.idx || '-1', 10);
+        const idx = parseInt((cb as HTMLElement).dataset?.idx || '-1', 10);
         if (idx >= 0 && convs[idx]) {
             selected.push(convs[idx]);
         }
@@ -297,10 +366,12 @@ export function getSelected(conversations?: Conversation[]): Conversation[] {
 }
 
 export function getSelectedIds(): Set<string> {
+    if (canonicalSelectedIds && canonicalSelectedIds.size > 0) {
+        return new Set(canonicalSelectedIds);
+    }
     const ids = new Set<string>();
-    if (typeof document === 'undefined') return ids;
     document.querySelectorAll('#list input[type=checkbox]:checked').forEach((cb) => {
-        const item = cb.closest('.item') as HTMLElement | null;
+        const item = typeof (cb as any).closest === 'function' ? ((cb as any).closest('.item') as HTMLElement | null) : null;
         const chatId = item?.dataset?.chatId;
         if (chatId) ids.add(chatId);
     });
@@ -308,63 +379,84 @@ export function getSelectedIds(): Set<string> {
 }
 
 export function selectAll(conversations?: Conversation[]): void {
-    if (typeof document === 'undefined') return;
+    if (!canonicalSelectedIds) canonicalSelectedIds = new Set<string>();
     document.querySelectorAll('#list input[type=checkbox]').forEach((cb) => {
         (cb as HTMLInputElement).checked = true;
+        const item = typeof (cb as any).closest === 'function' ? ((cb as any).closest('.item') as HTMLElement | null) : null;
+        const chatId = item?.dataset?.chatId;
+        if (chatId) {
+            canonicalSelectedIds!.add(chatId);
+            canonicalSelectedIds!.add(normId(chatId));
+        } else {
+            const idx = parseInt((cb as HTMLElement).dataset?.idx || '-1', 10);
+            const convs = conversations || currentConversationsRef || [];
+            if (idx >= 0 && convs[idx]) {
+                canonicalSelectedIds!.add(convs[idx].id);
+                canonicalSelectedIds!.add(normId(convs[idx].id));
+            }
+        }
     });
     updateStat(conversations);
 }
 
 export function deselectAll(conversations?: Conversation[]): void {
-    if (typeof document === 'undefined') return;
+    if (!canonicalSelectedIds) canonicalSelectedIds = new Set<string>();
     document.querySelectorAll('#list input[type=checkbox]').forEach((cb) => {
         (cb as HTMLInputElement).checked = false;
+        const item = typeof (cb as any).closest === 'function' ? ((cb as any).closest('.item') as HTMLElement | null) : null;
+        const chatId = item?.dataset?.chatId;
+        if (chatId) {
+            const nid = normId(chatId);
+            canonicalSelectedIds!.delete(chatId);
+            canonicalSelectedIds!.delete(nid);
+            canonicalSelectedIds!.delete('c_' + nid);
+        } else {
+            const idx = parseInt((cb as HTMLElement).dataset?.idx || '-1', 10);
+            const convs = conversations || currentConversationsRef || [];
+            if (idx >= 0 && convs[idx]) {
+                const nid = normId(convs[idx].id);
+                canonicalSelectedIds!.delete(convs[idx].id);
+                canonicalSelectedIds!.delete(nid);
+                canonicalSelectedIds!.delete('c_' + nid);
+            }
+        }
     });
     updateStat(conversations);
 }
 
 export function selectUnexported(conversations?: Conversation[], exportedIds?: Record<string, ExportRecord>): void {
-    if (typeof document === 'undefined') return;
     const convList = conversations || currentConversationsRef || [];
     const expMap = exportedIds || {};
+    if (!canonicalSelectedIds) canonicalSelectedIds = new Set<string>();
     document.querySelectorAll('#list input[type=checkbox]').forEach((cb) => {
-        const idx = parseInt((cb as HTMLElement).dataset.idx || '-1', 10);
+        const idx = parseInt((cb as HTMLElement).dataset?.idx || '-1', 10);
         const c = convList[idx];
         if (!c) {
             (cb as HTMLInputElement).checked = false;
             return;
         }
-        const nid = String(c.id || '').replace(/^c_/, '');
-        const rec = expMap[c.id] || expMap['c_' + nid] || expMap[nid] || null;
-        (cb as HTMLInputElement).checked = !rec;
-    });
-    updateStat(conversations);
-}
-
-export function selectNeedsUpdate(conversations?: Conversation[], exportedIds?: Record<string, ExportRecord>): void {
-    if (typeof document === 'undefined') return;
-    const convList = conversations || currentConversationsRef || [];
-    const expMap = exportedIds || {};
-    document.querySelectorAll('#list input[type=checkbox]').forEach((cb) => {
-        const idx = parseInt((cb as HTMLElement).dataset.idx || '-1', 10);
-        const c = convList[idx];
-        if (!c) {
-            (cb as HTMLInputElement).checked = false;
-            return;
+        const nid = normId(c.id);
+        const rec = expMap[nid] || null;
+        const check = !rec;
+        (cb as HTMLInputElement).checked = check;
+        if (check) {
+            canonicalSelectedIds!.add(c.id);
+            canonicalSelectedIds!.add(nid);
+        } else {
+            canonicalSelectedIds!.delete(c.id);
+            canonicalSelectedIds!.delete(nid);
+            canonicalSelectedIds!.delete('c_' + nid);
         }
-        const nid = String(c.id || '').replace(/^c_/, '');
-        const rec = expMap[c.id] || expMap['c_' + nid] || expMap[nid] || null;
-        (cb as HTMLInputElement).checked = checkIsUpdated(c, rec);
     });
     updateStat(conversations);
 }
 
 export function selectByIds(targetIds: Set<string> | string[], conversations?: Conversation[]): void {
-    if (typeof document === 'undefined') return;
-    const idSet = new Set(Array.from(targetIds).map(id => String(id).replace(/^c_/, '')));
+    const idSet = new Set(Array.from(targetIds).map(id => normId(id)));
+    canonicalSelectedIds = new Set(idSet);
     document.querySelectorAll('#list input[type=checkbox]').forEach((cb) => {
-        const item = cb.closest('.item') as HTMLElement | null;
-        const chatId = item?.dataset?.chatId ? String(item.dataset.chatId).replace(/^c_/, '') : '';
+        const item = typeof (cb as any).closest === 'function' ? ((cb as any).closest('.item') as HTMLElement | null) : null;
+        const chatId = normId(item?.dataset?.chatId);
         (cb as HTMLInputElement).checked = !!chatId && idSet.has(chatId);
     });
     updateStat(conversations || currentConversationsRef);
@@ -378,23 +470,13 @@ export const ListView: IListView = {
     selectAll,
     deselectAll,
     selectUnexported,
-    selectNeedsUpdate,
     selectByIds,
+    setSelectedIds,
     isRealTitle,
-    setOnDelete,
     updateItemExportStatus,
-    checkIsUpdated
+    checkIsUpdated,
+    resolveConversationExportState
 };
 
-(ListView as any).checkIsUpdated = checkIsUpdated;
-(ListView as any).ListView = ListView;
-(ListView as any).default = ListView;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).ListView = ListView;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = ListView;
-}
 
 export default ListView;

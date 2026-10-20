@@ -1,67 +1,169 @@
 name: CI Tests
 
 on:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches: [ main, dev ]
+    paths-ignore:
+      - '**.md'
+      - 'icons/**'
+      - 'store_assets/**'
+      - 'docs/**'
+      - 'scripts/test_scenario_*.json'
+  pull_request:
+    branches: [ main, dev ]
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  unit:
-    name: Typecheck, build, unit tests
+  unit-test:
+    name: Unit Tests & Syntax
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
-      - name: Install dependencies from lockfile
-        run: npm ci
+      - name: Detect Changed Files (Fast-Path Check)
+        id: filter
+        run: |
+          CHANGED=""
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"..."${{ github.event.pull_request.head.sha }}" 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGED" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+            CHANGED=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGED" ] && [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            CHANGED=$(git diff --name-only "${{ github.event.before }}"...HEAD 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGED" ]; then
+            CHANGED=$(git diff --name-only HEAD~1...HEAD 2>/dev/null || true)
+          fi
+          echo "Detected changed files:"
+          echo "$CHANGED"
+          NON_SCENARIO=$(echo "$CHANGED" | grep -vE '^(scripts/test_scenario_(pool|archive)\.json|.*\.md|docs/.*|icons/.*|store_assets/.*)$' | grep -vE '^\s*$' || true)
+          if [ -z "$NON_SCENARIO" ] && [ -n "$CHANGED" ]; then
+            echo "only_scenarios=true" >> $GITHUB_OUTPUT
+            echo "⚡ Fast path active: only scenario pool / documentation files changed."
+          else
+            echo "only_scenarios=false" >> $GITHUB_OUTPUT
+            echo "Full test suite active (code files changed or full run requested)."
+          fi
 
-      - name: Type check
-        run: npm run type-check
+      - name: Fast path - Validate Scenario Pool Only
+        if: steps.filter.outputs.only_scenarios == 'true'
+        run: |
+          echo "⚡ Fast-path: Validating scenario pool capacity (20/20) and schema integrity..."
+          python3 scripts/manage_scenario_pool.py validate
+          echo "🎉 Scenario pool capacity (20/20) verified! Skipping heavy unit tests & build."
 
-      - name: Build extension
-        run: npm run build
-
-      - name: Unit and integrity tests
-        run: npm run test:unit
-
-  e2e:
-    name: Playwright E2E
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        if: steps.filter.outputs.only_scenarios != 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: 'npm'
 
-      - name: Install dependencies from lockfile
-        run: npm ci
+      - name: Install dependencies
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: npm ci || npm install
 
-      - name: Build extension
-        run: npm run build
+      - name: Type check (TypeScript)
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: npm run type-check
 
-      - name: Install Chromium
+      - name: Build dist bundles (verify esbuild pipeline)
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: node build.js
+
+      - name: Release gates — no CJK fonts bundled (§16 P0)
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: npm run test:release-gates
+
+      - name: Run Unit Tests & Syntax Verification
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: npm run test:unit
+
+  e2e-test:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Changed Files (Fast-Path Check)
+        id: filter
+        run: |
+          CHANGED=""
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"..."${{ github.event.pull_request.head.sha }}" 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGED" ] && [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+            CHANGED=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGED" ] && [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            CHANGED=$(git diff --name-only "${{ github.event.before }}"...HEAD 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGED" ]; then
+            CHANGED=$(git diff --name-only HEAD~1...HEAD 2>/dev/null || true)
+          fi
+          echo "Detected changed files:"
+          echo "$CHANGED"
+          NON_SCENARIO=$(echo "$CHANGED" | grep -vE '^(scripts/test_scenario_(pool|archive)\.json|.*\.md|docs/.*|icons/.*|store_assets/.*)$' | grep -vE '^\s*$' || true)
+          if [ -z "$NON_SCENARIO" ] && [ -n "$CHANGED" ]; then
+            echo "only_scenarios=true" >> $GITHUB_OUTPUT
+            echo "⚡ Fast path active: only scenario pool / documentation files changed."
+          else
+            echo "only_scenarios=false" >> $GITHUB_OUTPUT
+            echo "Full test suite active (code files changed or full run requested)."
+          fi
+
+      - name: Fast path - Skip Playwright E2E for scenario-only PR
+        if: steps.filter.outputs.only_scenarios == 'true'
+        run: |
+          echo "⚡ Fast-path: Only scenario pool / documentation files changed."
+          echo "🎉 Skipping Playwright Chromium installation and browser tests."
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.only_scenarios != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: npm ci || npm install
+
+      - name: Build dist bundles (manifest loads dist/)
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: node build.js
+
+      - name: Cache Playwright Chromium
+        if: steps.filter.outputs.only_scenarios != 'true'
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium & System Dependencies
+        if: steps.filter.outputs.only_scenarios != 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E suite
+      - name: Install Playwright System Dependencies Only
+        if: steps.filter.outputs.only_scenarios != 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run Playwright E2E Test Suite
+        if: steps.filter.outputs.only_scenarios != 'true'
         run: xvfb-run --auto-servernum npm run test:e2e

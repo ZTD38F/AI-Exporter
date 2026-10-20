@@ -1,0 +1,271 @@
+{
+  "id": "03-code-heavy",
+  "title": "代码密集",
+  "description": "多代码块（python/js/bash/json）+ 行内代码 + 一条 200+ 字符不断行，用于检查代码换行与溢出。",
+  "bundle": {
+    "schemaVersion": 1,
+    "conversation": {
+      "key": {
+        "providerId": "gemini",
+        "conversationId": "vc-03"
+      },
+      "title": {
+        "value": "代码 review"
+      },
+      "createdAt": "2026-09-26T10:00:00Z",
+      "updatedAt": "2026-09-26T11:00:00Z",
+      "messages": [
+        {
+          "id": "m1",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "p03-b58",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "帮我 review 这次提交的几段代码，看看有没有 bug。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "m2",
+          "role": "assistant",
+          "blocks": [
+            {
+              "id": "p03-b46",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "下面逐段 review 这次提交的代码："
+                }
+              ]
+            },
+            {
+              "id": "p03-b47",
+              "type": "heading",
+              "level": 3,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "1. 注意力分数计算"
+                }
+              ]
+            },
+            {
+              "id": "p03-b48",
+              "type": "code",
+              "code": "def compute_attention_scores(query, key, scale=True):\n    \"\"\"Compute scaled dot-product attention scores.\"\"\"\n    d_k = query.shape[-1]\n    scores = query @ key.transpose(-2, -1)\n    if scale:\n        scores = scores / math.sqrt(d_k)\n    # 数值稳定性：减去每行最大值\n    scores = scores - scores.max(dim=-1, keepdim=True).values\n    return torch.softmax(scores, dim=-1)",
+              "language": "python"
+            },
+            {
+              "id": "p03-b49",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "第 9 行的 "
+                },
+                {
+                  "type": "inlineCode",
+                  "code": "scores.max(dim=-1, keepdim=True)"
+                },
+                {
+                  "type": "text",
+                  "text": " 是为了数值稳定性，建议保留。"
+                }
+              ]
+            },
+            {
+              "id": "p03-b50",
+              "type": "heading",
+              "level": 3,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "2. 前端节流函数"
+                }
+              ]
+            },
+            {
+              "id": "p03-b51",
+              "type": "code",
+              "code": "export function throttle(fn, wait = 300) {\n  let lastCall = 0;\n  let timer = null;\n  return function (...args) {\n    const now = Date.now();\n    const remaining = wait - (now - lastCall);\n    if (remaining <= 0) {\n      lastCall = now;\n      fn.apply(this, args);\n    } else if (!timer) {\n      timer = setTimeout(() => {\n        lastCall = Date.now();\n        timer = null;\n        fn.apply(this, args);\n      }, remaining);\n    }\n  };\n}",
+              "language": "javascript"
+            },
+            {
+              "id": "p03-b52",
+              "type": "heading",
+              "level": 3,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "3. 部署脚本"
+                }
+              ]
+            },
+            {
+              "id": "p03-b53",
+              "type": "code",
+              "code": "#!/bin/bash\nset -euo pipefail\nIMAGE=\"registry.example.com/app:${TAG:-latest}\"\ndocker build -t \"$IMAGE\" .\ndocker push \"$IMAGE\"\nkubectl -n prod set image deploy/app \"app=$IMAGE\"\nkubectl -n prod rollout status deploy/app --timeout=300s",
+              "language": "bash"
+            },
+            {
+              "id": "p03-b54",
+              "type": "heading",
+              "level": 3,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "4. 超长行（不断行字符串）"
+                }
+              ]
+            },
+            {
+              "id": "p03-b55",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "下面这一行 JSON 有意写成超长单行，用于检查代码块的换行/溢出处理："
+                }
+              ]
+            },
+            {
+              "id": "p03-b56",
+              "type": "code",
+              "code": "{\"config\": {\"model\": \"gemini-2.5-pro\", \"temperature\": 0.7, \"max_tokens\": 8192, \"tools\": [{\"name\": \"search\", \"enabled\": true}, {\"name\": \"code_exec\", \"enabled\": false}]}, \"request_id\": \"req-9f8a7b6c5d4e\"}",
+              "language": "json"
+            },
+            {
+              "id": "p03-b57",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "总体评价：逻辑正确，建议把 "
+                },
+                {
+                  "type": "inlineCode",
+                  "code": "throttle"
+                },
+                {
+                  "type": "text",
+                  "text": " 的默认等待时间提取为常量。"
+                }
+              ]
+            },
+            {
+              "id": "p03-b58",
+              "type": "heading",
+              "level": 3,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "5. SQL 建表语句"
+                }
+              ]
+            },
+            {
+              "id": "p03-b59",
+              "type": "code",
+              "language": "sql",
+              "code": "CREATE TABLE review_comments (\n  id          BIGINT PRIMARY KEY AUTO_INCREMENT,\n  diff_id     VARCHAR(64)  NOT NULL,\n  file_path   VARCHAR(512) NOT NULL,\n  line_no     INT          NOT NULL,\n  author      VARCHAR(128) NOT NULL,\n  body        TEXT         NOT NULL,\n  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  INDEX idx_diff_file (diff_id, file_path)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n\n-- 找出每个 diff 下评论最多的文件\nSELECT diff_id, file_path, COUNT(*) AS c\nFROM review_comments\nGROUP BY diff_id, file_path\nORDER BY c DESC\nLIMIT 20;"
+            },
+            {
+              "id": "p03-b60",
+              "type": "heading",
+              "level": 3,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "6. Go 统计逻辑"
+                }
+              ]
+            },
+            {
+              "id": "p03-b61",
+              "type": "code",
+              "language": "go",
+              "code": "package reviewer\n\nimport (\n    \"context\"\n    \"fmt\"\n    \"time\"\n)\n\n// Comment 是一条 review 留言。\ntype Comment struct {\n    ID        int64\n    DiffID    string\n    FilePath  string\n    LineNo    int\n    Author    string\n    Body      string\n    CreatedAt time.Time\n}\n\n// TopFiles 返回评论最多的前 N 个文件。\nfunc TopFiles(ctx context.Context, comments []Comment, n int) []string {\n    counts := make(map[string]int)\n    for _, c := range comments {\n        select {\n        case <-ctx.Done():\n            return nil\n        default:\n        }\n        counts[c.FilePath]++\n    }\n    return takeTop(counts, n)\n}"
+            },
+            {
+              "id": "p03-b62",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "补上 SQL 和 Go 两段：注意 SQL 里反引号和注释都要原样保留，Go 的 struct tag 暂略。"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "m3",
+          "role": "assistant",
+          "blocks": [
+            {
+              "id": "p03-b70",
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "回归用例：空格在代码块中必须原样保留。"
+                }
+              ]
+            },
+            {
+              "id": "p03-b71",
+              "type": "code",
+              "code": "def foo(a, b):\n    indented\n    return a + b",
+              "language": "python"
+            },
+            {
+              "id": "p03-b72",
+              "type": "code",
+              "code": "const x = a + b;",
+              "language": "javascript"
+            },
+            {
+              "id": "p03-b73",
+              "type": "code",
+              "code": "hello world",
+              "language": "text"
+            }
+          ]
+        }
+      ]
+    },
+    "assets": [],
+    "citations": []
+  },
+  "binaries": {},
+  "expect": {
+    "minPages": 2,
+    "phrases": [
+      "def compute_attention_scores",
+      "export function throttle",
+      "set -euo pipefail",
+      "request_id",
+      "为了数值稳定性，建议保留",
+      "CREATE TABLE review_comments"
+    ],
+    "exactlyOnce": [
+      "def compute_attention_scores",
+      "func TopFiles"
+    ],
+    "codeSpaceNeedles": [
+      "def foo(a, b):",
+      "const x = a + b;",
+      "hello world",
+      "    indented",
+      "def compute_attention_scores",
+      "scores = scores / math.sqrt"
+    ]
+  }
+}

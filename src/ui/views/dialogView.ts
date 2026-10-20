@@ -1,28 +1,13 @@
-// src/ui/views/dialogView.ts - Dialog and Banner Views
 import type { IDialogView } from '../../types/ui.js';
 import StorageService from '../../core/storage/storageService.js';
+import { __resolveModule } from '../../core/utils/moduleOverrides.js';
 import ConversationsStore from '../state/conversationsStore.js';
+import { SessionStore } from '../../core/storage/sessionStore.js';
 
-function $(id: string): HTMLElement | null {
-    return typeof document !== 'undefined' ? document.getElementById(id) : null;
-}
+import { $, t } from '../uiCommon.js';
 
-const t = (key: string, ...args: any[]): string => {
-    if (typeof I18n !== 'undefined' && I18n.t) {
-        return I18n.t(key, ...args);
-    }
-    return key;
-};
-
-const getStorage = () => {
-    if (typeof (globalThis as any).StorageService !== 'undefined') return (globalThis as any).StorageService;
-    return StorageService;
-};
-
-const getStore = () => {
-    if (typeof (globalThis as any).ConversationsStore !== 'undefined') return (globalThis as any).ConversationsStore;
-    return ConversationsStore;
-};
+const getStorage = () => __resolveModule('StorageService', StorageService);
+const getStore = () => __resolveModule('ConversationsStore', ConversationsStore);
 
 export function renderExportBanner(session: any, currentSlot: string, isRunning: boolean): void {
     const banner = $('exportSessionBanner');
@@ -90,11 +75,11 @@ export function renderExportBanner(session: any, currentSlot: string, isRunning:
     }
 }
 
-export function dismissExportBanner(): void {
-    const banner = $('exportSessionBanner');
-    if (banner) banner.style.display = 'none';
+export async function dismissExportBanner(): Promise<void> {
     try {
-        chrome.storage.local.remove(['gemini_last_export_session']);
+        await SessionStore.clearSession();
+        const banner = $('exportSessionBanner');
+        if (banner) banner.style.display = 'none';
     } catch (e) {
         console.warn("[GemExporter:storage] Storage operation failed:", e);
     }
@@ -155,7 +140,7 @@ export function hideDirectWritePrompt(): void {
     if (modal) modal.style.display = 'none';
 }
 
-export async function showTakeoutLimitPrompt(options: { count?: number; hitGoogleLimit?: boolean; force?: boolean; onImportTakeout?: () => void } = {}): Promise<void> {
+export async function showTakeoutLimitPrompt(options: { count?: number; hitGoogleLimit?: boolean; force?: boolean; onImportTakeout?: () => void; onDismiss?: () => void } = {}): Promise<void> {
     const modal = $('takeoutLimitModal');
     const titleEl = $('takeoutLimitPromptTitle');
     const textEl = $('takeoutLimitPromptText');
@@ -169,30 +154,18 @@ export async function showTakeoutLimitPrompt(options: { count?: number; hitGoogl
     const store = getStore();
 
     if (!options.force) {
-        if (storage) {
-            if (storage.isTakeoutPromptCompleted) {
-                try {
-                    const isCompleted = await storage.isTakeoutPromptCompleted();
-                    if (isCompleted) return;
-                } catch (e) {
-                    console.warn("[GemExporter:storage] Storage operation failed:", e);
-                }
-            }
-            if (storage.hasTakeoutData) {
-                try {
-                    const hasTakeout = await storage.hasTakeoutData();
-                    if (hasTakeout) return;
-                } catch (e) {
-                    console.warn("[GemExporter:storage] Storage operation failed:", e);
-                }
+        if (storage?.isTakeoutPromptCompleted) {
+            try {
+                if (await storage.isTakeoutPromptCompleted()) return;
+            } catch (e) {
+                console.warn("[GemExporter:storage] Storage operation failed:", e);
             }
         }
-        if (store && store.hasTakeoutData) {
-            try {
-                if (store.hasTakeoutData()) return;
-            } catch (e) {
-                if (typeof console !== "undefined" && console.debug) console.debug("[GemExporter:dialogView.ts]", e);
-            }
+        try {
+            if (store?.hasTakeoutData && store.hasTakeoutData()) return;
+            if (storage?.hasTakeoutData && await storage.hasTakeoutData()) return;
+        } catch (e) {
+            console.warn("[GemExporter:dialogView.ts]", e);
         }
     }
 
@@ -220,8 +193,12 @@ export async function showTakeoutLimitPrompt(options: { count?: number; hitGoogl
     modal.style.display = 'flex';
 
     const markCompleted = () => {
+        if (typeof options.onDismiss === 'function') {
+            try { options.onDismiss(); } catch {}
+            return;
+        }
         if (storage && storage.setTakeoutPromptCompleted) {
-            storage.setTakeoutPromptCompleted(true);
+            void storage.setTakeoutPromptCompleted(true);
         }
     };
 
@@ -278,23 +255,112 @@ export function hideTakeoutLimitPrompt(): void {
     if (modal) modal.style.display = 'none';
 }
 
+let _lastFailedChats: any[] = [];
+
+export function getLastFailedChats(): any[] {
+    return _lastFailedChats;
+}
+
+export function setLastFailedChats(list: any[]): void {
+    _lastFailedChats = Array.isArray(list) ? list : [];
+}
+
+export function renderExportFailureBanner(failedList: any[], onRetry?: () => void): void {
+    _lastFailedChats = Array.isArray(failedList) ? failedList : [];
+    const card = $('exportFailureCard');
+    if (!card) return;
+    if (!_lastFailedChats.length) {
+        card.style.display = 'none';
+        return;
+    }
+    const titleEl = $('exportFailureTitle');
+    if (titleEl) {
+        titleEl.textContent = typeof t === 'function' ? t('exportFailureBannerTitle') : '部分会话导出失败';
+    }
+    const btnRetry = $('btnRetryFailed') as HTMLButtonElement | null;
+    if (btnRetry) {
+        btnRetry.textContent = typeof t === 'function' ? t('btnRetryFailedCount', _lastFailedChats.length) : `重试失败项 (${_lastFailedChats.length})`;
+        if (onRetry) {
+            btnRetry.onclick = () => onRetry();
+        }
+    }
+    const btnCopy = $('btnCopyFailedLog') as HTMLButtonElement | null;
+    if (btnCopy) {
+        btnCopy.textContent = typeof t === 'function' ? t('btnCopyFailedLog') : '复制错误';
+        btnCopy.onclick = async () => {
+            const textLines = _lastFailedChats.map(item => {
+                const title = item.title || item.id || 'Untitled';
+                const err = item.error || 'Unknown error';
+                const cid = item.id || '';
+                return `• [${cid}] ${title}: ${err}`;
+            });
+            const textToCopy = textLines.join('\n');
+            try {
+                if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(textToCopy);
+                }
+                const originalText = btnCopy.textContent;
+                btnCopy.textContent = typeof t === 'function' ? t('failedLogCopied') : '已复制';
+                setTimeout(() => {
+                    if (btnCopy) btnCopy.textContent = originalText;
+                }, 2000);
+            } catch (err) {
+                console.warn('[DialogView] Failed to copy failure log', err);
+            }
+        };
+    }
+    const btnDismiss = $('btnDismissFailure') as HTMLButtonElement | null;
+    if (btnDismiss) {
+        btnDismiss.onclick = () => {
+            card.style.display = 'none';
+        };
+    }
+    const listEl = $('exportFailureList');
+    if (listEl) {
+        listEl.innerHTML = '';
+        _lastFailedChats.slice(0, 50).forEach(item => {
+            const row = document.createElement('div');
+            row.style.whiteSpace = 'normal';
+            row.style.wordBreak = 'break-word';
+            row.style.padding = '3px 0';
+            row.style.borderBottom = '1px dashed rgba(255, 255, 255, 0.08)';
+            const itemTitle = item.title || item.id || 'Untitled';
+            const itemErr = item.error ? ` (${item.error})` : '';
+            row.textContent = `• ${itemTitle}${itemErr}`;
+            row.title = `${item.id}: ${itemTitle}${itemErr}`;
+            listEl.appendChild(row);
+        });
+        if (_lastFailedChats.length > 50) {
+            const more = document.createElement('div');
+            more.style.fontStyle = 'italic';
+            more.style.padding = '4px 0';
+            const extraCount = _lastFailedChats.length - 50;
+            more.textContent = typeof t === 'function' ? t('failedChatsMore', extraCount) : `... 以及其他 ${extraCount} 项`;
+            listEl.appendChild(more);
+        }
+    }
+    card.style.display = 'block';
+}
+
+export function hideExportFailureBanner(): void {
+    _lastFailedChats = [];
+    const card = $('exportFailureCard');
+    if (card) card.style.display = 'none';
+}
+
 export const DialogView: IDialogView = {
     renderExportBanner,
     dismissExportBanner,
     showDirectWritePrompt,
     hideDirectWritePrompt,
     showTakeoutLimitPrompt,
-    hideTakeoutLimitPrompt
+    hideTakeoutLimitPrompt,
+    renderExportFailureBanner,
+    hideExportFailureBanner,
+    getLastFailedChats,
+    setLastFailedChats
 };
 
-(DialogView as any).DialogView = DialogView;
-(DialogView as any).default = DialogView;
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).DialogView = DialogView;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = DialogView;
-}
 
 export default DialogView;

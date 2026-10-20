@@ -72,6 +72,7 @@ export interface ProviderCapabilities {
 }
 
 export interface ProviderReadiness {
+    accountSlot?: string;
     ready: boolean;
     scopeKey?: string;
     accountName?: string;

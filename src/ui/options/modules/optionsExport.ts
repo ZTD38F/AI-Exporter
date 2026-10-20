@@ -1,197 +1,71 @@
-// src/ui/options/modules/optionsExport.ts - Export interaction & pipeline runner
 import type { OptionsExportOptions } from '../../../types/ui.js';
-import { ConversationsStore as DefaultConversationsStore } from '../../state/conversationsStore.js';
-import { ListView as DefaultListView } from '../../views/listView.js';
-import { ExportController as DefaultExportController } from '../../controllers/exportController.js';
-import { DialogView as DefaultDialogView } from '../../views/dialogView.js';
-import { DirHandleController as DefaultDirHandle } from '../../controllers/dirHandleController.js';
-import { FormatStore as DefaultFormatStore } from '../../../core/storage/formatStore.js';
-import { TakeoutEngine as DefaultTakeoutEngine } from '../../../core/engine/takeoutEngine.js';
-import { GeminiUtils as DefaultGeminiUtils, getErrorMessage } from '../../../core/utils/utils.js';
-import { GeminiConstants as DefaultGeminiConstants } from '../../../core/utils/constants.js';
-import { I18n as DefaultI18n } from '../../../core/utils/i18n.js';
-import { LiveStorageManager as DefaultLiveStorageManager } from '../../../core/storage/liveStorageManager.js';
+import {
+    t,
+    getLang,
+    getStore,
+    getList,
+    getExportCtrl as getController,
+    getFormats,
+    getTakeoutEngine,
+    getConstants,
+    getDialogs,
+    getDirHandle,
+    getLiveStorage,
+    getStorage,
+    getUtils
+} from '../optionsContext.js';
+import { DialogView } from '../../views/dialogView.js';
+import { ProgressView } from '../../views/progressView.js';
+import { getErrorMessage, isRealTitle } from '../../../core/utils/utils.js';
+import { normId } from '../../../core/utils/pathUtils.js';
+import { STORAGE_KEYS } from '../../../core/utils/constants.js';
+import { warmLocalFontCache } from '../../../core/export/typst/fonts/localFontProvider.js';
+import { $ } from '../../uiCommon.js';
 
-function $(id: string): HTMLElement | null {
-    return typeof document !== 'undefined' ? document.getElementById(id) : null;
-}
+export { normId, isRealTitle };
 
-const getI18n = () => {
-    if (typeof I18n !== 'undefined' && I18n) return I18n;
-    if (typeof DefaultI18n !== 'undefined' && DefaultI18n) return DefaultI18n;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).I18n) return (globalThis as any).I18n;
-    return null;
-};
-
-const t = (key: string, ...args: any[]): string => {
-    const i18n = getI18n();
-    if (i18n && typeof i18n.t === 'function') {
-        return i18n.t(key, ...args);
-    }
-    return key;
-};
-
-const getLang = (): string => {
-    const i18n = getI18n();
-    if (i18n && typeof i18n.getLang === 'function') {
-        return i18n.getLang();
-    }
-    return 'en';
-};
-
-const getStore = () => {
-    if (typeof DefaultConversationsStore !== 'undefined' && DefaultConversationsStore) return DefaultConversationsStore;
-    if (typeof ConversationsStore !== 'undefined') return ConversationsStore;
-    return null;
-};
-
-const getList = () => {
-    if (typeof DefaultListView !== 'undefined' && DefaultListView) return DefaultListView;
-    if (typeof ListView !== 'undefined') return ListView;
-    return null;
-};
-
-const getController = () => {
-    if (typeof DefaultExportController !== 'undefined' && DefaultExportController) return DefaultExportController;
-    if (typeof ExportController !== 'undefined') return ExportController;
-    return null;
-};
-
-const getFormats = () => {
-    if (typeof FormatStore !== 'undefined' && FormatStore) return FormatStore;
-    if (typeof DefaultFormatStore !== 'undefined' && DefaultFormatStore) return DefaultFormatStore;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).FormatStore) return (globalThis as any).FormatStore;
-    return null;
-};
-
-const getTakeoutEngine = () => {
-    if (typeof TakeoutEngine !== 'undefined' && TakeoutEngine) return TakeoutEngine;
-    if (typeof DefaultTakeoutEngine !== 'undefined' && DefaultTakeoutEngine) return DefaultTakeoutEngine;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).TakeoutEngine) return (globalThis as any).TakeoutEngine;
-    return null;
-};
-
-const getConstants = () => {
-    if (typeof GeminiConstants !== 'undefined' && GeminiConstants) return GeminiConstants;
-    if (typeof DefaultGeminiConstants !== 'undefined' && DefaultGeminiConstants) return DefaultGeminiConstants;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiConstants) return (globalThis as any).GeminiConstants;
-    return null;
-};
-
-const getDialogs = () => {
-    if (typeof DefaultDialogView !== 'undefined' && DefaultDialogView) return DefaultDialogView;
-    if (typeof DialogView !== 'undefined') return DialogView;
-    return null;
-};
-
-const getDirHandle = () => {
-    if (typeof DefaultDirHandle !== 'undefined' && DefaultDirHandle) return DefaultDirHandle;
-    if (typeof DirHandleController !== 'undefined') return DirHandleController;
-    return null;
-};
-
-const getLiveStorage = () => {
-    if (typeof LiveStorageManager !== 'undefined' && LiveStorageManager) return LiveStorageManager;
-    if (typeof DefaultLiveStorageManager !== 'undefined' && DefaultLiveStorageManager) return DefaultLiveStorageManager;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).LiveStorageManager) return (globalThis as any).LiveStorageManager;
-    return null;
-};
-
-const getUtils = () => {
-    if (typeof GeminiUtils !== 'undefined' && GeminiUtils) return GeminiUtils;
-    if (typeof DefaultGeminiUtils !== 'undefined' && DefaultGeminiUtils) return DefaultGeminiUtils;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils) return (globalThis as any).GeminiUtils;
-    return null;
-};
-
-export const normId = (id?: string | null): string => {
-    const utils = getUtils();
-    if (utils && typeof utils.normId === 'function') return utils.normId(id);
-    return String(id || '').replace(/^c_/, '');
-};
-
-export const isRealTitle = (tStr?: string | null, id?: string | null): boolean => {
-    const utils = getUtils();
-    if (utils && typeof utils.isRealTitle === 'function') return utils.isRealTitle(tStr as string, id as string);
-    return !!(tStr && String(tStr).trim().length > 1);
-};
-
-let __loadStore: ((force?: boolean, selectedOverride?: Set<string>) => Promise<any>) | null = null;
+let __loadStore: ((force?: boolean, customSelected?: Set<string>) => Promise<any>) | null = null;
 let __log: ((msg: string, level?: 'info' | 'warn' | 'error') => void) | null = null;
 let __getSearchFilter: () => string = () => '';
 let _isExporting = false;
-let _lastFailedChats: any[] = [];
 
 export function getLastFailedChats(): any[] {
-    return _lastFailedChats;
+    const Dialogs = getDialogs();
+    return (Dialogs?.getLastFailedChats?.()) ?? DialogView.getLastFailedChats();
 }
 
 export function renderExportFailureBanner(failedList: any[]): void {
-    _lastFailedChats = Array.isArray(failedList) ? failedList : [];
-    const card = $('exportFailureCard');
-    if (!card) return;
-    if (!_lastFailedChats.length) {
-        card.style.display = 'none';
-        return;
+    const Dialogs = getDialogs();
+    if (typeof Dialogs?.renderExportFailureBanner === 'function') {
+        Dialogs.renderExportFailureBanner(failedList, retryFailedExport);
+    } else {
+        DialogView.renderExportFailureBanner(failedList, retryFailedExport);
     }
-    const titleEl = $('exportFailureTitle');
-    if (titleEl) {
-        titleEl.textContent = typeof t === 'function' ? t('exportFailureBannerTitle') : '部分会话导出失败';
-    }
-    const btnRetry = $('btnRetryFailed') as HTMLButtonElement | null;
-    if (btnRetry) {
-        btnRetry.textContent = typeof t === 'function' ? t('btnRetryFailedCount', _lastFailedChats.length) : `重试失败项 (${_lastFailedChats.length})`;
-        btnRetry.onclick = () => {
-            retryFailedExport();
-        };
-    }
-    const btnDismiss = $('btnDismissFailure') as HTMLButtonElement | null;
-    if (btnDismiss) {
-        btnDismiss.onclick = () => {
-            card.style.display = 'none';
-        };
-    }
-    const listEl = $('exportFailureList');
-    if (listEl) {
-        listEl.innerHTML = '';
-        _lastFailedChats.slice(0, 20).forEach(item => {
-            const row = document.createElement('div');
-            row.style.whiteSpace = 'nowrap';
-            row.style.overflow = 'hidden';
-            row.style.textOverflow = 'ellipsis';
-            row.style.padding = '1px 0';
-            const itemTitle = item.title || item.id || 'Untitled';
-            const itemErr = item.error ? ` (${item.error})` : '';
-            row.textContent = `• ${itemTitle}${itemErr}`;
-            row.title = `${itemTitle}${itemErr}`;
-            listEl.appendChild(row);
-        });
-        if (_lastFailedChats.length > 20) {
-            const more = document.createElement('div');
-            more.style.fontStyle = 'italic';
-            more.textContent = `... 以及其他 ${_lastFailedChats.length - 20} 项`;
-            listEl.appendChild(more);
-        }
-    }
-    card.style.display = 'block';
 }
 
 export function hideExportFailureBanner(): void {
-    _lastFailedChats = [];
-    const card = $('exportFailureCard');
-    if (card) card.style.display = 'none';
+    const Dialogs = getDialogs();
+    if (typeof Dialogs?.hideExportFailureBanner === 'function') {
+        Dialogs.hideExportFailureBanner();
+    } else {
+        DialogView.hideExportFailureBanner();
+    }
 }
 
+
+
 export async function retryFailedExport(): Promise<void> {
-    if (!_lastFailedChats.length) return;
+    const failedList = getLastFailedChats();
+    if (!failedList.length) return;
     const List = getList();
     const Store = getStore();
     const failedIds = new Set<string>();
-    for (const c of _lastFailedChats) {
+    for (const c of failedList) {
         if (c.id) {
+            // Single add is enough: List.selectByIds() normalizes every id with
+            // normId() before matching, so 'c_<id>' / raw variants collapse to
+            // the same key. No need to pre-expand aliases here.
             failedIds.add(c.id);
-            failedIds.add(normId(c.id));
-            failedIds.add('c_' + normId(c.id));
         }
     }
     if (List && typeof List.selectByIds === 'function') {
@@ -200,6 +74,7 @@ export async function retryFailedExport(): Promise<void> {
     hideExportFailureBanner();
     await exportSelected();
 }
+
 
 export function log(msg: string, level: 'info' | 'warn' | 'error' = 'info'): void {
     if (__log) __log(msg, level);
@@ -228,6 +103,51 @@ export function updateZipUi(): void {
     }
     if (btnSetDir) {
         btnSetDir.disabled = disableDir;
+    }
+}
+
+/**
+ * Export title-update handler, extracted for testability.
+ *
+ * Applies an export-resolved title to the in-memory conversation AND persists
+ * it to storage via the atomic `updateConversation` read-modify-write path
+ * (the same convention exportOrchestrator uses). Previously this was a pure
+ * in-memory dirty write and the resolved title was lost on page reload.
+ *
+ * Title arbitration is untouched: the same `setTitleBySource` transform is
+ * applied to both the in-memory item and the stored copy.
+ *
+ * No loop risk: a storage write never re-enters the export pipeline, and
+ * exportOrchestrator's own write (when convsNeedSave) carries identical values.
+ */
+export async function persistTitleUpdate(chatId: string, newTitle: string, source: string, exportSlot?: string): Promise<void> {
+    const Store = getStore();
+    const visibleSlot = Store?.getCurrentSlot?.() || 'u0';
+    const slot = exportSlot || visibleSlot;
+    const currentConvs = Store && visibleSlot === slot ? Store.getConversations() : [];
+    const item = currentConvs.find((c: any) => normId(c.id) === normId(chatId));
+    if ((!item && !exportSlot) || !isRealTitle(newTitle, chatId)) return;
+    const utils = getUtils();
+    const applyTitle = (chat: any) => {
+        if (utils && typeof utils.setTitleBySource === 'function') {
+            utils.setTitleBySource(chat, source || 'rpc', newTitle);
+        } else {
+            chat.title = newTitle;
+            (chat as any).titleSource = source || 'rpc';
+        }
+    };
+    // 1) in-memory (existing behavior; keeps the list UI fresh during export)
+    if (item) applyTitle(item);
+    // 2) persist so the title survives reload
+    try {
+        const storage = getStorage();
+        if (storage && typeof storage.updateConversation === 'function') {
+            await storage.updateConversation(slot, chatId, (existing: any) => {
+                applyTitle(existing);
+            });
+        }
+    } catch (err) {
+        log(`persistTitleUpdate failed for ${chatId}: ${getErrorMessage(err)}`, 'warn');
     }
 }
 
@@ -271,25 +191,14 @@ export async function startExportPipeline(
     const Controller = getController();
     const DirHandle = getDirHandle();
     const List = getList();
+    const currentSlot = Store?.getCurrentSlot?.() || 'u0';
 
     const convs = Store ? Store.getConversations() : [];
-    let selectionForReload: Set<string> | undefined;
 
-    // S-1 Memory Guardrail: Pre-flight memory estimation for large ZIP exports
     if (includeZip) {
-        const convMap = new Map<string, any>((convs || []).map((c: any) => [normId(c.id), c]));
-        let totalAttachments = 0;
-        let totalMessages = 0;
-        for (const item of selected) {
-            const rawId = typeof item === 'string' ? item : item?.id;
-            const conv = (rawId ? convMap.get(normId(rawId)) : null) || (typeof item === 'object' ? item : null);
-            if (conv) {
-                totalAttachments += (conv.attachmentCount || conv.attachments?.length || 0);
-                totalMessages += (conv.messageCount || conv.messages?.length || 0);
-            }
-        }
-        // Approximate: ~1.8MB per attachment, 20KB per message, 50KB per conversation metadata
-        const estimatedMb = Math.round((totalAttachments * 1.8) + (totalMessages * 0.02) + (selected.length * 0.05));
+        const estimatedMb = (Controller && typeof Controller.estimateMemoryUsage === 'function')
+            ? Controller.estimateMemoryUsage(selected, convs)
+            : Math.round((selected.length * 0.05));
         if (estimatedMb >= 300) {
             const warnMsg = typeof t === 'function'
                 ? t('exportLargeMemoryWarn', estimatedMb)
@@ -317,24 +226,19 @@ export async function startExportPipeline(
     }
 
     hideExportFailureBanner();
-    const progWrap = $('progWrap');
-    const bar = $('bar');
-    const progText = $('progText');
-    if (progWrap) progWrap.style.display = 'block';
-    if (bar) bar.style.width = '2%';
-    if (progText) progText.textContent = typeof t === 'function' ? t('startExport') : 'Preparing export...';
+    ProgressView.show(2, typeof t === 'function' ? t('startExport') : 'Preparing export...');
 
     log(typeof t === 'function'
         ? t('exportStartingDetail', selected.length, format.toUpperCase(), includeZip ? 'ZIP' : (typeof t === 'function' ? t('folder') : 'Folder'), includeAssets ? 'ON' : 'OFF')
         : `Starting export: ${selected.length} chats | Format: ${format.toUpperCase()} | Target: ${includeZip ? 'ZIP' : 'Folder'}`);
 
     if (!Controller) {
-        log('ExportController not available', 'error');
+        log(typeof t === 'function' ? t('exportControllerUnavailable') : 'ExportController not available', 'error');
         return;
     }
 
+    let remainingSelected: Set<string> | null = null;
     try {
-        const currentSlot = Store ? Store.getCurrentSlot() : 'u0';
         const exportedIds = Store ? Store.getExportedIds() : {};
         const takeoutEngine = getTakeoutEngine();
 
@@ -345,11 +249,21 @@ export async function startExportPipeline(
             includeIndex,
             includeAssets,
             useZip: includeZip,
-            dirHandle: DirHandle ? DirHandle.getDirHandle() : null,
+            dirHandle: dirHandle || (DirHandle ? DirHandle.getDirHandle() : null),
             currentSlot,
             conversations: convs,
             exportedIds,
-            takeoutEngine
+            takeoutEngine,
+            downloadHandler: async (blob: Blob, filename: string) => {
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+            }
         }, {
             onProgress: (progress: any, txt: string) => {
                 const isEn = typeof getLang === 'function' && getLang() === 'en';
@@ -358,39 +272,35 @@ export async function startExportPipeline(
                     ? utils.formatExportProgress(progress, txt, isEn)
                     : { text: txt || '', pct: typeof progress === 'number' ? progress : (progress?.pct || 0) };
 
-                if (bar && typeof formatted.pct !== 'undefined') {
-                    bar.style.width = `${Math.min(Math.max(formatted.pct, 2), 100)}%`;
-                }
-                if (progText && formatted.text) {
-                    progText.textContent = formatted.text;
-                }
+                const pct = typeof formatted.pct !== 'undefined' ? Math.max(formatted.pct, 2) : 2;
+                if (Store?.getCurrentSlot?.() === currentSlot) ProgressView.update(pct, formatted.text);
             },
-            onLog: (msg: string, lvl: 'info' | 'warn' | 'error') => log(msg, lvl),
+
+            onLog: (msg: string, lvl: 'info' | 'warn' | 'error') => {
+                if (Store?.getCurrentSlot?.() === currentSlot) log(msg, lvl);
+            },
             onTitleUpdated: (chatId: string, newTitle: string, source: string) => {
-                const currentConvs = Store ? Store.getConversations() : [];
-                const item = currentConvs.find((c: any) => normId(c.id) === normId(chatId));
-                if (item && isRealTitle(newTitle, chatId)) {
-                    const utils = getUtils();
-                    if (utils && typeof utils.setTitleBySource === 'function') {
-                        utils.setTitleBySource(item, source || 'rpc', newTitle);
-                    } else {
-                        item.title = newTitle;
-                        (item as any).titleSource = source || 'rpc';
-                    }
+                // Fire-and-forget: persistTitleUpdate updates the in-memory item
+                // synchronously first, then persists to storage; failures are
+                // logged inside and never reject here.
+                void persistTitleUpdate(chatId, newTitle, source, currentSlot);
+            },
+            onItemPendingAssets: (chatId: string) => {
+                if (Store?.getCurrentSlot?.() !== currentSlot) return;
+                if (List && typeof List.updateItemExportStatus === 'function') {
+                    List.updateItemExportStatus(chatId, { status: 'pending_assets' } as any);
                 }
             },
             onItemExported: async (chatId: string, titleOrRecord: any, maybeRecord: any) => {
+                if (Store?.getCurrentSlot?.() !== currentSlot) return;
                 const exportRecord = (maybeRecord && typeof maybeRecord === 'object')
                     ? maybeRecord
                     : ((titleOrRecord && typeof titleOrRecord === 'object') ? titleOrRecord : null);
                 if (Store && exportRecord) {
                     const cur = Store.getExportedIds();
-                    cur[chatId] = exportRecord;
-                    cur['c_' + normId(chatId)] = exportRecord;
-                    cur[normId(chatId)] = exportRecord;
+                    const ck = normId(chatId);
+                    if (ck) cur[ck] = exportRecord;
                     Store.setExportedIds(cur);
-                    const cSlot = Store.getCurrentSlot()!;
-                    await Store!.saveExportedIds(cSlot, cur);
                     const currentConvs = Store.getConversations();
                     if (List) {
                         if (typeof List.updateItemExportStatus === 'function') {
@@ -405,18 +315,16 @@ export async function startExportPipeline(
             }
         });
 
+        if (Store?.getCurrentSlot?.() !== currentSlot) return;
         if (result && result.aborted) {
             log(typeof t === 'function' ? t('exportAborted') : '导出任务已被用户中止', 'warn');
-            if (progText) progText.textContent = typeof t === 'function' ? t('exportAborted') : '导出已终止';
+            ProgressView.complete(typeof t === 'function' ? t('exportAborted') : '导出已终止');
         } else {
             const failedList = Array.isArray(result?.failedChats) ? result.failedChats : [];
             const failedCount = failedList.length;
             const successCount = typeof result?.landedChats === 'number'
                 ? result.landedChats
                 : (typeof result?.exportedCount === 'number' ? result.exportedCount : Math.max(0, selected.length - failedCount));
-
-            const selectedBeforeReload = List ? List.getSelectedIds() : new Set<string>();
-            selectionForReload = selectionAfterExport(selectedBeforeReload, selected, failedList);
 
             let finishMsg = '';
             if (failedCount > 0) {
@@ -434,11 +342,41 @@ export async function startExportPipeline(
                 }
                 log(finishMsg, 'warn');
                 renderExportFailureBanner(failedList);
-            } else {
+            } else if (successCount === 0 && (result?.skipped || 0) > 0) {
+                const skippedCount = result.skipped;
                 if (typeof t === 'function') {
-                    const translated = t('exportSuccess', successCount);
-                    if (translated && translated !== 'exportSuccess') {
+                    const translated = t('exportSkippedAll', skippedCount);
+                    if (translated && translated !== 'exportSkippedAll') {
                         finishMsg = translated;
+                    }
+                }
+                if (!finishMsg) {
+                    const isEn = typeof getLang === 'function' && getLang() === 'en';
+                    finishMsg = isEn
+                        ? `Export completed: All ${skippedCount} selected conversations skipped (already exported and up-to-date).`
+                        : `导出完成：所选 ${skippedCount} 篇对话均已导出且无更新，已全部跳过。`;
+                }
+                log(finishMsg, 'info');
+                hideExportFailureBanner();
+            } else {
+                const skippedCount = result?.skipped || 0;
+                if (skippedCount > 0 && typeof t === 'function') {
+                    const translated = t('exportSuccessWithSkipped', successCount, skippedCount);
+                    if (translated && translated !== 'exportSuccessWithSkipped') {
+                        finishMsg = translated;
+                    }
+                }
+                if (!finishMsg) {
+                    const isEn = typeof getLang === 'function' && getLang() === 'en';
+                    if (skippedCount > 0) {
+                        finishMsg = isEn
+                            ? `Export completed! ${successCount} conversations exported, ${skippedCount} skipped.`
+                            : `导出完成！已导出 ${successCount} 篇对话，跳过 ${skippedCount} 篇已导出对话。`;
+                    } else if (typeof t === 'function') {
+                        const translated = t('exportSuccess', successCount);
+                        if (translated && translated !== 'exportSuccess') {
+                            finishMsg = translated;
+                        }
                     }
                 }
                 if (!finishMsg) {
@@ -450,19 +388,25 @@ export async function startExportPipeline(
                 log(finishMsg, 'info');
                 hideExportFailureBanner();
             }
-            if (bar) bar.style.width = '100%';
-            if (progText) progText.textContent = finishMsg;
+            ProgressView.complete(finishMsg);
+
+            // Compute updated selection: deselect ONLY successfully exported conversations
+            remainingSelected = selectionAfterExport(List ? List.getSelectedIds() : new Set<string>(), selected, failedList);
+            if (List && typeof List.setSelectedIds === 'function') {
+                List.setSelectedIds(remainingSelected);
+            }
         }
     } catch (err: unknown) {
         const errMsg = getErrorMessage(err);
-        log(typeof t === 'function' ? t('exportFailed', errMsg) : `Export failed: ${errMsg}`, 'error');
-        if (progText) progText.textContent = `Error: ${errMsg}`;
+        if (Store?.getCurrentSlot?.() === currentSlot) {
+            log(typeof t === 'function' ? t('exportFailed', errMsg) : `Export failed: ${errMsg}`, 'error');
+            ProgressView.complete(typeof t === 'function' ? t('exportFailedWithMessage', errMsg) : `Error: ${errMsg}`);
+        }
     } finally {
-        setTimeout(() => {
-            if (progWrap) progWrap.style.display = 'none';
-            if (bar) bar.style.width = '0%';
-        }, 3000);
-        if (__loadStore) await __loadStore(true, selectionForReload);
+        if (Store?.getCurrentSlot?.() === currentSlot) {
+            ProgressView.hide(3000);
+            if (__loadStore) await __loadStore(true, remainingSelected || undefined);
+        }
     }
 }
 
@@ -481,10 +425,10 @@ export async function exportSelected(overrideFormat: string | null = null): Prom
     if (!selected.length) {
         const noSelMsg = typeof t === 'function' ? t('noSelection') : 'Please select at least one conversation!';
         log(noSelMsg, 'warn');
-        const progTextEl = $('progText');
-        if (progTextEl) progTextEl.textContent = noSelMsg;
+        ProgressView.update(0, noSelMsg);
         return;
     }
+
 
     const formatSelect = $('format') as HTMLSelectElement | null;
     const format = overrideFormat || (Formats ? Formats.getCurrentFormat(document.body.classList.contains('dev-mode'), formatSelect?.value) : (formatSelect?.value || 'markdown'));
@@ -498,20 +442,118 @@ export async function exportSelected(overrideFormat: string | null = null): Prom
     const dirHandle = DirHandle ? DirHandle.getDirHandle() : null;
 
     const constants = getConstants();
-    const threshold = (constants && constants.DIRECT_WRITE_THRESHOLD) ? constants.DIRECT_WRITE_THRESHOLD : 50;
-    if (includeZip && selected.length >= threshold && Dialogs && typeof Dialogs.showDirectWritePrompt === 'function') {
-        Dialogs.showDirectWritePrompt(
-            selected.length,
-            () => {
-                if (zipCheck) zipCheck.checked = false;
-                updateZipUi();
-                startExportPipeline(selected, format, skip, includeIndex, includeAssets, false, dirHandle);
-            },
-            () => {
-                startExportPipeline(selected, format, skip, includeIndex, includeAssets, true, dirHandle);
+    const threshold = (constants && constants.DIRECT_WRITE_THRESHOLD) ? constants.DIRECT_WRITE_THRESHOLD : 20;
+    if (includeZip && !dirHandle && selected.length > threshold && Dialogs && Dialogs.showDirectWritePrompt) {
+        const Storage = getStorage();
+        const isSuppressed = typeof Storage?.isDirectWritePromptSuppressed === 'function'
+            ? await Storage.isDirectWritePromptSuppressed()
+            : await (async () => {
+                const suppressKey = (constants && constants.STORAGE_KEYS?.SUPPRESS_DIRECT_WRITE_PROMPT) || 'gemini_suppress_direct_write_prompt';
+                try {
+                    const d = await chrome.storage.local.get([suppressKey]);
+                    return !!d[suppressKey];
+                } catch (e) {
+                    console.warn('[GemExporter:storage] Storage operation failed:', e);
+                    return false;
+                }
+            })();
+
+        if (!isSuppressed) {
+            if (typeof Storage?.setDirectWritePromptSuppressed === 'function') {
+                await Storage.setDirectWritePromptSuppressed(true);
             }
-        );
-        return;
+
+            // Hold the export mutex until the user actually decides.
+            // showDirectWritePrompt is fire-and-forget (returns void) and its
+            // Escape / X-close paths invoke NEITHER callback, so wrap both
+            // callbacks in a decision promise and also settle when the modal
+            // is hidden without a decision — otherwise _isExporting could be
+            // released while the dialog is still open, or locked forever.
+            // Guard with a synchronously-set decisionMade flag: the observer
+            // only settles on Esc/X closes (no decision made).
+            let decisionMade = false;
+            let resolveDecision: (() => void) | null = null;
+            const decisionPromise = new Promise<void>((resolve) => { resolveDecision = resolve; });
+            const settleDecision = () => {
+                if (resolveDecision) {
+                    const r = resolveDecision;
+                    resolveDecision = null;
+                    r();
+                }
+            };
+            let modalObserver: MutationObserver | null = null;
+            let modalEl: HTMLElement | null = null;
+            try {
+                modalEl = typeof document !== 'undefined' ? document.getElementById('directWriteModal') : null;
+                if (modalEl && typeof MutationObserver !== 'undefined') {
+                    modalObserver = new MutationObserver(() => {
+                        if (modalEl && modalEl.style.display === 'none' && !decisionMade) settleDecision();
+                    });
+                    modalObserver.observe(modalEl, { attributes: true, attributeFilter: ['style'] });
+                }
+            } catch (e) {
+                console.warn('[GemExporter:storage] Storage operation failed:', e);
+            }
+
+            try {
+                Dialogs.showDirectWritePrompt(
+                    selected.length,
+                    async () => {
+                        decisionMade = true;
+                        try {
+                            let newHandle: any = null;
+                            if (DirHandle) {
+                                newHandle = await DirHandle.requestDirHandle();
+                                const dirLabel = $('dirLabel');
+                                if (dirLabel) dirLabel.textContent = typeof t === 'function' ? t('dirCurrent', newHandle.name) : `已选目录: ${newHandle.name}`;
+                                log(typeof t === 'function' ? t('logFolderSelected', newHandle.name) : `已选择保存目录: ${newHandle.name}`);
+                                const liveStorage = getLiveStorage();
+                                if (liveStorage && typeof liveStorage.setLiveConfig === 'function') {
+                                    await liveStorage.setLiveConfig({ dirName: newHandle.name });
+                                }
+                            }
+                            const zipCh = $('includeZip') as HTMLInputElement | null;
+                            if (zipCh) {
+                                zipCh.checked = false;
+                                updateZipUi();
+                                if (typeof Storage?.setZipPreference === 'function') {
+                                    await Storage.setZipPreference(false);
+                                }
+                            }
+                            await startExportPipeline(selected, format, skip, includeIndex, includeAssets, false, newHandle);
+                        } catch (err: unknown) {
+                            const errMsg = getErrorMessage(err);
+                            log(typeof t === 'function' ? t('dirCancelled', errMsg) : `未选择导出目录: ${errMsg}`, 'warn');
+                        } finally {
+                            settleDecision();
+                        }
+                    },
+                    async () => {
+                        decisionMade = true;
+                        try {
+                            await startExportPipeline(selected, format, skip, includeIndex, includeAssets, true, null);
+                        } catch (err: unknown) {
+                            const errMsg = getErrorMessage(err);
+                            log(typeof t === 'function' ? t('exportFailed', errMsg) : `导出失败: ${errMsg}`, 'error');
+                        } finally {
+                            settleDecision();
+                        }
+                    }
+                );
+            } catch (promptErr) {
+                settleDecision();
+                throw promptErr;
+            }
+            // If the prompt never actually showed (missing modal / early
+            // return), don't wait forever.
+            if (!modalEl || modalEl.style.display === 'none') settleDecision();
+            try {
+                await decisionPromise;
+            } finally {
+                if (modalObserver) modalObserver.disconnect();
+            }
+            return;
+        }
     }
 
     await startExportPipeline(selected, format, skip, includeIndex, includeAssets, includeZip, dirHandle);
@@ -531,8 +573,6 @@ export async function init({ loadStore, log: logFn, getSearchFilter }: OptionsEx
     const Dialogs = getDialogs();
     const Store = getStore();
     const List = getList();
-
-    // Export Settings Init (ZIP & Formats)
     const zipCheck = $('includeZip') as HTMLInputElement | null;
     if (Formats && Formats.loadFormat) {
         const { format } = await Formats.loadFormat();
@@ -542,20 +582,22 @@ export async function init({ loadStore, log: logFn, getSearchFilter }: OptionsEx
     }
 
     if (zipCheck) {
-        const d = await chrome.storage.local.get(['gemini_export_zip']);
-        if (typeof (d as any).gemini_export_zip !== 'undefined') {
-            zipCheck.checked = (d as any).gemini_export_zip as boolean;
+        const Storage = getStorage();
+        const d = await chrome.storage.local.get([STORAGE_KEYS.ZIP]);
+        if (typeof (d as any)[STORAGE_KEYS.ZIP] !== 'undefined') {
+            zipCheck.checked = (d as any)[STORAGE_KEYS.ZIP] as boolean;
         } else {
             zipCheck.checked = true;
         }
         updateZipUi();
         zipCheck.addEventListener('change', () => {
             updateZipUi();
-            chrome.storage.local.set({ gemini_export_zip: zipCheck.checked });
+            if (typeof Storage?.setZipPreference === 'function') {
+                void Storage.setZipPreference(zipCheck.checked);
+            }
         });
     }
 
-    // Directory selection
     $('btnSetDir')?.addEventListener('click', async () => {
         try {
             if (DirHandle) {
@@ -574,7 +616,6 @@ export async function init({ loadStore, log: logFn, getSearchFilter }: OptionsEx
         }
     });
 
-    // Directory restore on load
     if (DirHandle) {
         try {
             const savedHandle = await DirHandle.restoreSavedDirHandle();
@@ -588,8 +629,13 @@ export async function init({ loadStore, log: logFn, getSearchFilter }: OptionsEx
         }
     }
 
-    // Export Buttons
-    $('btnExport')?.addEventListener('click', () => exportSelected());
+    $('btnExport')?.addEventListener('click', async () => {
+        const fmtSelect = $('format') as HTMLSelectElement | null;
+        if (fmtSelect?.value === 'pdf') {
+            await warmLocalFontCache();
+        }
+        exportSelected();
+    });
     $('btnExportJson')?.addEventListener('click', () => exportSelected('json'));
     $('btnCancel')?.addEventListener('click', () => {
         if (Controller) Controller.abort();
@@ -599,7 +645,7 @@ export async function init({ loadStore, log: logFn, getSearchFilter }: OptionsEx
         const convs = Store ? Store.getConversations() : [];
         const expMap = Store ? Store.getExportedIds() : {};
         if (List) List.selectUnexported(convs, expMap);
-        exportSelected();
+        void exportSelected();
     });
     $('btnDismissExportBanner')?.addEventListener('click', () => {
         if (Dialogs) Dialogs.dismissExportBanner();
@@ -610,22 +656,14 @@ export const OptionsExport = {
     init,
     exportSelected,
     startExportPipeline,
+    persistTitleUpdate,
     updateZipUi,
-    selectionAfterExport,
     getLastFailedChats,
     renderExportFailureBanner,
     hideExportFailureBanner,
     retryFailedExport
 };
 
-(OptionsExport as any).OptionsExport = OptionsExport;
-(OptionsExport as any).default = OptionsExport;
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).OptionsExport = OptionsExport;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = OptionsExport;
-}
 
 export default OptionsExport;

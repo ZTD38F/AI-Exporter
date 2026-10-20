@@ -1,13 +1,5 @@
-/**
- * src/core/utils/messaging.ts
- * Type-safe Chrome runtime messaging utility and type guard helpers.
- */
-
 import type { BaseMessage } from '../../types/messages.js';
 
-/**
- * Safely extracts error message string from an unknown caught exception.
- */
 export function getErrorMessage(err: unknown): string {
     if (!err) return 'Unknown error';
     if (typeof err === 'string') return err;
@@ -18,9 +10,6 @@ export function getErrorMessage(err: unknown): string {
     return String(err);
 }
 
-/**
- * Sends a strongly-typed message via chrome.runtime.sendMessage with Promise resolution and error wrapping.
- */
 export async function sendTypedMessage<T extends BaseMessage, R = any>(
     message: T,
     timeoutMs: number = 10000
@@ -53,9 +42,6 @@ export async function sendTypedMessage<T extends BaseMessage, R = any>(
     });
 }
 
-/**
- * Type guard for verifying whether an incoming message matches a specific action.
- */
 export function isMessageAction<T extends BaseMessage>(msg: unknown, action: T['action']): msg is T {
     return (
         typeof msg === 'object' &&

@@ -5,6 +5,7 @@ const LiveSaveCoordinator = require('../src/content/liveSaveCoordinator.js');
 
 test('liveSaveCoordinator - executeLiveSave with direct Disk persistence', async () => {
     let writtenFiles: Record<string, string> = {};
+    let exportedRecord: any = null;
     let feedbackCalledWith: string | null = null;
 
     const mockStorage = {
@@ -42,10 +43,9 @@ test('liveSaveCoordinator - executeLiveSave with direct Disk persistence', async
             writerFolderUsed = folder;
         }
         async init() {}
-        async writeFile(subDir: string, name: string, content: string) {
-            const path = subDir ? `${subDir}/${name}` : name;
-            writtenFiles[path] = content;
-            return name;
+        async writeFile(relativePath: string, content: string) {
+            writtenFiles[relativePath] = content;
+            return relativePath;
         }
     }
 
@@ -57,6 +57,7 @@ test('liveSaveCoordinator - executeLiveSave with direct Disk persistence', async
 
     LiveSaveCoordinator.init({
         storageManager: mockStorage,
+        exportRecordStore: { saveExportRecord: async (slot: string, id: string, record: any) => { exportedRecord = { ...record, slot, id }; } },
         scraper: mockScraper,
         fsWriterClass: MockFsWriter,
         badge: mockBadge,
@@ -65,6 +66,13 @@ test('liveSaveCoordinator - executeLiveSave with direct Disk persistence', async
 
     const success = await LiveSaveCoordinator.executeLiveSave('c_9876543210abcdef', 'turn_complete');
     assert.strictEqual(success, true);
+    assert.strictEqual(exportedRecord.status, 'ok');
+    assert.strictEqual(exportedRecord.hasFailedAssets, false);
+    assert.strictEqual(exportedRecord.messageCount, 2);
+    assert.strictEqual(exportedRecord.chatTime, 1710000000000);
+    assert.strictEqual(exportedRecord.id, '9876543210abcdef');
+    const { checkIsUpdated } = require('../src/core/utils/titleUtils.js');
+    assert.strictEqual(checkIsUpdated({ timestamp: 1710000000000, messageCount: 2 }, exportedRecord), false);
 
     // 1. Verify Disk FsWriter persistence with gemini_export folder and _cid6.md
     assert.strictEqual(writerFolderUsed, 'gemini_export');
@@ -373,3 +381,40 @@ test('liveSaveCoordinator - arrayBufferToBase64 converts binary buffers correctl
 });
 
 
+
+
+test('failed live image downloads remain partial and are not rewritten to missing files', async () => {
+    LiveSaveCoordinator.init({ assetFetcher: { fetchImageBuffer: async () => null } });
+    const chat = { messages: [{ role: 'model', content: '![Image](https://example.com/image.png)' }] };
+    const failures: any[] = [];
+    const assets = await LiveSaveCoordinator.processAndSaveImages(chat, 'abcdef', null, failures);
+    assert.strictEqual(assets.length, 0);
+    assert.strictEqual(failures.length, 1);
+    assert.match(failures[0].error, /no bytes/);
+    assert.ok(chat.messages[0].content.includes('https://example.com/image.png'));
+});
+
+
+test('direct live save marks image failures partial after the Markdown file lands', async () => {
+    let record: any = null;
+    let markdownWritten = false;
+    class Writer {
+        async init() {}
+        async writeFile(path: string) { if (path.endsWith('.md')) markdownWritten = true; }
+    }
+    LiveSaveCoordinator.init({
+        storageManager: { getLiveConfig: async () => ({ enabledDisk: true, includeAssets: true }),
+            getLiveDirHandle: async () => ({ name: 'Vault' }), setLiveConfig: async () => {} },
+        scraper: { parseDoc: (_doc: any, id: string) => ({ id, title: 'Image chat', timestamp: 1700000000000,
+            messages: [{ role: 'model', content: '![Image](https://example.com/missing.png)' }] }) },
+        clientClass: null,
+        fsWriterClass: Writer,
+        assetFetcher: { fetchImageBuffer: async () => null },
+        exportRecordStore: { saveExportRecord: async (_slot: string, _id: string, rec: any) => { record = rec; } },
+        badge: { showLiveSaveFeedback: () => {} }
+    });
+    assert.strictEqual(await LiveSaveCoordinator.executeLiveSave('partial_direct_01'), true);
+    assert.strictEqual(markdownWritten, true);
+    assert.strictEqual(record.status, 'partial');
+    assert.strictEqual(record.hasFailedAssets, true);
+});

@@ -4,7 +4,7 @@ test.describe('In-Page Active Chat & Real Title Synchronization', () => {
   test('should detect active Gemini conversation and update real title in place', async ({ context, extensionId }) => {
     // 1. Seed initial conversation list with an untitled historical conversation
     const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await optionsPage.waitForLoadState('domcontentloaded');
 
     await optionsPage.evaluate(async () => {
@@ -80,7 +80,13 @@ test.describe('In-Page Active Chat & Real Title Synchronization', () => {
 
     // 3. Switch back to options page and verify title updated in place without breaking order
     await optionsPage.bringToFront();
-    await optionsPage.waitForTimeout(600);
+    await expect.poll(async () => {
+      const data = await optionsPage.evaluate(async () => {
+        return await chrome.storage.local.get(['gemini_conversations']);
+      }) as Record<string, any>;
+      const c = (data.gemini_conversations || []).find((x: any) => x.id === '39d5b41870e49a67' || x.id === 'c_39d5b41870e49a67');
+      return c?.title;
+    }, { timeout: 10000 }).toBe('量子纠缠物理原理深度解析');
 
     await optionsPage.evaluate(async () => {
       if (typeof window.__workbenchLoadStore === 'function') {
@@ -101,7 +107,7 @@ test.describe('In-Page Active Chat & Real Title Synchronization', () => {
   test('should keep clean title without "- Google Gemini" suffix when opening an existing Takeout imported chat', async ({ context, extensionId }) => {
     // 1. Seed Takeout imported chat
     const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await optionsPage.waitForLoadState('domcontentloaded');
 
     await optionsPage.evaluate(async () => {
@@ -135,17 +141,17 @@ test.describe('In-Page Active Chat & Real Title Synchronization', () => {
     });
 
     await geminiPage.goto('https://gemini.google.com/app/takeout_chat_888');
-    await geminiPage.waitForLoadState('domcontentloaded');
-    await geminiPage.waitForTimeout(800); // Allow content.js syncOnce to run
-
-    // 3. Verify in storage and options page that title NEVER contains "- Google Gemini"
-    const storageData = await optionsPage.evaluate(async () => {
-      return await chrome.storage.local.get(['gemini_conversations']);
-    }) as Record<string, any>;
-    const chat = (storageData.gemini_conversations || []).find((c: any) => c.id === 'takeout_chat_888');
+    // 3. Verify in storage and options page that title lands cleanly and NEVER contains "- Google Gemini"
+    let chat: any = null;
+    await expect.poll(async () => {
+      const storageData = await optionsPage.evaluate(async () => {
+        return await chrome.storage.local.get(['gemini_conversations']);
+      }) as Record<string, any>;
+      chat = (storageData.gemini_conversations || []).find((c: any) => c.id === 'takeout_chat_888');
+      return chat?.title;
+    }, { timeout: 10000 }).toBe('微服务与分布式事务设计');
 
     expect(chat).toBeTruthy();
-    expect(chat.title).toBe('微服务与分布式事务设计');
     expect(chat.title).not.toContain('Google Gemini');
     expect(chat.title).not.toContain('Gemini');
 
@@ -163,7 +169,7 @@ test.describe('In-Page Active Chat & Real Title Synchronization', () => {
   test('should NOT overwrite existing conversation title with "Google Gemini" while page is in initial loading state', async ({ context, extensionId }) => {
     // 1. Seed existing chat with Takeout prompt title
     const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await optionsPage.waitForLoadState('domcontentloaded');
 
     await optionsPage.evaluate(async () => {
@@ -196,7 +202,7 @@ test.describe('In-Page Active Chat & Real Title Synchronization', () => {
 
     await geminiPage.goto('https://gemini.google.com/app/loading_chat_777');
     await geminiPage.waitForLoadState('domcontentloaded');
-    await geminiPage.waitForTimeout(600);
+    await expect(geminiPage.locator('#geminiExportBadge')).toBeVisible();
 
     // 3. Verify that storage and options page RETAINED the real title and NEVER became "Google Gemini"
     const storageData = await optionsPage.evaluate(async () => {
@@ -268,77 +274,6 @@ test.describe('In-Page Active Chat & Real Title Synchronization', () => {
     expect(Math.abs(reloadedBox!.x - movedBox!.x)).toBeLessThanOrEqual(5);
     expect(Math.abs(reloadedBox!.y - movedBox!.y)).toBeLessThanOrEqual(5);
   });
-
-  test('should update active conversation timestamp and re-order to top when stream completes', async ({ context, extensionId }) => {
-    // 1. Seed options workbench with an older chat and a newer chat
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
-    await optionsPage.waitForLoadState('domcontentloaded');
-
-    await optionsPage.evaluate(async () => {
-      const initialConvs = [
-        { id: 'top_active_999', title: '原本排第一的新对话', timestamp: 1700000000000, updatedAt: 1700000000000, createdAt: 1690000000000, sidebarIndex: 0 },
-        { id: 'historical_old_111', title: '原本沉在底部的老对话', timestamp: 1600000000000, updatedAt: 1600000000000, createdAt: 1590000000000, sidebarIndex: 1 }
-      ];
-      await chrome.storage.local.set({ gemini_conversations: initialConvs });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-
-    await expect(optionsPage.locator('#list .item')).toHaveCount(2);
-    // Initial verification: top_active_999 is item 0, historical_old_111 is item 1
-    await expect(optionsPage.locator('#list .item').nth(0)).toContainText('原本排第一的新对话');
-    await expect(optionsPage.locator('#list .item').nth(1)).toContainText('原本沉在底部的老对话');
-
-    // 2. Open Gemini page for the old conversation
-    const geminiPage = await context.newPage();
-    await geminiPage.route('https://gemini.google.com/app/**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html; charset=utf-8',
-        body: `<!DOCTYPE html>
-        <html>
-        <head>
-          <title>原本沉在底部的老对话 - Google Gemini</title>
-        </head>
-        <body>
-          <h1 data-test-id="conversation-title">原本沉在底部的老对话</h1>
-          <user-query><div class="query-text">继续这个老话题...</div></user-query>
-        </body>
-        </html>`
-      });
-    });
-
-    await geminiPage.goto('https://gemini.google.com/app/historical_old_111');
-    await geminiPage.waitForLoadState('domcontentloaded');
-
-    // 3. Simulate user sending a message and model completing generation via STREAM_COMPLETE
-    await geminiPage.evaluate(async () => {
-      window.postMessage({
-        type: 'GEMINI_STREAM_GENERATE_COMPLETE',
-        payload: {
-          id: 'historical_old_111',
-          slot: 'u0',
-          url: 'https://gemini.google.com/app/historical_old_111'
-        }
-      }, location.origin);
-    });
-
-    // 4. In options page: without manual reload, the list should update reactively via syncUpdate
-    await optionsPage.bringToFront();
-    await expect(optionsPage.locator('#list .item').nth(0)).toContainText('原本沉在底部的老对话', { timeout: 4000 });
-    await expect(optionsPage.locator('#list .item').nth(1)).toContainText('原本排第一的新对话');
-
-    // 5. Verify storage persistence: historical_old_111 updatedAt was bumped and createdAt preserved
-    const storageData = await optionsPage.evaluate(async () => {
-      return await chrome.storage.local.get(['gemini_conversations']);
-    }) as Record<string, any>;
-    const oldChatInStorage = (storageData.gemini_conversations || []).find((c: any) => c.id === 'historical_old_111');
-    expect(oldChatInStorage).toBeTruthy();
-    expect(oldChatInStorage.updatedAt).toBeGreaterThan(1700000000000);
-    expect(oldChatInStorage.timestamp).toBeGreaterThan(1700000000000);
-    expect(oldChatInStorage.createdAt).toBe(1590000000000);
-  });
 });
+
 

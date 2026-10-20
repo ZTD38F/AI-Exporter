@@ -15,7 +15,7 @@
   width: 100vw;
   height: 100vh;
   z-index: 100000;
-  pointer-events: none;
+  pointer-events: auto;
   overflow: hidden;
   transition: opacity 0.25s ease;
 }

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local Font Access 真机测试页（§17）</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 24px; background: #f7f7f8; color: #1a1a1a; }
+  main { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #ddd; }
+  .banner { background: #fff3cd; border: 1px solid #e0b400; border-radius: 8px; padding: 12px 16px; margin: 12px 0 20px; font-size: 14px; }
+  .banner strong { color: #7a5b00; }
+  .card { background: #fff; border: 1px solid #e3e3e6; border-radius: 8px; padding: 14px 16px; margin: 10px 0; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  button { padding: 8px 14px; font-size: 14px; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; }
+  button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  button:disabled { opacity: .45; cursor: default; }
+  select, input[type=text] { padding: 7px 10px; font-size: 14px; border: 1px solid #999; border-radius: 6px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.granted, .pill.present, .pill.ok { background: #d9f2dd; color: #0b6b1a; }
+  .pill.denied, .pill.missing, .pill.err { background: #fbdfe0; color: #a3121a; }
+  .pill.prompt, .pill.unknown { background: #e8e8ea; color: #444; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+  th { background: #f0f0f2; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .cjk-tag { color: #0b6b1a; font-weight: 700; }
+  #sample { line-height: 1.7; }
+  #sample pre { background: #f4f4f5; padding: 10px 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+  #sample table { font-size: 13px; }
+  #record { width: 100%; min-height: 180px; font-family: ui-monospace, monospace; font-size: 12px; }
+  .muted { color: #666; font-size: 13px; }
+  .log { font-family: ui-monospace, monospace; font-size: 12px; background: #111; color: #d7f5d0; padding: 10px 12px; border-radius: 6px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Local Font Access 真机测试页 <span class="muted">（§17 · tests/manual/local-font-access/index.html）</span></h1>
+  <div class="banner">
+    <strong>⚠️ 手动测试页 —— 本页所有结论在真机跑完之前一律视为未验证。</strong><br>
+    操作步骤与记录要求见同目录 <code>STEPS.md</code>。本页不做任何自动断言，只负责如实展示 API 返回。
+  </div>
+
+  <h2>1. 环境</h2>
+  <div class="card">
+    <div class="row"><span class="muted">User-Agent</span></div>
+    <div class="log" id="ua"></div>
+    <div class="row" style="margin-top:10px">
+      <span>浏览器判定：<b id="browserName">—</b></span>
+      <span>Secure Context：<b id="secureCtx">—</b></span>
+    </div>
+  </div>
+
+  <h2>2. 授权状态与 API 可用性</h2>
+  <div class="card">
+    <div class="row">
+      <span><code>local-fonts</code> permission：</span><span class="pill unknown" id="permState">未查询</span>
+      <button id="btnPerm">查询授权状态</button>
+    </div>
+    <div class="row">
+      <span><code>window.queryLocalFonts</code>：</span><span class="pill unknown" id="apiQlf">—</span>
+      <span><code>navigator.fonts.query</code>：</span><span class="pill unknown" id="apiNfq">—</span>
+    </div>
+    <div class="row">
+      <button class="primary" id="btnQuery">请求本地字体访问权限并列出字体</button>
+      <span class="muted" id="queryVia">实际调用路径：—</span>
+    </div>
+    <div class="muted">说明：规范入口是 <code>window.queryLocalFonts()</code>；任务书指定的 <code>navigator.fonts.query()</code>
+      在多数浏览器并不存在，本页会如实报告两者是否存在，并优先使用实际存在的那一个。</div>
+  </div>
+
+  <h2>3. query 返回的字体列表</h2>
+  <div class="card">
+    <div class="row">
+      <span>共 <b id="fontCount">0</b> 个字体</span>
+      <span>其中疑似 CJK：<b id="cjkCount">0</b></span>
+      <input type="text" id="fontFilter" placeholder="过滤：如 CJK / YaHei / PingFang">
+    </div>
+    <div style="max-height:320px; overflow-y:auto">
+      <table>
+        <thead><tr><th>#</th><th>family</th><th>fullName</th><th>postscriptName</th><th>style</th><th>CJK?</th></tr></thead>
+        <tbody id="fontTable"><tr><td colspan="6" class="muted">尚未 query —— 点击第 2 节按钮</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2>4. 混合样本渲染（中文 / 英文 / 公式 / 代码 / 表格）</h2>
+  <div class="card">
+    <div class="row">
+      <span>用指定字体渲染样本：</span>
+      <select id="fontSelect"><option value="">— 先 query（第 2 节）—</option></select>
+      <button id="btnApplyFont">应用</button>
+      <button id="btnResetFont">恢复系统默认</button>
+    </div>
+    <div id="sample">
+      <p>中文段落：子曰：「学而时习之，不亦说乎？」导出管线的本地字体策略（local-first）要求在渲染前先确认系统 CJK 字体的可用性，否则回退到打包字体或提示用户。</p>
+      <p>English paragraph: the parity harness compares normalized text extracted from HTML and PDF renders. Font substitution must not change the extracted glyph sequence.</p>
+      <p>公式（文本近似）：∫₀¹ x² dx = ⅓　　E = mc²　　∑_{i=1}^{n} i = n(n+1)/2</p>
+      <pre><code>def normalize_for_parity(s: str) -&gt; str:
+    return " ".join(s.replace("\r\n", "\n").split())
+
+# 中文注释：归一化必须与字体无关</code></pre>
+      <table>
+        <tr><th>模型</th><th>上下文</th><th>评分</th></tr>
+        <tr><td>中文大模型 A</td><td>128K</td><td>92.4</td></tr>
+        <tr><td>English Model X</td><td>1M</td><td>94.7</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2>5. 系统字体探测（canvas 启发式）</h2>
+  <div class="card">
+    <div class="row">
+      <button id="btnProbe">探测常见字体是否存在</button>
+      <span class="muted">启发式：与 monospace / serif / sans-serif 基线比对文本宽度，仅供参考</span>
+    </div>
+    <div id="probeResult" class="muted">尚未探测</div>
+  </div>
+
+  <h2>6. 测试记录（复制后粘贴到 STEPS.md）</h2>
+  <div class="card">
+    <div class="row">
+      <button class="primary" id="btnRecord">生成并复制测试记录 JSON</button>
+      <span class="muted" id="copyState"></span>
+    </div>
+    <textarea id="record" readonly placeholder="点击上方按钮生成记录"></textarea>
+  </div>
+
+  <h2>7. 运行日志</h2>
+  <div class="card"><div class="log" id="log"></div></div>
+</main>
+
+<script>
+'use strict';
+/* Local Font Access 真机测试页 —— 原生 JS，无构建依赖。 */
+
+var $ = function (id) { return document.getElementById(id); };
+
+function log(msg) {
+  var el = $('log');
+  var t = new Date().toISOString();
+  el.textContent += '[' + t + '] ' + msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function setPill(el, text, cls) {
+  el.textContent = text;
+  el.className = 'pill ' + cls;
+}
+
+/* ---------------- 1. 环境 ---------------- */
+(function initEnv() {
+  $('ua').textContent = navigator.userAgent;
+  $('secureCtx').textContent = String(window.isSecureContext);
+  var ua = navigator.userAgent;
+  var name = '未知';
+  if (/Edg\//.test(ua)) name = 'Edge';
+  else if (/Chrome\//.test(ua)) name = 'Chrome';
+  else if (/Safari\//.test(ua) && /Version\//.test(ua)) name = 'Safari';
+  else if (/Firefox\//.test(ua)) name = 'Firefox';
+  $('browserName').textContent = name;
+})();
+
+/* ---------------- 2. 授权与 API ---------------- */
+var permResult = 'unknown';
+var queryFn = null;   // 实际使用的 query 函数
+var queryPath = '';
+
+function detectApis() {
+  var hasQlf = (typeof window.queryLocalFonts === 'function');
+  var nf = navigator.fonts;
+  var hasNfq = !!(nf && typeof nf.query === 'function');
+  setPill($('apiQlf'), hasQlf ? '存在' : '不存在', hasQlf ? 'ok' : 'missing');
+  setPill($('apiNfq'), hasNfq ? '存在' : '不存在', hasNfq ? 'ok' : 'missing');
+  if (hasQlf) { queryFn = function () { return window.queryLocalFonts(); }; queryPath = 'window.queryLocalFonts()'; }
+  else if (hasNfq) { queryFn = function () { return navigator.fonts.query(); }; queryPath = 'navigator.fonts.query()'; }
+  else { queryFn = null; queryPath = ''; }
+  $('queryVia').textContent = '实际调用路径：' + (queryPath || '无可用 API');
+  log('API 探测: window.queryLocalFonts=' + hasQlf + ', navigator.fonts.query=' + hasNfq);
+  return hasQlf || hasNfq;
+}
+
+$('btnPerm').addEventListener('click', function () {
+  if (!navigator.permissions || typeof navigator.permissions.query !== 'function') {
+    setPill($('permState'), 'permissions API 不可用', 'unknown');
+    log('navigator.permissions 不可用');
+    return;
+  }
+  navigator.permissions.query({ name: 'local-fonts' }).then(function (st) {
+    permResult = st.state;
+    var cls = st.state === 'granted' ? 'granted' : (st.state === 'denied' ? 'denied' : 'prompt');
+    setPill($('permState'), st.state, cls);
+    log('permission local-fonts = ' + st.state);
+    st.onchange = function () {
+      permResult = st.state;
+      setPill($('permState'), st.state + '（变化）', st.state === 'granted' ? 'granted' : 'denied');
+      log('permission 变化 -> ' + st.state);
+    };
+  }).catch(function (e) {
+    setPill($('permState'), '查询失败: ' + e.name, 'err');
+    log('permissions.query 失败: ' + e.name + ' ' + e.message);
+  });
+});
+
+var queriedFonts = [];
+
+function isCjkFont(f) {
+  var s = (f.family || '') + ' ' + (f.fullName || '') + ' ' + (f.postscriptName || '');
+  return /CJK|Hiragino|PingFang|Microsoft YaHei|微软雅黑|SimSun|宋体|SimHei|黑体|Noto Sans (CJK|SC|TC|JP|KR)|Noto Serif CJK|Yu Gothic|Yu Mincho|Meiryo|Malgun|Batang|Dotum|Gulim|STHeiti|STSong|STKaiti|华文|冬青|Source Han|思源|Droid Sans Fallback|WenQuanYi|AR PL|ZCOOL|Noto Color Emoji/i.test(s);
+}
+
+function renderFontTable(filter) {
+  var tb = $('fontTable');
+  tb.innerHTML = '';
+  var n = 0, cjk = 0;
+  queriedFonts.forEach(function (f, i) {
+    var cjkHit = isCjkFont(f);
+    if (cjkHit) cjk++;
+    var hay = ((f.family || '') + ' ' + (f.fullName || '') + ' ' + (f.postscriptName || '')).toLowerCase();
+    if (filter && hay.indexOf(filter.toLowerCase()) === -1) return;
+    n++;
+    var tr = document.createElement('tr');
+    function td(t, cls) { var d = document.createElement('td'); d.textContent = t; if (cls) d.className = cls; return d; }
+    tr.appendChild(td(String(i + 1)));
+    tr.appendChild(td(f.family || ''));
+    tr.appendChild(td(f.fullName || ''));
+    tr.appendChild(td(f.postscriptName || ''));
+    tr.appendChild(td(f.style || ''));
+    tr.appendChild(td(cjkHit ? '是' : '—', cjkHit ? 'cjk-tag' : ''));
+    tb.appendChild(tr);
+  });
+  $('fontCount').textContent = String(queriedFonts.length);
+  $('cjkCount').textContent = String(cjk);
+  if (n === 0 && queriedFonts.length > 0) {
+    var tr = document.createElement('tr');
+    var d = document.createElement('td'); d.colSpan = 6; d.className = 'muted'; d.textContent = '过滤无匹配';
+    tr.appendChild(d); tb.appendChild(tr);
+  }
+}
+
+$('btnQuery').addEventListener('click', function () {
+  if (!detectApis()) {
+    log('无可用的本地字体 query API，本浏览器不支持 Local Font Access');
+    return;
+  }
+  log('调用 ' + queryPath + ' …（浏览器应弹出授权 prompt）');
+  queryFn().then(function (fonts) {
+    queriedFonts = Array.prototype.slice.call(fonts || []);
+    log('query 成功，返回 ' + queriedFonts.length + ' 个字体');
+    renderFontTable($('fontFilter').value);
+    var sel = $('fontSelect');
+    sel.innerHTML = '';
+    var opt0 = document.createElement('option'); opt0.value = ''; opt0.textContent = '— 选择字体 —';
+    sel.appendChild(opt0);
+    var seenFam = {};
+    queriedFonts.forEach(function (f) {
+      var fam = f.family || f.fullName;
+      if (!fam || seenFam[fam]) return;
+      seenFam[fam] = 1;
+      var o = document.createElement('option'); o.value = fam; o.textContent = fam;
+      sel.appendChild(o);
+    });
+  }).catch(function (e) {
+    log('query 失败: ' + e.name + ' —— ' + e.message);
+    if (e && e.name === 'SecurityError') log('提示：SecurityError 通常表示用户拒绝了授权或关闭了 prompt');
+  });
+});
+
+$('fontFilter').addEventListener('input', function () { renderFontTable($('fontFilter').value); });
+
+/* ---------------- 4. 样本字体切换 ---------------- */
+$('btnApplyFont').addEventListener('click', function () {
+  var fam = $('fontSelect').value;
+  if (!fam) return;
+  $('sample').style.fontFamily = '"' + fam.replace(/"/g, '') + '", system-ui, sans-serif';
+  log('样本字体切换为: ' + fam);
+});
+$('btnResetFont').addEventListener('click', function () {
+  $('sample').style.fontFamily = '';
+  log('样本字体恢复系统默认');
+});
+
+/* ---------------- 5. 系统字体探测 ---------------- */
+var PROBE_FONTS = [
+  'system-ui', '-apple-system', 'Segoe UI', 'Roboto',
+  'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑',
+  'SimSun', '宋体', 'SimHei', '黑体', 'KaiTi', '楷体',
+  'Noto Sans CJK SC', 'Noto Serif CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei',
+  'Yu Gothic', 'Meiryo', 'Malgun Gothic', 'Apple SD Gothic Neo',
+  'NonExistentFontXYZ'  // 阴性对照：应始终显示缺失
+];
+
+function fontPresent(name) {
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  var testStr = '中文漢字AaBbCc0123';
+  var sizes = '72px';
+  function width(family) {
+    ctx.font = sizes + ' ' + family;
+    return ctx.measureText(testStr).width;
+  }
+  var baseMono = width('monospace'), baseSerif = width('serif'), baseSans = width('sans-serif');
+  var w = width('"' + name + '", monospace');
+  // 若候选字体存在，渲染宽度通常与纯 monospace 基线不同；任一基线不同即判为存在
+  return w !== baseMono || width('"' + name + '", serif') !== baseSerif || width('"' + name + '", sans-serif') !== baseSans;
+}
+
+$('btnProbe').addEventListener('click', function () {
+  var present = [], missing = [];
+  PROBE_FONTS.forEach(function (f) {
+    try { (fontPresent(f) ? present : missing).push(f); }
+    catch (e) { missing.push(f + '（探测异常）'); }
+  });
+  var html = '<div class="row"><span>存在（' + present.length + '）：</span>';
+  present.forEach(function (f) { html += '<span class="pill present">' + f.replace(/</g, '&lt;') + '</span>'; });
+  html += '</div><div class="row"><span>缺失（' + missing.length + '）：</span>';
+  missing.forEach(function (f) { html += '<span class="pill missing">' + f.replace(/</g, '&lt;') + '</span>'; });
+  html += '</div>';
+  $('probeResult').innerHTML = html;
+  log('字体探测完成：存在 ' + present.length + '，缺失 ' + missing.length);
+  window.__probeResult = { present: present, missing: missing };
+});
+
+/* ---------------- 6. 测试记录 ---------------- */
+$('btnRecord').addEventListener('click', function () {
+  var rec = {
+    generatedAt: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+    secureContext: !!window.isSecureContext,
+    permissionLocalFonts: permResult,
+    apiAvailability: {
+      'window.queryLocalFonts': typeof window.queryLocalFonts === 'function',
+      'navigator.fonts.query': !!(navigator.fonts && typeof navigator.fonts.query === 'function')
+    },
+    queryPathUsed: queryPath || null,
+    fontCount: queriedFonts.length,
+    cjkFonts: queriedFonts.filter(isCjkFont).map(function (f) {
+      return { family: f.family, fullName: f.fullName, postscriptName: f.postscriptName, style: f.style };
+    }),
+    probe: window.__probeResult || null,
+    note: '手动测试记录：结论以测试者实际观察为准，本 JSON 仅为机器采集的客观数据'
+  };
+  var json = JSON.stringify(rec, null, 2);
+  $('record').value = json;
+  function done(ok) {
+    $('copyState').textContent = ok ? '已复制到剪贴板' : '复制失败，请手动全选复制';
+    log('测试记录已生成' + (ok ? '并复制' : '（剪贴板复制失败）'));
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(json).then(function () { done(true); }, function () { done(false); });
+  } else { done(false); }
+});
+
+detectApis();
+log('页面就绪。按 STEPS.md 逐步操作。');
+</script>
+</body>
+</html>

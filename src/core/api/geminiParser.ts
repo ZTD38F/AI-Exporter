@@ -1,4 +1,3 @@
-// geminiParser.ts - Facade for Gemini RPC response parsing engine
 import type { GeminiParserExtractorsModule, GeminiJspbSchema, TurnDriftReport } from "./parser/extractors.js";
 import type { GeminiParserAttachmentsModule, DeepResearchDocMeta } from "./parser/attachments.js";
 import type { GeminiParserParseListModule, ListParseResult } from "./parser/parseList.js";
@@ -53,56 +52,48 @@ export interface GeminiParserModule {
     parseDetail: GeminiParserParseDetailModule;
 }
 
-declare global {
-    var GeminiResponseParserClass: GeminiResponseParserFacade;
-}
-
 import * as ext from "./parser/extractors.js";
 import * as att from "./parser/attachments.js";
 import * as listMod from "./parser/parseList.js";
 import * as detailMod from "./parser/parseDetail.js";
 
-const GEMINI_JSPB_SCHEMA: GeminiJspbSchema = ext.GEMINI_JSPB_SCHEMA;
+const {
+    GEMINI_JSPB_SCHEMA,
+    detectTurnSchemaDrift,
+    extractModelCandidates,
+    extractCandidateText,
+    robustFirstPayload,
+    extractTurnTimestamp,
+    extractThoughts,
+    extractCitations,
+    extractConversationId,
+    extractConversationTitle,
+    isRealTitle,
+    cleanTitle,
+    normId,
+    safeStructureClean,
+    deepWalk,
+    smartSummarizePrompt,
+    extractMetaTitleFromTop
+} = ext;
 
+const {
+    extractImageSelectionIndex,
+    getImageDedupKey,
+    filterNewImages,
+    highResVariant,
+    extractImages,
+    extractUserFiles,
+    extractDocumentsMeta,
+    findDocContentById,
+    parseDocSections,
+    findDocMarkdownByClues,
+    isInternalChipUrl
+} = att;
 
-    const detectTurnSchemaDrift = ext.detectTurnSchemaDrift || function() { return { isDrifted: false, warnings: [] }; };
-    const extractModelCandidates = ext.extractModelCandidates || function() { return []; };
-    const extractCandidateText = ext.extractCandidateText || function() { return ""; };
-    const robustFirstPayload = ext.robustFirstPayload || function(t: any) { try { return JSON.parse(t); } catch (_) { return null; } };
-    const safeStructureClean = ext.safeStructureClean || function(s: any) { return s || ""; };
-    const deepWalk = ext.deepWalk || function(r: any, v: any) { if (r) v(r); };
-    const extractThoughts = ext.extractThoughts || function() { return null; };
-    const extractCitations = ext.extractCitations || function() { return []; };
-    const extractConversationId = ext.extractConversationId || function(inner: any) { return inner?.[0] || "c_unknown"; };
-    const smartSummarizePrompt = ext.smartSummarizePrompt || function(t: any) { return String(t || "").trim(); };
-    const extractConversationTitle = ext.extractConversationTitle || function() { return { title: "未命名对话", source: "default" }; };
-    const extractMetaTitleFromTop = ext.extractMetaTitleFromTop || function() { return null; };
-    const extractTurnTimestamp = ext.extractTurnTimestamp || function() { return null; };
-    const isRealTitle = ext.isRealTitle || function(t: any) { return !!(t && String(t).trim().length >= 2); };
-    const cleanTitle = ext.cleanTitle || function(t: any) { return String(t || "").trim(); };
-    const normId = ext.normId || function(id: any) { return String(id || "").replace(/^c_/, "").trim(); };
+const { extractListItemTimestamp, parseList } = listMod;
+const { parseDetail, findTurnsDeep } = detailMod;
 
-    const extractImageSelectionIndex = att.extractImageSelectionIndex || function() { return undefined; };
-    const getImageDedupKey = att.getImageDedupKey || function(img: any) { return img?.sourceUrl || img?.token || ""; };
-    const filterNewImages = att.filterNewImages || function(imgs: any) { return imgs || []; };
-    const highResVariant = att.highResVariant || function(u: any) { return u; };
-    const isInternalChipUrl = att.isInternalChipUrl || function() { return false; };
-    const extractImages = att.extractImages || function() { return []; };
-    const extractUserFiles = att.extractUserFiles || function() { return []; };
-    const extractDocumentsMeta = att.extractDocumentsMeta || function() { return []; };
-    const findDocContentById = att.findDocContentById || function() { return null; };
-    const parseDocSections = att.parseDocSections || function() { return { sections: [], links: [], contentMarkdown: "" }; };
-    const findDocMarkdownByClues = att.findDocMarkdownByClues || function() { return ""; };
-
-    const extractListItemTimestamp = listMod.extractListItemTimestamp || function() { return null; };
-    const parseList = listMod.parseList || function() { return { conversations: [], nextPageToken: null }; };
-    const parseDetail = detailMod.parseDetail || function() { return { messages: [] }; };
-    const findTurnsDeep = detailMod.findTurnsDeep || function() { return null; };
-
-    /**
-     * Facade object exporting all canonical parsing methods and schemas.
-     * Preserves 100% backward compatibility with all test suites and browser modules.
-     */
     const GeminiResponseParserClass: GeminiResponseParserFacade = {
         GEMINI_JSPB_SCHEMA,
         detectTurnSchemaDrift,
@@ -130,7 +121,6 @@ const GEMINI_JSPB_SCHEMA: GeminiJspbSchema = ext.GEMINI_JSPB_SCHEMA;
         extractListItemTimestamp,
         parseList,
         parseDetail,
-        // Utility methods
         safeStructureClean,
         deepWalk,
         smartSummarizePrompt,
@@ -149,8 +139,17 @@ export {
     extractListItemTimestamp,
     parseList,
     parseDetail,
-    extractDocumentsMeta
+    extractDocumentsMeta,
 };
+export {
+    extractStructuredContent,
+    decodeGeminiStructuredPayload,
+    decodeGeminiStructuredNode,
+    decodeGeminiAnnotation,
+    type GeminiStructuredDocument,
+    type GeminiStructuredNode,
+    type GeminiAnnotation,
+} from "./parser/structuredContent.js";
 
 export const GeminiParser: GeminiParserModule = {
     GeminiResponseParserClass,
@@ -166,15 +165,6 @@ export const GeminiParser: GeminiParserModule = {
     parseDetail: detailMod
 };
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).GeminiResponseParserClass = GeminiResponseParserClass;
-    (globalThis as any).isRealTitle = isRealTitle;
-    (globalThis as any).cleanTitle = cleanTitle;
-    (globalThis as any).normId = normId;
-    (globalThis as any).GEMINI_JSPB_SCHEMA = GEMINI_JSPB_SCHEMA;
-    (globalThis as any).detectTurnSchemaDrift = detectTurnSchemaDrift;
-    (globalThis as any).extractListItemTimestamp = extractListItemTimestamp;
-}
 if (typeof module === 'object' && module.exports) module.exports = GeminiParser;
 
 export default GeminiParser;

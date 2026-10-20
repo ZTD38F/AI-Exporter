@@ -1,4 +1,3 @@
-// src/ui/tour/tourPosition.ts - Pure positioning for tour popover/spotlight (E.2)
 export function positionElements(spotlightEl: HTMLElement | null, popoverEl: HTMLElement | null, step: any): void {
     if (!spotlightEl || !popoverEl || typeof window === 'undefined') return;
 

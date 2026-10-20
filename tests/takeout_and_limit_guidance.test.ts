@@ -7,11 +7,14 @@ const { GeminiAPIClient } = require('../src/core/api/geminiClient.js');
 const I18n = require('../src/core/utils/i18n.js');
 const DialogView = require('../src/ui/views/dialogView.js');
 
-(global as any).I18n = I18n;
 
 test('takeout_engine - C2PA regex parses years beyond 2029', () => {
     // 2032-11-15 12:30:00 UTC
-    const rawString = "dummy_header_20321115123000Z_dummy_footer";
+    // NOTE (P1-117): a bare 15-digit run with no trust context is now rejected
+    // by design (it was the false-positive class). The sample carries a real
+    // C2PA trust marker; the test intent — years beyond 2029 still parse —
+    // is unchanged.
+    const rawString = "c2pa:claim_generator=\"Google\" date=\"20321115123000Z\"";
     const ts = TakeoutEngine.extractC2PATimestamp(rawString);
     assert.ok(ts !== null, 'C2PA timestamp in 2032 should be parsed');
     const d = new Date(ts);
@@ -190,3 +193,44 @@ test('dialogView - showTakeoutLimitPrompt differentiates between server limit an
     });
     assert.ok(mockElements.takeoutLimitPromptTitle.textContent.includes('History Exceeds Web Browsing Window'));
 });
+
+test('optionsTakeout - processTakeoutImport blocks concurrent imports with _isImporting lock', async () => {
+    const OptionsTakeout = require('../src/ui/options/modules/optionsTakeout.js');
+    const { __setModuleOverride, __clearModuleOverrides } = require('../src/core/utils/moduleOverrides.js');
+
+    assert.strictEqual(OptionsTakeout.isImporting(), false, 'Initially not importing');
+
+    let importCalls = 0;
+    let finishDeferred: () => void;
+    const waitPromise = new Promise<void>((res) => { finishDeferred = res; });
+
+    __setModuleOverride('TakeoutController', {
+        handleTakeoutImport: async (_f: any, callbacks: any) => {
+            importCalls++;
+            await waitPromise;
+            if (callbacks.onFinished) callbacks.onFinished({ message: 'done' });
+        }
+    });
+
+    const mockFile = { name: 'test.zip', size: 1024 } as any;
+
+    try {
+        // Trigger first import
+        OptionsTakeout.processTakeoutImport(mockFile, null);
+        assert.strictEqual(OptionsTakeout.isImporting(), true, 'isImporting must be true during import');
+        assert.strictEqual(importCalls, 1, 'First import must have started');
+
+        // Trigger second concurrent import
+        OptionsTakeout.processTakeoutImport(mockFile, null);
+        assert.strictEqual(importCalls, 1, 'Second concurrent import must be blocked by lock');
+
+        // Finish first import
+        finishDeferred!();
+        await new Promise(r => setTimeout(r, 10));
+
+        assert.strictEqual(OptionsTakeout.isImporting(), false, 'isImporting must reset to false after completion');
+    } finally {
+        __clearModuleOverrides();
+    }
+});
+

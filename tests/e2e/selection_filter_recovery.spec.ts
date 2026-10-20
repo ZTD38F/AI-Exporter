@@ -3,7 +3,7 @@ import { test, expect } from './fixtures';
 test.describe('Selection recovery across filtering', () => {
   test('keeps selected conversations that are temporarily hidden by a filter', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     await page.evaluate(async () => {
@@ -24,24 +24,14 @@ test.describe('Selection recovery across filtering', () => {
     await page.click('#btnSelectAll');
     await expect(page.locator('#list input[type=checkbox]:checked')).toHaveCount(2);
 
-    const stateAfterFiltering = await page.evaluate(() => {
-      const listView = (globalThis as any).ListView;
-      const store = (globalThis as any).ConversationsStore;
-      if (!listView || !store) throw new Error('Workbench list/store globals unavailable');
+    // Exercise the actual Workbench UI instead of relying on deprecated globals.
+    await page.fill('#chatSearchInput', 'Visible recovery target');
+    await expect(page.locator('#list .item')).toHaveCount(1);
+    await expect(page.locator('[data-chat-id="visible_chat"] input[type="checkbox"]')).toBeChecked();
+    await page.fill('#chatSearchInput', '');
+    await expect(page.locator('#list .item')).toHaveCount(2);
+    await expect(page.locator('[data-chat-id="visible_chat"] input[type="checkbox"]')).toBeChecked();
+    await expect(page.locator('[data-chat-id="hidden_chat"] input[type="checkbox"]')).toBeChecked();
 
-      const selectedBeforeFilter = listView.getSelectedIds();
-      const conversations = store.getConversations();
-      listView.render(conversations, {}, selectedBeforeFilter, 'Visible recovery target');
-
-      return {
-        renderedIds: Array.from(document.querySelectorAll('#list .item')).map((el: any) => el.dataset.chatId),
-        selectedIds: Array.from(listView.getSelectedIds()).sort()
-      };
-    });
-
-    expect(stateAfterFiltering.renderedIds).toEqual(['visible_chat']);
-    // Selection is user state, not DOM state. Filtering must not silently erase a
-    // previously selected conversation from the recovery snapshot.
-    expect(stateAfterFiltering.selectedIds).toEqual(['hidden_chat', 'visible_chat']);
   });
 });

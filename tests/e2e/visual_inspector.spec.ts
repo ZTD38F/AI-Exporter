@@ -11,20 +11,31 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     }
   });
 
-  test('should execute 6-step tour with 100% zero-occlusion and physical mouse hit-testing', async ({ context, extensionId }) => {
+  test('should execute 7-step tour with 100% zero-occlusion and physical mouse hit-testing', async ({ context, extensionId }) => {
+    // Seven screenshot + animation cycles need more than the default 30s on loaded CI workers.
+    test.setTimeout(90000);
     const page = await context.newPage();
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // Open options page with onboarding welcome flag
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?welcome=1`);
+    // Open options page for new user onboarding
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
     await page.waitForLoadState('domcontentloaded');
 
     const popover = page.locator('.tour-popover');
     await expect(popover).toBeVisible({ timeout: 5000 });
 
-    for (let stepIdx = 0; stepIdx < 6; stepIdx++) {
+    for (let stepIdx = 0; stepIdx < 7; stepIdx++) {
       const stepBadge = await page.locator('.tour-step-badge').innerText();
-      expect(stepBadge).toBe(`${stepIdx + 1} / 6`);
+      expect(stepBadge).toBe(`${stepIdx + 1} / 7`);
+      if (stepIdx === 3) {
+        await expect(popover).toContainText('HTML');
+        await expect(popover).toContainText('PDF');
+        await expect(popover).toContainText(/local font|本地字体/);
+      }
+      if (stepIdx === 5) {
+        await expect(popover).toContainText('Markdown');
+        await expect(popover).toContainText(/only supports Markdown|只支持 Markdown/);
+      }
 
       // 1. Capture visual snapshot
       const screenshotPath = path.join(outputDir, `tour_step_${stepIdx + 1}.png`);
@@ -66,22 +77,26 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
       expect(nextBtnBox).not.toBeNull();
 
       if (nextBtnBox) {
-        const clickX = nextBtnBox.x + nextBtnBox.width / 2;
-        const clickY = nextBtnBox.y + nextBtnBox.height / 2;
-
-        const hitTestTag = await page.evaluate(({ x, y }) => {
-          const hit = document.elementFromPoint(x, y);
+        const hitTestTag = await page.evaluate(() => {
+          const btn = document.querySelector('#tourNextBtn');
+          if (!btn) return null;
+          const r = btn.getBoundingClientRect();
+          const clickX = r.left + r.width / 2;
+          const clickY = r.top + r.height / 2;
+          const hit = document.elementFromPoint(clickX, clickY);
           return hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : null;
-        }, { x: clickX, y: clickY });
+        });
 
         // Must hit the button itself or text/span inside it
         expect(hitTestTag).toMatch(/^(button#tournextbtn|span|div)/i);
 
         // Advance to next step
-        if (stepIdx < 5) {
+        if (stepIdx < 6) {
           await nextBtn.click();
-          await expect(page.locator('.tour-step-badge')).toHaveText(`${stepIdx + 2} / 6`);
-          await page.waitForTimeout(300);
+          await expect(page.locator('.tour-step-badge')).toHaveText(`${stepIdx + 2} / 7`);
+          await page.locator('.tour-popover').evaluate((el) => {
+            return Promise.all(el.getAnimations().map(a => a.finished));
+          });
         } else {
           await nextBtn.click();
         }
@@ -92,10 +107,33 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     await expect(popover).toBeHidden();
   });
 
+  test('choosing PDF in onboarding advances without requesting local font permission', async ({ context, extensionId }) => {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
+    await page.evaluate(() => {
+      (window as any).__fontQueries = 0;
+      (window as any).queryLocalFonts = async () => {
+        (window as any).__fontQueries++;
+        return [];
+      };
+    });
+    await page.click('#btnTourGuide');
+    for (let step = 1; step <= 3; step++) {
+      await expect(page.locator('.tour-step-badge')).toHaveText(`${step} / 7`);
+      await page.click('#tourNextBtn');
+    }
+    await expect(page.locator('.tour-step-badge')).toHaveText('4 / 7');
+    await page.selectOption('#format', 'pdf');
+    await expect(page.locator('.tour-step-badge')).toHaveText('5 / 7');
+    await expect(page.locator('#format')).toHaveValue('pdf');
+    expect(await page.evaluate(() => (window as any).__fontQueries)).toBe(0);
+    await page.click('#tourSkipBtn');
+  });
+
   test('should launch tour on clicking header button and dismiss cleanly', async ({ context, extensionId }) => {
     const page = await context.newPage();
 
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForFunction(() => typeof (window as any).__workbenchLoadStore === 'function');
 
@@ -109,7 +147,7 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
 
     const popover = page.locator('.tour-popover');
     await expect(popover).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('.tour-step-badge')).toHaveText('1 / 6');
+    await expect(page.locator('.tour-step-badge')).toHaveText('1 / 7');
 
     // Click close/skip
     await page.click('#tourSkipBtn');
@@ -130,7 +168,7 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
       });
     });
 
-    // 2. Reload options page without welcome flag
+    // 2. Reload options page to trigger spotlight for returning user
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
 
@@ -142,7 +180,13 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     const badge = page.locator('.tour-step-badge');
     await expect(badge).toBeVisible();
     const badgeText = await badge.innerText();
-    expect(badgeText).toContain('1.5.0');
+    expect(badgeText).toContain('1.7.0');
+
+    await expect(popover).toContainText('PDF');
+    await expect(popover).toContainText('HTML');
+    await expect(popover).toContainText(/Local fonts for PDF|PDF 本地字体权限/);
+    await expect(popover).toContainText(/English-only PDFs still export|仍可导出纯英文 PDF/);
+    await expect(popover).not.toContainText(/Gemini-style|保留 Gemini 风格/);
 
     // 5. Verify action buttons exist
     const dismissBtn = page.locator('#tourSpotlightDismissBtn');
@@ -151,20 +195,21 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     await expect(actionBtn).toBeVisible();
 
     // 6. Dismiss spotlight
-    await dismissBtn.click();
+    await actionBtn.click();
     await expect(popover).toBeHidden();
+    await expect(page.locator('#format')).toBeFocused();
 
-    // 7. Verify storage updated to 1.5.0
+    // 7. Verify storage updated to 1.7.0
     const storedVer = await page.evaluate(async () => {
       const data = await chrome.storage.local.get(['last_seen_feature_version']);
       return data.last_seen_feature_version;
     });
-    expect(storedVer).toBe('1.5.0');
+    expect(storedVer).toBe('1.7.0');
 
     // 8. Reload page - spotlight should NOT appear again
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(600);
+    await expect(page.locator('#btnSelectAll')).toBeVisible();
     await expect(popover).toBeHidden();
   });
 
@@ -172,7 +217,7 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     const page = await context.newPage();
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     // Trigger takeout limit modal for visual inspection
@@ -223,9 +268,10 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     const page = await context.newPage();
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(500);
+    await expect(page.locator('#btnSelectAll')).toBeVisible();
+    await expect(page.locator('#btnExport')).toBeVisible();
 
     // Check all primary action buttons for unintentional text overflow
     const truncationAudit = await page.evaluate(() => {
@@ -261,7 +307,7 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     const page = await context.newPage();
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const now = Date.now();
@@ -333,7 +379,7 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     const page = await context.newPage();
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const now = Date.now();
@@ -399,7 +445,7 @@ test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', ()
     const page = await context.newPage();
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
+    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
     await page.waitForLoadState('domcontentloaded');
 
     const takeoutChat = {

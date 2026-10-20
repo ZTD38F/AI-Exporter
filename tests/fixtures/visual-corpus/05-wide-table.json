@@ -1,0 +1,571 @@
+{
+ "id": "05-wide-table",
+ "title": "宽表（8 列）",
+ "description": "8 列对比表格，经典的表格溢出场景：检查列是否被挤出页面或文字重叠。",
+ "bundle": {
+  "schemaVersion": 1,
+  "conversation": {
+   "key": {
+    "providerId": "gemini",
+    "conversationId": "vc-05"
+   },
+   "title": {
+    "value": "模型基准对比"
+   },
+   "createdAt": "2026-09-26T10:00:00Z",
+   "updatedAt": "2026-09-26T11:00:00Z",
+   "messages": [
+    {
+     "id": "m1",
+     "role": "user",
+     "blocks": [
+      {
+       "id": "p05-b87",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "对比一下这几个大模型的基准成绩，做成表格。"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "m2",
+     "role": "assistant",
+     "blocks": [
+      {
+       "id": "p05-b84",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "下表对比了几个主流大模型的公开基准成绩（8 列宽表，用于检查宽表排版）："
+        }
+       ]
+      },
+      {
+       "id": "p05-b85",
+       "type": "table",
+       "headerRows": [
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "模型"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "参数量"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "上下文"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "MMLU"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "GSM8K"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "HumanEval"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "推理成本"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "开源"
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       "rows": [
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "Gemini 2.5 Pro"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "—"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "1M"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "88.4"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "94.2"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "90.1"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "高"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "否"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "GPT-5"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "—"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "400K"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "87.9"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "93.5"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "89.4"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "高"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "否"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "Claude Opus 4.1"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "—"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "200K"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "87.8"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "92.1"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "88.0"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "高"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "否"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "DeepSeek V3.2"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "671B"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "128K"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "86.5"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "93.1"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "87.2"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "低"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "是"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "Qwen3-Max"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "—"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "256K"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "85.9"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "91.8"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "86.5"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "中"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "否"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "cells": [
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "Kimi K2"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "1T"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "256K"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "85.1"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "90.4"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "84.9"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "低"
+            }
+           ]
+          },
+          {
+           "children": [
+            {
+             "type": "text",
+             "text": "是"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": "p05-b86",
+       "type": "paragraph",
+       "children": [
+        {
+         "type": "text",
+         "text": "注：成绩来自各厂商技术报告，测试集版本可能不同，仅供参考。"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "assets": [],
+  "citations": []
+ },
+ "binaries": {},
+ "expect": {
+  "minPages": 1,
+  "phrases": [
+   "模型",
+   "参数量",
+   "上下文",
+   "MMLU",
+   "GSM8K",
+   "HumanEval",
+   "推理成本",
+   "开源",
+   "Gemini 2.5 Pro",
+   "DeepSeek V3.2",
+   "Kimi K2",
+   "成绩来自各厂商技术报告"
+  ],
+  "exactlyOnce": [
+   "HumanEval",
+   "DeepSeek V3.2"
+  ]
+ }
+}

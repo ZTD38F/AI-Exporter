@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "conversation": {
+    "key": {
+      "providerId": "gemini",
+      "accountId": "acct-parity-001",
+      "conversationId": "conv-image-attachment-001"
+    },
+    "title": "图片与附件占位",
+    "createdAt": "2026-09-26T13:00:00-07:00",
+    "updatedAt": "2026-09-26T13:02:00-07:00",
+    "messages": [
+      {
+        "id": "u1",
+        "role": "user",
+        "createdAt": "2026-09-26T13:00:00-07:00",
+        "blocks": [
+          {
+            "id": "u1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "看一下这张架构图和附件里的数据字典。"
+              }
+            ]
+          },
+          {
+            "id": "u1:b1",
+            "type": "image",
+            "assetId": "asset-img-1",
+            "alt": "用户上传的架构图"
+          },
+          {
+            "id": "u1:b2",
+            "type": "file",
+            "assetId": "asset-file-1",
+            "label": "data_dictionary.xlsx",
+            "description": [
+              {
+                "type": "text",
+                "text": "数据字典，共 42 个字段定义"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a1",
+        "role": "assistant",
+        "createdAt": "2026-09-26T13:02:00-07:00",
+        "author": {
+          "model": "Gemini 2.5 Pro",
+          "rawRole": "model"
+        },
+        "blocks": [
+          {
+            "id": "a1:b0",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "架构图如下（行内图片引用同一 asset）："
+              },
+              {
+                "type": "image",
+                "assetId": "asset-img-1"
+              },
+              {
+                "type": "text",
+                "text": "。"
+              }
+            ]
+          },
+          {
+            "id": "a1:b1",
+            "type": "image",
+            "assetId": "asset-img-1",
+            "alt": "Block AST 到多格式 renderer 流程图",
+            "caption": [
+              {
+                "type": "text",
+                "text": "图 1：canonical bundle 经 HTML/PDF 双 renderer 输出"
+              }
+            ]
+          },
+          {
+            "id": "a1:b2",
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "附件中的数据字典定义了 42 个字段，其中 "
+              },
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "必填字段 18 个"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "。"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "id": "asset-img-1",
+      "kind": "image",
+      "name": "architecture.png",
+      "mimeType": "image/png",
+      "sizeBytes": 245760,
+      "dimensions": {
+        "widthPx": 1600,
+        "heightPx": 900
+      },
+      "status": "missing",
+      "failureReason": "parity fixture placeholder: no bytes shipped"
+    },
+    {
+      "id": "asset-file-1",
+      "kind": "file",
+      "name": "data_dictionary.xlsx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sizeBytes": 53248,
+      "status": "missing",
+      "failureReason": "parity fixture placeholder: no bytes shipped"
+    }
+  ],
+  "citations": []
+}

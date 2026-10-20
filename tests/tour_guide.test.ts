@@ -1,6 +1,7 @@
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
+const { __setModuleOverride } = require('../src/core/utils/moduleOverrides.js');
 
 // Mock browser environment for unit testing TourGuide
 (global as any).window = {
@@ -11,9 +12,11 @@ const assert = require('node:assert');
     open: () => {}
 };
 
+let lastCreatedOverlay: any = null;
 const mockElements = new Map<string, any>();
 (global as any).document = {
     createElement: (tag: string) => {
+        const listeners = new Map<string, Function[]>();
         const el: any = {
             tagName: tag.toUpperCase(),
             className: '',
@@ -31,8 +34,24 @@ const mockElements = new Map<string, any>();
                 el.children = el.children.filter((c: any) => c !== child);
             },
             setAttribute: () => {},
-            addEventListener: () => {},
-            removeEventListener: () => {},
+            addEventListener: (ev: string, fn: Function) => {
+                if (!listeners.has(ev)) listeners.set(ev, []);
+                listeners.get(ev)!.push(fn);
+                if (el.className.includes('tour-overlay-container')) {
+                    lastCreatedOverlay = el;
+                }
+            },
+            removeEventListener: (ev: string, fn: Function) => {
+                if (listeners.has(ev)) {
+                    listeners.set(ev, listeners.get(ev)!.filter((f: any) => f !== fn));
+                }
+            },
+            dispatchEvent: (event: any) => {
+                const list = listeners.get(event.type) || [];
+                list.forEach((f: any) => f(event));
+                return true;
+            },
+            contains: (target: any) => el.children.includes(target),
             getBoundingClientRect: () => ({ top: 100, left: 100, width: 200, height: 50, bottom: 150, right: 300 }),
             scrollIntoView: () => {},
             isConnected: true,
@@ -52,26 +71,41 @@ const mockElements = new Map<string, any>();
     querySelectorAll: () => []
 };
 
-// Mock StorageService
+// Mock StorageService (via the module seam; the legacy globalThis mount is gone)
 let tourStatusMock = false;
-(global as any).StorageService = {
+__setModuleOverride('StorageService', {
     isTourCompleted: async () => tourStatusMock,
     setTourCompleted: async (v: any) => { tourStatusMock = !!v; }
-};
+});
 
-// Mock TabService
-(global as any).TabService = {
+// Mock TabService (via the module seam; the legacy globalThis mount is gone)
+__setModuleOverride('TabService', {
     checkGeminiStatus: async () => ({ status: 'CONNECTED' }),
     openGeminiPage: async () => {},
     reloadGeminiTab: async () => {}
-};
+});
 
 // Mock I18n
-(global as any).I18n = {
+__setModuleOverride('I18n', {
     t: (k: any) => k
-};
+});
 
 const TourGuide = require('../src/ui/tour/tourGuide.js');
+
+// Polling waits: step advancement goes through a 250-300ms setTimeout inside
+// the tour steps, so fixed sleeps are flaky under timer jitter. Poll instead.
+async function waitForStep(expected: number, timeoutMs = 3000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (TourGuide.getCurrentStep() !== expected && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 20));
+    }
+}
+async function waitForInactive(timeoutMs = 3000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (TourGuide.isActive() && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 20));
+    }
+}
 const TabService = require('../src/core/utils/tabService.js');
 const StorageService = require('../src/core/storage/storageService.js');
 
@@ -84,14 +118,15 @@ test('tourGuide - module structure and steps', () => {
     assert.strictEqual(typeof TourGuide.finishTour, 'function');
     assert.strictEqual(typeof TourGuide.skipTour, 'function');
 
-    assert.strictEqual(TourGuide.STEPS.length, 6, 'Tour should have exactly 6 streamlined steps');
+    assert.strictEqual(TourGuide.STEPS.length, 7, 'Tour should have exactly 7 streamlined steps');
     assert.strictEqual(TourGuide.STEPS[0].id, 'connect');
     assert.strictEqual(TourGuide.STEPS[1].id, 'sync');
     assert.strictEqual(TourGuide.STEPS[2].id, 'select');
-    assert.strictEqual(TourGuide.STEPS[3].id, 'export');
-    assert.strictEqual(TourGuide.STEPS[4].id, 'live_save');
-    assert.strictEqual(TourGuide.STEPS[5].id, 'feedback');
-    assert.ok(TourGuide.STEPS[5].isFinal, 'Last step should be marked as final');
+    assert.strictEqual(TourGuide.STEPS[3].id, 'format');
+    assert.strictEqual(TourGuide.STEPS[4].id, 'export');
+    assert.strictEqual(TourGuide.STEPS[5].id, 'live_save');
+    assert.strictEqual(TourGuide.STEPS[6].id, 'feedback');
+    assert.ok(TourGuide.STEPS[6].isFinal, 'Last step should be marked as final');
 });
 
 test('tourGuide - step navigation and completion', async () => {
@@ -226,6 +261,8 @@ function createMockElement(id: string) {
 test('tourGuide - action-triggered step advancement across all steps', async () => {
     const mockScanBtn = createMockElement('btnIncrementalScan');
     const mockList = createMockElement('list');
+    const mockFormat = createMockElement('format');
+    mockElements.set('format', mockFormat);
     const mockExportBtn = createMockElement('btnExport');
     const mockLiveSaveToggle = createMockElement('liveSaveDiskToggle');
     const mockFeedbackBtn = createMockElement('btnFeedback');
@@ -243,30 +280,31 @@ test('tourGuide - action-triggered step advancement across all steps', async () 
 
     // Simulate user clicking #btnIncrementalScan
     mockScanBtn.click();
-    // Wait for the micro delay (300ms)
-    await new Promise(r => setTimeout(r, 350));
+    await waitForStep(2);
     assert.strictEqual(TourGuide.getCurrentStep(), 2, 'Should advance to step 2 after sync click');
 
     // 2. In step 2 (select), simulate checking a conversation checkbox
     mockList.dispatchEvent({ type: 'change', target: { type: 'checkbox', checked: true } });
-    await new Promise(r => setTimeout(r, 300));
+    await waitForStep(3);
     assert.strictEqual(TourGuide.getCurrentStep(), 3, 'Should advance to step 3 after list checkbox toggle');
 
-    // 3. In step 3 (export), simulate clicking export
+    // Choose a format before exporting.
+    mockFormat.dispatchEvent({ type: 'change' });
+    await waitForStep(4);
+    assert.strictEqual(TourGuide.getCurrentStep(), 4);
+
     mockExportBtn.click();
-    await new Promise(r => setTimeout(r, 250));
-    assert.strictEqual(TourGuide.getCurrentStep(), 4, 'Should advance to step 4 (live_save) after export click');
+    await waitForStep(5);
+    assert.strictEqual(TourGuide.getCurrentStep(), 5, 'Export advances to live save');
     assert.strictEqual(TourGuide.isActive(), true);
 
-    // 4. In step 4 (live_save), simulate toggle change
     mockLiveSaveToggle.dispatchEvent({ type: 'change' });
-    await new Promise(r => setTimeout(r, 350));
-    assert.strictEqual(TourGuide.getCurrentStep(), 5, 'Should advance to step 5 (feedback) after live save change');
+    await waitForStep(6);
+    assert.strictEqual(TourGuide.getCurrentStep(), 6, 'Live save advances to feedback');
     assert.strictEqual(TourGuide.isActive(), true);
 
-    // 5. In step 5 (feedback), simulate clicking feedback
     mockFeedbackBtn.click();
-    await new Promise(r => setTimeout(r, 250));
+    await waitForInactive();
     assert.strictEqual(TourGuide.isActive(), false, 'Tour should be completed and inactive after feedback click');
 });
 
@@ -288,11 +326,33 @@ test('tourGuide - listener cleanup when navigating backwards', async () => {
     await TourGuide.prevStep();
     assert.strictEqual(TourGuide.getCurrentStep(), 1);
 
-    // Triggering step 2 event (list change) should NOT trigger advance now
+    // Triggering step 2 event (list change) should NOT trigger advance now.
+    // Negative assertion: no poll target exists, so keep a bounded wait, but
+    // longer than the 250ms internal advance delay to tolerate timer jitter.
     mockList.dispatchEvent({ type: 'change', target: { type: 'checkbox', checked: true } });
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 500));
     assert.strictEqual(TourGuide.getCurrentStep(), 1, 'Should stay at step 1 because step 2 listener was cleaned up');
 
     await TourGuide.finishTour();
+});
+
+test('tourGuide - clicking backdrop overlay skips tour cleanly', async () => {
+    await TourGuide.startTour(0);
+    assert.strictEqual(TourGuide.isActive(), true);
+
+    assert.ok(lastCreatedOverlay, 'Overlay element should be created');
+    let prevented = false;
+    let stopped = false;
+    lastCreatedOverlay.dispatchEvent({
+        type: 'click',
+        target: lastCreatedOverlay,
+        preventDefault: () => { prevented = true; },
+        stopPropagation: () => { stopped = true; }
+    });
+
+    await waitForInactive();
+    assert.strictEqual(TourGuide.isActive(), false, 'Tour should be dismissed when backdrop is clicked');
+    assert.strictEqual(prevented, true, 'Click should be prevented from penetrating to background');
+    assert.strictEqual(stopped, true, 'Click propagation should be stopped');
 });
 

@@ -29,6 +29,10 @@ if not defined CHROME_BIN (
 
 if not exist "%PROFILE_DIR%" mkdir "%PROFILE_DIR%"
 
+pushd "%REPO_DIR%"
+node build.js
+popd
+
 echo ==================================================
 echo [Launch] Gemini Exporter Isolated Test Browser
 echo [Profile] %PROFILE_DIR%

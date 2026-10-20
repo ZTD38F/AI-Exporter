@@ -1,45 +1,21 @@
-// src/ui/options/options.ts - Gemini Exporter workbench single entrypoint & coordinator
-import '../../core/protocol/protocol.js';
-import '../../core/utils/constants.js';
-import '../../core/utils/utils.js';
-import '../../core/utils/tabService.js';
-import '../../core/utils/locales/zh.js';
-import '../../core/utils/locales/en.js';
-import '../../core/utils/i18n.js';
-import '../../core/storage/storageService.js';
-import '../../core/storage/formatStore.js';
-import '../../core/engine/writers/zipWriter.js';
-import '../../core/engine/writers/fsWriter.js';
-import '../../core/engine/writers/writerInterface.js';
-import '../../core/engine/chatFormatter.js';
-import '../../core/api/parser/extractors.js';
-import '../../core/api/parser/attachments.js';
-import '../../core/api/parser/parseList.js';
-import '../../core/api/parser/parseDetail.js';
-import '../../core/api/geminiParser.js';
-import '../../core/api/client/credentialManager.js';
-import '../../core/api/client/retryPolicy.js';
-import '../../core/api/client/rpcClient.js';
-import '../../core/api/client/pagination.js';
-import '../../core/api/geminiClient.js';
-import '../../core/engine/takeout/zipBombGuard.js';
-import '../../core/engine/takeout/mediaIndex.js';
-import '../../core/engine/takeout/takeoutParser.js';
-import '../../core/engine/takeoutEngine.js';
-import '../../core/engine/assetPipeline.js';
-import '../../core/engine/export/progressReporter.js';
-import '../../core/engine/export/sessionRecovery.js';
-import '../../core/engine/export/rateLimiter.js';
-import '../../core/engine/export/batchWorker.js';
-import '../../core/engine/export/exportOrchestrator.js';
-import '../../core/engine/exportEngine.js';
+// NOTE (re-audit 2026-09-17, main=d601f83): all 33 former bare side-effect imports
+// were verified removable. A static-import-graph BFS from this entrypoint reaches all
+// 33 modules (82 files total), and no reader uses a `(globalThis as any).ModuleName`
+// mount for them anymore — #437 migrated the AssetPipeline reader to the
+// moduleOverrides seam with a static default import
+// (exportOrchestrator.ts:46 `import { AssetPipeline as AssetPipelineStatic }`, used via
+// `__resolveModule('AssetPipeline', AssetPipelineStatic)`), so the module stays in the
+// esbuild bundle through that chain: options.ts -> optionsContext.ts ->
+// controllers/exportController.ts -> exportEngine.js -> export/exportOrchestrator.js ->
+// assetPipeline.js.
+import { FsWriterModule as FsWriter } from '../../core/engine/writers/fsWriter.js';
+import { ensureStorageReady } from '../../core/storage/schemaMigration.js';
 import { OptionsInit } from './modules/optionsInit.js';
 import { OptionsExport } from './modules/optionsExport.js';
 import { OptionsSync } from './modules/optionsSync.js';
 import { OptionsTakeout } from './modules/optionsTakeout.js';
 import { OptionsSettings } from './modules/optionsSettings.js';
 import { ConversationsStore } from '../state/conversationsStore.js';
-import { installSelectionState } from '../state/selectionState.js';
 import { ListView } from '../views/listView.js';
 import { AccountView } from '../views/accountView.js';
 import { DialogView } from '../views/dialogView.js';
@@ -49,12 +25,9 @@ import { TakeoutController } from '../controllers/takeoutController.js';
 import { SyncController } from '../controllers/syncController.js';
 import { ExportController } from '../controllers/exportController.js';
 import { TourGuide } from '../tour/tourGuide.js';
+import { t } from '../uiCommon.js';
+import { initMitexWasm, isMitexReady, convertMathWithMitex } from '../../core/export/typst/mathConverter.js';
 
-// Selection is durable Workbench state, not a projection of currently rendered rows.
-// Install before any module binds handlers or performs the initial render.
-installSelectionState(ListView);
-
-// Logging helpers
 export function log(msg: string, level: 'info' | 'warn' | 'error' = 'info'): void {
     if (OptionsInit && OptionsInit.log) OptionsInit.log(msg, level);
     else console.log(`[LOG ${level}]`, msg);
@@ -68,55 +41,39 @@ export function renderLog(): void {
     if (OptionsInit && OptionsInit.renderLog) OptionsInit.renderLog();
 }
 
-// Facade delegations & static regression test anchors:
-// 1. compareConversations SSoT delegation (verified by tests/run_tests.py)
 export const compareConversations = (a: any, b: any) => (OptionsInit && OptionsInit.compareConversations ? OptionsInit.compareConversations(a, b) : 0);
 
-// 2. isBad title scrubbing delegation (verified by tests/regression_p0.test.js)
 export const isBad = (t: string | null | undefined, id?: string | null) => (OptionsInit && OptionsInit.isBad ? OptionsInit.isBad(t, id) : false);
 
-// 3. checkPendingTakeoutPrompt & gemini_pending_takeout_prompt check (verified by tests/run_tests.py)
+// Delegates checkPendingTakeoutPrompt (gemini_pending_takeout_prompt) to OptionsTakeout
 export async function checkPendingTakeoutPrompt(): Promise<void> {
     if (OptionsTakeout && OptionsTakeout.checkPendingTakeoutPrompt) {
         return await OptionsTakeout.checkPendingTakeoutPrompt();
     }
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const data = await chrome.storage.local.get(['gemini_pending_takeout_prompt']);
-        if (data && data.gemini_pending_takeout_prompt) {
-            await chrome.storage.local.remove('gemini_pending_takeout_prompt');
-        }
-    }
 }
 
-// 4. isTakeoutPromptCompleted check (verified by tests/run_tests.py)
 export async function isTakeoutPromptCompleted(): Promise<boolean> {
     return OptionsTakeout ? await OptionsTakeout.isTakeoutPromptCompleted() : false;
 }
 
-// 5. loadStore facade & window binding
-export async function loadStore(force: boolean = false, selectedOverride?: Set<string>): Promise<any> {
-    if (typeof window !== 'undefined') {
-        (window as any).__workbenchLoadStore = loadStore;
-    }
+export async function loadStore(force: boolean = false, customSelected?: Set<string>): Promise<any> {
+    await ensureStorageReady();
     if (OptionsInit && OptionsInit.loadStore) {
-        return await OptionsInit.loadStore(force, selectedOverride);
+        return await OptionsInit.loadStore(force, customSelected);
     }
 }
 
-// Expose early for external callers and tests
 if (typeof window !== 'undefined') {
     (window as any).__workbenchLoadStore = loadStore;
 }
 
-/**
- * Single assembly coordinator function for UI workbench
- */
 export async function initWorkbench(): Promise<void> {
     if (typeof window !== 'undefined') {
         (window as any).__workbenchLoadStore = loadStore;
     }
 
-    // Initialize sub-modules in lifecycle order
+    await ensureStorageReady();
+
     if (OptionsTakeout && OptionsTakeout.init) {
         OptionsTakeout.init({ loadStore, log });
     }
@@ -152,14 +109,13 @@ export async function initWorkbench(): Promise<void> {
             updateZipUi: () => (OptionsExport ? OptionsExport.updateZipUi() : null),
             checkExportSession: () => (OptionsInit ? (OptionsInit.checkExportSession() as unknown as Promise<void>) : undefined),
             updateAccountSlotSelector: () => (OptionsInit ? OptionsInit.updateAccountSlotSelector() : null),
-            getSearchFilter: () => (OptionsInit ? OptionsInit.getSearchFilter() : '')
+            getSearchFilter: () => (OptionsInit ? OptionsInit.getSearchFilter() : ''),
+            getChatFilterType: () => (OptionsInit ? OptionsInit.getChatFilterType() : 'all')
         });
     }
 
-    // Initial store load
     await loadStore();
 
-    // Check for welcome / onboarding tour
     if (OptionsSettings && OptionsSettings.checkOnboardingTour) {
         OptionsSettings.checkOnboardingTour();
     }
@@ -167,15 +123,37 @@ export async function initWorkbench(): Promise<void> {
 
 export const initOptionsApp = initWorkbench;
 
-if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initWorkbench);
-    } else {
-        initWorkbench();
+function startWorkbench(): void {
+    try {
+        const p = initWorkbench();
+        if (p && typeof (p as Promise<void>).catch === 'function') {
+            (p as Promise<void>).catch((e) => {
+                console.error('[workbench] initWorkbench failed', e);
+                try {
+                    const el = typeof document !== 'undefined' ? document.getElementById('logList') : null;
+                    if (el) {
+                        const div = document.createElement('div');
+                        div.className = 'log-line log-error';
+                        const errText = (e && (e as Error).message) || String(e);
+                        div.textContent = typeof t === 'function' ? t('workbenchInitFailed', errText) : `工作台初始化失败: ${errText}`;
+                        el.prepend(div);
+                    }
+                } catch { /* last-resort: console.error above already recorded it */ }
+            });
+        }
+    } catch (e) {
+        console.error('[workbench] initWorkbench threw synchronously', e);
     }
 }
 
-// Expose global exports for backward compatibility and test scripts
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startWorkbench);
+    } else {
+        startWorkbench();
+    }
+}
+
 const OptionsModule = {
     initWorkbench,
     initOptionsApp,
@@ -204,40 +182,19 @@ const OptionsModule = {
     OptionsSettings
 };
 
-(OptionsModule as any).OptionsModule = OptionsModule;
-(OptionsModule as any).default = OptionsModule;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).OptionsModule = OptionsModule;
-    (globalThis as any).OptionsInit = OptionsInit;
-    (globalThis as any).OptionsExport = OptionsExport;
-    (globalThis as any).OptionsSync = OptionsSync;
-    (globalThis as any).OptionsTakeout = OptionsTakeout;
-    (globalThis as any).OptionsSettings = OptionsSettings;
-    (globalThis as any).TourGuide = TourGuide;
-    (globalThis as any).ConversationsStore = ConversationsStore;
-    (globalThis as any).ListView = ListView;
-    (globalThis as any).AccountView = AccountView;
-    (globalThis as any).DialogView = DialogView;
-    (globalThis as any).LogView = LogView;
-    (globalThis as any).__workbenchLoadStore = loadStore;
-}
+// E2E / Live test hooks (read by Playwright specs & live harness actions.py):
+// __workbenchLoadStore, DialogView, ConversationsStore, TourGuide, FsWriter,
+// TakeoutController, SyncController. Other module mounts removed — use static imports.
 if (typeof window !== 'undefined') {
-    (window as any).TourGuide = TourGuide;
     (window as any).__workbenchLoadStore = loadStore;
     (window as any).ConversationsStore = ConversationsStore;
-    (window as any).ListView = ListView;
-    (window as any).AccountView = AccountView;
     (window as any).DialogView = DialogView;
-    (window as any).LogView = LogView;
-    (window as any).OptionsInit = OptionsInit;
-    (window as any).OptionsExport = OptionsExport;
-    (window as any).OptionsSync = OptionsSync;
-    (window as any).OptionsTakeout = OptionsTakeout;
-    (window as any).OptionsSettings = OptionsSettings;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = OptionsModule;
+    (window as any).TourGuide = TourGuide;
+    (window as any).FsWriter = FsWriter;
+    (window as any).TakeoutController = TakeoutController;
+    (window as any).SyncController = SyncController;
+    (window as any).ExportController = ExportController;
+    (window as any).__mitex = { initMitexWasm, isMitexReady, convertMathWithMitex };
 }
 
 export { OptionsModule };

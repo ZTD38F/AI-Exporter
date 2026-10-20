@@ -90,7 +90,7 @@ test('geminiParser - extracts Python plot generated asset (Pattern 2)', () => {
     assert.strictEqual(images[0].size, 93650);
 });
 
-test('chatFormatter - formats generated image as markdown and cleans placeholder URLs', () => {
+test('chatFormatter - formats generated image as markdown and cleans placeholder URLs', async () => {
     const mockChat = {
         id: '61a5e19c42b800f3',
         title: '深渊AUV材料与通信挑战',
@@ -119,7 +119,7 @@ test('chatFormatter - formats generated image as markdown and cleans placeholder
         ]
     };
 
-    const res = ChatFormatter.toMarkdown(mockChat);
+    const { content: res } = await ChatFormatter.formatMarkdownCanonical(mockChat);
     // 必须包含 Markdown 图片引用 ![]
     assert.ok(res.includes('!['));
     assert.ok(res.includes('assets/b800f3_watermarked_img_16704480932994645752.jpg'));

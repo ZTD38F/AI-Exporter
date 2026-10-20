@@ -1,6 +1,6 @@
-// src/core/storage/idbHandleStore.ts - Single Source of Truth for FileSystemDirectoryHandle in IndexedDB
+import { IDB_DATABASES } from '../utils/constants.js';
 
-export const IDB_NAME = 'gemini_exporter_idb';
+export const IDB_NAME = IDB_DATABASES.HANDLES;
 export const IDB_VERSION = 1;
 export const IDB_STORE = 'handles';
 export const IDB_KEY = 'export_dir_handle';
@@ -14,10 +14,18 @@ export interface IdbHandleStoreModule {
     getStoredDirHandle: () => Promise<any>;
     saveStoredDirHandle: (handle: any) => Promise<boolean>;
     clearStoredDirHandle: () => Promise<boolean>;
+    getMemoryDirHandle: () => any;
+    setMemoryDirHandle: (handle: any) => void;
 }
 
-declare global {
-    var IdbHandleStore: IdbHandleStoreModule;
+let _memoryDirHandle: any = null;
+
+export function getMemoryDirHandle(): any {
+    return _memoryDirHandle;
+}
+
+export function setMemoryDirHandle(handle: any): void {
+    _memoryDirHandle = handle || null;
 }
 
 export function openHandleDB(): Promise<IDBDatabase> {
@@ -32,22 +40,43 @@ export function openHandleDB(): Promise<IDBDatabase> {
                 db.createObjectStore(IDB_STORE);
             }
         };
+        req.onblocked = () => {
+            console.warn(
+                '[IdbHandleStore] IndexedDB open is blocked by an older unclosed connection. ' +
+                'A future version upgrade would stall here; connections are now closed after each operation.'
+            );
+        };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
     });
 }
 
+async function withHandleDB<T>(fn: (db: IDBDatabase) => Promise<T>): Promise<T> {
+    const db = await openHandleDB();
+    try {
+        return await fn(db);
+    } finally {
+        try {
+            db.close();
+        } catch {}
+    }
+}
+
 export async function getStoredDirHandle(): Promise<any> {
+    if (_memoryDirHandle) return _memoryDirHandle;
     if (typeof indexedDB === 'undefined') return null;
     try {
-        const db = await openHandleDB();
-        return new Promise((resolve, reject) => {
+        const handle = await withHandleDB((db) => new Promise((resolve, reject) => {
             const tx = db.transaction(IDB_STORE, 'readonly');
             const store = tx.objectStore(IDB_STORE);
             const req = store.get(IDB_KEY);
             req.onsuccess = () => resolve(req.result || null);
             req.onerror = () => reject(req.error);
-        });
+        }));
+        if (handle) {
+            _memoryDirHandle = handle;
+        }
+        return handle;
     } catch (e) {
         console.warn('[IdbHandleStore] Failed to get dir handle from IndexedDB:', e);
         return null;
@@ -57,8 +86,7 @@ export async function getStoredDirHandle(): Promise<any> {
 export async function saveStoredDirHandle(handle: any): Promise<boolean> {
     if (typeof indexedDB === 'undefined') return false;
     try {
-        const db = await openHandleDB();
-        return new Promise((resolve, reject) => {
+        const ok = await withHandleDB((db) => new Promise<boolean>((resolve, reject) => {
             const tx = db.transaction(IDB_STORE, 'readwrite');
             const store = tx.objectStore(IDB_STORE);
             if (handle === null || handle === undefined) {
@@ -68,7 +96,11 @@ export async function saveStoredDirHandle(handle: any): Promise<boolean> {
             }
             tx.oncomplete = () => resolve(true);
             tx.onerror = () => reject(tx.error);
-        });
+        }));
+        if (ok) {
+            _memoryDirHandle = handle || null;
+        }
+        return ok;
     } catch (e) {
         console.warn('[IdbHandleStore] Failed to save dir handle to IndexedDB:', e);
         return false;
@@ -87,10 +119,11 @@ export const IdbHandleStore: IdbHandleStoreModule = {
     openHandleDB,
     getStoredDirHandle,
     saveStoredDirHandle,
-    clearStoredDirHandle
+    clearStoredDirHandle,
+    getMemoryDirHandle,
+    setMemoryDirHandle
 };
 
-if (typeof globalThis !== 'undefined') (globalThis as any).IdbHandleStore = IdbHandleStore;
 if (typeof module === 'object' && module.exports) module.exports = IdbHandleStore;
 
 export default IdbHandleStore;

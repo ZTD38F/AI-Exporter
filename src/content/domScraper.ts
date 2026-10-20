@@ -1,16 +1,12 @@
-// src/content/domScraper.ts - DOM fallback parser and conversation list scroller
 import { contentContext } from './contentContext.js';
-import { GeminiUtils } from '../core/utils/utils.js';
+import { cleanTitle, isRealTitle } from '../core/utils/utils.js';
+import { isReservedRoute, normId } from '../core/utils/pathUtils.js';
+
+export { isReservedRoute };
 
 function cleanText(t?: string | null): string {
     return t ? t.replace(/\u00a0/g, ' ').replace(/\r/g, '').trim().slice(0, 20000) : '';
 }
-
-const getUtils = () => (typeof GeminiUtils !== 'undefined'
-    ? GeminiUtils
-    : ((typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils) || null)) as any;
-const cleanTitle = (raw?: string | null) => (getUtils()?.cleanTitle ? getUtils().cleanTitle(raw || '') : (raw || '').trim());
-const isRealTitle = (t?: string | null, fallbackId?: string) => (getUtils()?.isRealTitle ? getUtils().isRealTitle(t || '', fallbackId) : !!(t && typeof t === 'string' && t.trim().length > 1));
 
 export function parseDoc(doc: Document, id: string, url?: string): any {
     let title = doc.title ? cleanTitle(doc.title) : '';
@@ -186,7 +182,7 @@ export async function contentFetchChatDetail(id: string): Promise<any> {
     let parsed = parseDoc(doc, id, url);
     if (!parsed.messages.length) {
         try {
-            const cleanId = String(id).replace(/^c_/, '');
+            const cleanId = normId(id);
             if (typeof location !== 'undefined' && (location.pathname.includes(cleanId) || location.href.includes(cleanId))) {
                 const liveFallback = parseDoc(document, id, location.href);
                 if (liveFallback.messages.length) {
@@ -217,17 +213,6 @@ export function getScrollContainer(): HTMLElement | null {
     return null;
 }
 
-const RESERVED_ROUTES = new Set([
-    'download', 'settings', 'prompts', 'archive', 'trash', 'share',
-    'activity', 'help', 'feedback', 'gems', 'explore', 'privacy', 'terms', 'updates', 'faq'
-]);
-
-export function isReservedRoute(id?: string | null): boolean {
-    if (!id || typeof id !== 'string') return false;
-    const clean = id.replace(/^c_/, '').trim().toLowerCase();
-    return RESERVED_ROUTES.has(clean);
-}
-
 export function getConversationLinks(): any[] {
     if (typeof document === 'undefined') return [];
     const items: any[] = [];
@@ -236,7 +221,7 @@ export function getConversationLinks(): any[] {
         const href = (a as HTMLAnchorElement).href || a.getAttribute('href') || '';
         const m = href.match(/\/app\/(c_)?([A-Za-z0-9_-]{8,})/);
         if (m) {
-            const id = m[2].replace(/^c_/, '');
+            const id = normId(m[2]);
             if (isReservedRoute(id)) continue;
             const rawTitle = (a.querySelector('.title, [class*="title"]')?.textContent || a.textContent || '').trim();
             const title = cleanTitle(rawTitle);
@@ -245,7 +230,7 @@ export function getConversationLinks(): any[] {
             if (isReal) titlesObj.dom = title;
             items.push({
                 id,
-                title: isReal ? title : '未命名对话',
+                title: isReal ? title : (contentContext.isZh() ? '未命名对话' : 'Untitled Chat'),
                 titleSource: isReal ? 'dom' : 'default',
                 titles: titlesObj,
                 url: `https://gemini.google.com/app/${id}`,
@@ -294,21 +279,12 @@ export const DomScraper = {
     parseDoc,
     contentFetchChatDetail,
     getScrollContainer,
+    isReservedRoute,
     getConversationLinks,
     tryExpandRecents,
     debugCurrentPage
 };
 
 
-
-(DomScraper as any).DomScraper = DomScraper;
-(DomScraper as any).default = DomScraper;
-
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).DomScraper = DomScraper;
-}
-if (typeof module !== 'undefined' && (module as any).exports) {
-    (module as any).exports = DomScraper;
-}
 
 export default DomScraper;

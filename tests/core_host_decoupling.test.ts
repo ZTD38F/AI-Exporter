@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert';
 
 import * as GeminiUtils from '../src/core/utils/utils.js';
-(globalThis as any).GeminiUtils = GeminiUtils;
+import { __setModuleOverride, __getModuleOverride, __resolveModule } from '../src/core/utils/moduleOverrides.js';
+__setModuleOverride('GeminiUtils', GeminiUtils);
 
 import AssetPipeline from '../src/core/engine/assetPipeline.js';
 import * as BatchWorker from '../src/core/engine/export/batchWorker.js';
@@ -16,9 +17,10 @@ test('Decoupling 1: AssetPipeline runs without chrome.tabs via fetchAssetDelegat
 
     try {
         const savedFiles: any[] = [];
-        const mockFolder = {
-            file: (name: string, bytes: any) => {
+        const mockWriter = {
+            writeFile: async (name: string, bytes: any) => {
                 savedFiles.push({ name, bytes });
+                return name;
             }
         };
 
@@ -26,7 +28,7 @@ test('Decoupling 1: AssetPipeline runs without chrome.tabs via fetchAssetDelegat
         const pipeline = new AssetPipeline({
             currentSlot: 'u0',
             useZip: true,
-            folder: mockFolder,
+            writer: mockWriter,
             fetchAssetDelegate: async (req) => {
                 delegateCalls.push(req);
                 return {
@@ -55,9 +57,9 @@ test('Decoupling 1: AssetPipeline runs without chrome.tabs via fetchAssetDelegat
 
 test('Decoupling 2: BatchWorker.fetchChatDetail runs without chrome.runtime via injected messageSender', async () => {
     const origChrome = (global as any).chrome;
-    const origTabService = (global as any).TabService;
     delete (global as any).chrome;
-    delete (global as any).TabService;
+    // Clear any TabService test override so the seam resolves to null
+    __setModuleOverride('TabService', undefined);
 
     try {
         let sentMessage: any = null;
@@ -86,7 +88,7 @@ test('Decoupling 2: BatchWorker.fetchChatDetail runs without chrome.runtime via 
         assert.strictEqual(result.results![0].title, 'Decoupled Remote Chat');
     } finally {
         (global as any).chrome = origChrome;
-        (global as any).TabService = origTabService;
+        __setModuleOverride('TabService', undefined);
     }
 });
 
@@ -139,6 +141,19 @@ test('Decoupling 4: SessionRecovery.finalizeChatExport uses storageAdapter witho
         assert.strictEqual(persistedRecord.slot, 'u0');
     } finally {
         (global as any).chrome = origChrome;
+    }
+});
+
+test('Decoupling 5: moduleOverrides rejects overrides and ignores mocks in NODE_ENV=production', () => {
+    const origEnv = process.env.NODE_ENV;
+    try {
+        process.env.NODE_ENV = 'production';
+        __setModuleOverride('TestMockSeam', { mock: true });
+        assert.strictEqual(__getModuleOverride('TestMockSeam'), undefined, 'Overrides must not be stored in production');
+        const resolved = __resolveModule('TestMockSeam', 'defaultFallback');
+        assert.strictEqual(resolved, 'defaultFallback', 'Must resolve to fallback directly in production');
+    } finally {
+        process.env.NODE_ENV = origEnv;
     }
 });
 

@@ -1,136 +1,62 @@
-// src/ui/options/modules/optionsInit.ts - Workbench initialization & state loader
 import type { OptionsInitOptions } from '../../../types/ui.js';
-import { ConversationsStore as DefaultConversationsStore } from '../../state/conversationsStore.js';
-import { ListView as DefaultListView } from '../../views/listView.js';
-import { LogView as DefaultLogView } from '../../views/logView.js';
-import { DialogView as DefaultDialogView } from '../../views/dialogView.js';
-import { AccountView as DefaultAccountView } from '../../views/accountView.js';
-import { ExportController as DefaultExportController } from '../../controllers/exportController.js';
-import { TourGuide as DefaultTourGuide } from '../../tour/tourGuide.js';
-import { StorageService as DefaultStorageService } from '../../../core/storage/storageService.js';
-import { GeminiUtils as DefaultGeminiUtils } from '../../../core/utils/utils.js';
-import { I18n as DefaultI18n } from '../../../core/utils/i18n.js';
+import {
+    t,
+    getStore,
+    getList,
+    getLogView as getLog,
+    getDialogs,
+    getAccountView as getAccount,
+    getExportCtrl as getController,
+    getTour,
+    getStorage
+} from '../optionsContext.js';
+import { $ } from '../../uiCommon.js';
+import { normId } from '../../../core/utils/pathUtils.js';
+import {
+    cleanTitle,
+    isRealTitle,
+    resolveTitle,
+    getEffectiveTimestamp,
+    compareConversations
+} from '../../../core/utils/utils.js';
+import { STORAGE_KEYS } from '../../../core/utils/constants.js';
 
-const getI18n = () => {
-    if (typeof I18n !== 'undefined' && I18n) return I18n;
-    if (typeof DefaultI18n !== 'undefined' && DefaultI18n) return DefaultI18n;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).I18n) return (globalThis as any).I18n;
-    return null;
-};
-
-const t = (key: string, ...args: any[]): string => {
-    const i18n = getI18n();
-    if (i18n && typeof i18n.t === 'function') {
-        return i18n.t(key, ...args);
-    }
-    return key;
-};
-
-function $(id: string): HTMLElement | null {
-    return typeof document !== 'undefined' ? document.getElementById(id) : null;
-}
-
-const getStore = () => {
-    if (typeof DefaultConversationsStore !== 'undefined' && DefaultConversationsStore) return DefaultConversationsStore;
-    if (typeof ConversationsStore !== 'undefined') return ConversationsStore;
-    return null;
-};
-
-const getList = () => {
-    if (typeof DefaultListView !== 'undefined' && DefaultListView) return DefaultListView;
-    if (typeof ListView !== 'undefined') return ListView;
-    return null;
-};
-
-const getLog = () => {
-    if (typeof DefaultLogView !== 'undefined' && DefaultLogView) return DefaultLogView;
-    if (typeof LogView !== 'undefined') return LogView;
-    return null;
-};
-
-const getDialogs = () => {
-    if (typeof DefaultDialogView !== 'undefined' && DefaultDialogView) return DefaultDialogView;
-    if (typeof DialogView !== 'undefined') return DialogView;
-    return null;
-};
-
-const getAccount = () => {
-    if (typeof DefaultAccountView !== 'undefined' && DefaultAccountView) return DefaultAccountView;
-    if (typeof AccountView !== 'undefined') return AccountView;
-    return null;
-};
-
-const getController = () => {
-    if (typeof DefaultExportController !== 'undefined' && DefaultExportController) return DefaultExportController;
-    if (typeof ExportController !== 'undefined') return ExportController;
-    return null;
-};
-
-const getTour = () => {
-    if (typeof DefaultTourGuide !== 'undefined' && DefaultTourGuide) return DefaultTourGuide;
-    if (typeof TourGuide !== 'undefined') return TourGuide;
-    return null;
-};
-
-const getStorage = () => {
-    if (typeof StorageService !== 'undefined' && StorageService) return StorageService;
-    if (typeof DefaultStorageService !== 'undefined' && DefaultStorageService) return DefaultStorageService;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).StorageService) return (globalThis as any).StorageService;
-    return null;
-};
-
-const getUtils = () => {
-    if (typeof GeminiUtils !== 'undefined' && GeminiUtils) return GeminiUtils;
-    if (typeof DefaultGeminiUtils !== 'undefined' && DefaultGeminiUtils) return DefaultGeminiUtils;
-    if (typeof globalThis !== 'undefined' && (globalThis as any).GeminiUtils) return (globalThis as any).GeminiUtils;
-    return null;
-};
-
-export const normId = (id?: string | null): string => {
-    const utils = getUtils();
-    if (utils && typeof utils.normId === 'function') return utils.normId(id);
-    return String(id || '').replace(/^c_/, '');
-};
-
-export const cleanTitle = (tStr?: string | null): string => {
-    const utils = getUtils();
-    if (utils && typeof utils.cleanTitle === 'function') return utils.cleanTitle(tStr);
-    return (tStr || '').trim();
-};
-
-export const isRealTitle = (tStr?: string | null, id?: string | null): boolean => {
-    const utils = getUtils();
-    if (utils && typeof utils.isRealTitle === 'function') return utils.isRealTitle(tStr as string, id as string);
-    return !!(tStr && String(tStr).trim().length > 1);
-};
-
-export const isBad = (tStr?: string | null, id?: string | null): boolean => !isRealTitle(tStr, id);
-
-export const resolveTitle = (chat: any): { title: string; source: string } => {
-    const utils = getUtils();
-    if (utils && typeof utils.resolveTitle === 'function') return utils.resolveTitle(chat);
-    return { title: cleanTitle(chat?.title) || '未命名对话', source: chat?.titleSource || 'legacy' };
-};
-
-export const getEffectiveTime = (conv: any): number => {
-    const utils = getUtils();
-    if (utils && typeof utils.getEffectiveTimestamp === 'function') return utils.getEffectiveTimestamp(conv);
-    if (!conv) return 0;
-    const ts = conv.updatedAt || conv.timestamp || 0;
-    return (typeof ts === 'string') ? new Date(ts).getTime() : ts;
-};
-
-export const compareConversations = (a: any, b: any): number => {
-    const utils = getUtils();
-    if (utils && typeof utils.compareConversations === 'function') return utils.compareConversations(a, b);
-    return 0;
-};
+export { normId, cleanTitle, isRealTitle, resolveTitle, compareConversations };
+export const getEffectiveTime = getEffectiveTimestamp;
+export const isBad = (tStr?: string | null, id?: string | null): boolean => !isRealTitle(tStr, id || undefined);
 
 let __lastRenderedSignature = '';
 let __lastRenderTime = 0;
 let __chatSearchFilter = '';
+let __chatFilterType = 'all';
 let __searchDebounceTimer: any = null;
 let __pendingTakeoutChecker: (() => Promise<void> | void) | null = null;
+
+export function getChatFilterType(): string {
+    return __chatFilterType;
+}
+
+export function setChatFilterType(type: string): void {
+    __chatFilterType = type || 'all';
+    const sel = $('chatFilterSelect') as HTMLSelectElement | null;
+    if (sel) sel.value = __chatFilterType;
+}
+
+function getFailedChatIds(): Set<string> {
+    const ids = new Set<string>();
+    const Dialogs = getDialogs();
+    const failedList = (Dialogs?.getLastFailedChats?.()) ?? DialogView.getLastFailedChats();
+    if (Array.isArray(failedList)) {
+        for (const item of failedList) {
+            const id = typeof item === 'string' ? item : (item?.id || item?.chatId);
+            if (id) {
+                ids.add(id);
+                ids.add(normId(id));
+            }
+        }
+    }
+    return ids;
+}
 
 export function log(msg: string, level: 'info' | 'warn' | 'error' = 'info'): void {
     console.log(`[LOG ${level}]`, msg);
@@ -171,7 +97,13 @@ export async function checkExportSession(): Promise<void> {
         const Store = getStore();
         if (!Dialogs || !Dialogs.renderExportBanner) return;
         const isRunning = Controller ? Controller.isRunning() : false;
-        const { gemini_last_export_session: session } = await chrome.storage.local.get(['gemini_last_export_session']);
+        const data = await chrome.storage.local.get([STORAGE_KEYS.LAST_EXPORT_SESSION]);
+        const session = data[STORAGE_KEYS.LAST_EXPORT_SESSION] as any;
+        if (session && Array.isArray(session.failedChats) && session.failedChats.length > 0) {
+            if (typeof (Dialogs as any)?.setLastFailedChats === 'function') {
+                (Dialogs as any).setLastFailedChats(session.failedChats);
+            }
+        }
         const slot = Store ? Store.getCurrentSlot() : 'u0';
         Dialogs.renderExportBanner(session, slot, isRunning);
     } catch (e) {
@@ -179,11 +111,8 @@ export async function checkExportSession(): Promise<void> {
     }
 }
 
-export async function loadStore(force: boolean = false, selectedOverride?: Set<string>): Promise<any> {
+export async function loadStore(force: boolean = false, customSelected?: Set<string>): Promise<any> {
     try {
-        if (typeof window !== 'undefined') {
-            (window as any).__workbenchLoadStore = loadStore;
-        }
         const Store = getStore();
         const List = getList();
         const Storage = getStorage();
@@ -191,15 +120,7 @@ export async function loadStore(force: boolean = false, selectedOverride?: Set<s
         const slot = Store.getCurrentSlot() || 'u0';
         const { conversations: incoming, exportedIds } = await Store.loadStore(slot);
         updateAccountSlotSelector();
-
-        let prevSelected: Set<string> | null = selectedOverride instanceof Set ? new Set(selectedOverride) : null;
-        try {
-            if (!(selectedOverride instanceof Set) && !force && List && Store.getConversations().length > 0) {
-                prevSelected = List.getSelectedIds();
-            }
-        } catch {
-            prevSelected = selectedOverride instanceof Set ? new Set(selectedOverride) : null;
-        }
+        const hadExistingConvs = Store.getConversations().length > 0;
 
         const syncInfo = await Store.getLastSync(slot);
         const lastSyncVal = syncInfo.timestamp;
@@ -219,13 +140,24 @@ export async function loadStore(force: boolean = false, selectedOverride?: Set<s
             return;
         }
 
-        // Deduplicate and sanitize titles via ConversationsStore (scrubs isBad titles and sorts with compareConversations)
         const { processed, hasDirtyTitles } = Store.normalizeAndDeduplicate
             ? Store.normalizeAndDeduplicate(incoming)
             : { processed: (incoming || []).slice().sort(compareConversations), hasDirtyTitles: false };
 
         if ((hasDirtyTitles || processed.length !== (incoming || []).length) && Storage) {
-            Storage.setConversations(slot, processed).catch(() => {});
+            // SSOT: the normalize-then-write-back runs as an atomic transaction on
+            // the freshest stored list. Blind-writing `processed` (derived from a
+            // possibly stale UI snapshot) could clobber a concurrent tab's sync.
+            const writeBack = typeof Storage.transactConversations === 'function'
+                ? Storage.transactConversations(slot, (existing: any[]) => {
+                    const norm = Store.normalizeAndDeduplicate
+                        ? Store.normalizeAndDeduplicate(existing)
+                        : { processed: (existing || []).slice().sort(compareConversations), hasDirtyTitles: false };
+                    if (!norm.hasDirtyTitles && norm.processed.length === (existing || []).length) return null;
+                    return { list: norm.processed, changed: 1 };
+                })
+                : Storage.setConversations(slot, processed);
+            writeBack.catch(() => {});
         }
 
         Store.setConversations(processed);
@@ -247,7 +179,20 @@ export async function loadStore(force: boolean = false, selectedOverride?: Set<s
         }
 
         if (List) {
-            List.render(processed, exportedIds, prevSelected, __chatSearchFilter);
+            let prevSelected: Set<string> | null = null;
+            if (customSelected instanceof Set) {
+                prevSelected = customSelected;
+            } else {
+                try {
+                    if (!force && hadExistingConvs) {
+                        prevSelected = List.getSelectedIds();
+                    }
+                } catch {
+                    prevSelected = null;
+                }
+            }
+            const failedIds = getFailedChatIds();
+            List.render(processed, exportedIds, prevSelected, __chatSearchFilter, __chatFilterType, failedIds);
             List.updateStat(processed);
         }
 
@@ -259,21 +204,34 @@ export async function loadStore(force: boolean = false, selectedOverride?: Set<s
         }
     } catch (e) {
         console.error('[workbench:init] loadStore error', e);
+        try {
+            const msg = e instanceof Error ? e.message : String(e);
+            log(`${typeof t === 'function' ? t('loadStoreFailed', msg) : `加载会话列表失败: ${msg}`}`, 'error');
+        } catch { /* log view not ready — console.error above already recorded it */ }
     }
 }
 
 function bindSearchAndSelection(): void {
-    const searchInput = ($('chatSearchInput') || $('search')) as HTMLInputElement | null;
+    const searchInput = $('chatSearchInput') as HTMLInputElement | null;
+    const filterSelect = $('chatFilterSelect') as HTMLSelectElement | null;
+
+    const doFilter = () => {
+        const Store = getStore();
+        const List = getList();
+        const convs = Store ? Store.getConversations() : [];
+        const expMap = Store ? Store.getExportedIds() : {};
+        const currentSelected = List ? List.getSelectedIds() : new Set<string>();
+        const failedIds = getFailedChatIds();
+        if (List) List.render(convs, expMap, currentSelected, __chatSearchFilter, __chatFilterType, failedIds);
+    };
+
+    filterSelect?.addEventListener('change', (e: Event) => {
+        __chatFilterType = ((e.target as HTMLSelectElement).value || 'all').trim();
+        doFilter();
+    });
+
     searchInput?.addEventListener('input', (e: Event) => {
         __chatSearchFilter = ((e.target as HTMLInputElement).value || '').trim();
-        const doFilter = () => {
-            const Store = getStore();
-            const List = getList();
-            const convs = Store ? Store.getConversations() : [];
-            const expMap = Store ? Store.getExportedIds() : {};
-            const currentSelected = List ? List.getSelectedIds() : new Set<string>();
-            if (List) List.render(convs, expMap, currentSelected, __chatSearchFilter);
-        };
         const Store = getStore();
         const convs = Store ? Store.getConversations() : [];
         if (convs && convs.length > 100) {
@@ -284,21 +242,19 @@ function bindSearchAndSelection(): void {
         }
     });
 
-    // List Selection Filter Buttons
     $('btnSelectAll')?.addEventListener('click', () => {
         const Store = getStore();
         const List = getList();
         const convs = Store ? Store.getConversations() : [];
         if (List) List.selectAll(convs);
     });
-    ($('btnSelectNone') || $('btnDeselectAll'))?.addEventListener('click', () => {
+    $('btnSelectNone')?.addEventListener('click', () => {
         const Store = getStore();
         const List = getList();
         const convs = Store ? Store.getConversations() : [];
         if (List) List.deselectAll(convs);
     });
 
-    // Account Slot Switch Handler
     $('accountSlotSelect')?.addEventListener('change', async (e: Event) => {
         const newSlot = (e.target as HTMLSelectElement).value;
         console.log('[workbench] Account slot changed to:', newSlot);
@@ -309,11 +265,10 @@ function bindSearchAndSelection(): void {
         }
     });
 
-    // Tour guide trigger
     $('btnTourGuide')?.addEventListener('click', () => {
         const Tour = getTour();
         if (Tour && Tour.startTour) {
-            Tour.startTour(0);
+            void Tour.startTour(0);
         }
     });
 }
@@ -347,6 +302,8 @@ export const OptionsInit = {
     checkExportSession,
     getSearchFilter,
     setSearchFilter,
+    getChatFilterType,
+    setChatFilterType,
     log,
     clearLog,
     renderLog,
@@ -359,14 +316,6 @@ export const OptionsInit = {
     getEffectiveTime
 };
 
-(OptionsInit as any).OptionsInit = OptionsInit;
-(OptionsInit as any).default = OptionsInit;
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).OptionsInit = OptionsInit;
-}
-if (typeof module === 'object' && module.exports) {
-    module.exports = OptionsInit;
-}
 
 export default OptionsInit;

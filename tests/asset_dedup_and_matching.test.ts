@@ -138,3 +138,42 @@ test('asset_dedup - batchWorker resolveChat only supplements genuine AI generate
     // Should NOT include user_upload_photo.png as generated media
     assert.ok(!modelMsg.content.includes('user_upload_photo.png'), 'User upload should NOT be added as generated image');
 });
+
+test('asset_dedup - AssetPipeline preserves byteOffset and byteLength for sliced buffers', async () => {
+    const { AssetPipeline } = require('../src/core/engine/assetPipeline.js');
+    let writtenBytes: any = null;
+    let writtenPath = '';
+
+    const mockWriter = {
+        writeFile: async (path: string, content: any) => {
+            writtenPath = path;
+            writtenBytes = content;
+            return path;
+        }
+    };
+
+    const pipeline = new AssetPipeline({
+        useZip: true,
+        writer: mockWriter,
+        fetchAssetDelegate: async () => {
+            const slab = new Uint8Array([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
+            const slice = new Uint8Array(slab.buffer, 3, 4);
+            return {
+                success: true,
+                dataBuffer: slice,
+                mime: 'image/png'
+            };
+        }
+    });
+
+    const item = { localName: 'assets/sliced.png', url: 'https://example.com/sliced.png' };
+    const chat = { id: 'chat1', title: 'Test Chat' };
+    const res = await pipeline.processAsset(item, chat, { isImage: true });
+
+    assert.strictEqual(res.saved, true);
+    assert.strictEqual(writtenPath, 'assets/sliced.png');
+    assert.ok(writtenBytes instanceof Uint8Array, 'Written content must be Uint8Array');
+    assert.strictEqual(writtenBytes.byteLength, 4, `Expected byteLength 4, got ${writtenBytes.byteLength}`);
+    assert.deepStrictEqual(Array.from(writtenBytes), [30, 40, 50, 60], 'Should only write slice contents, not slab');
+});
+

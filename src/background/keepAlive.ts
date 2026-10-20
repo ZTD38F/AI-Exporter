@@ -1,9 +1,6 @@
-// src/background/keepAlive.ts - MV3 Service Worker heartbeat mechanism
-
 /**
- * Periodically ping chrome.runtime to keep the Manifest V3 service worker active
- * during long-running tasks like deep scanning or batch fetching.
- * Returns a cleanup function that cancels the keepalive interval.
+ * Pings chrome.runtime to prevent Manifest V3 service worker inactivity termination
+ * during long-running tasks.
  */
 export function startKeepAlive(): () => void {
     if (typeof chrome === 'undefined' || !chrome.runtime) return () => {};

@@ -27,6 +27,12 @@ const mockStorage: Record<string, any> = {};
     }
 };
 
+test.beforeEach(() => {
+    for (const k of Object.keys(mockStorage)) {
+        delete mockStorage[k];
+    }
+});
+
 const StorageService = require('../src/core/storage/storageService.js');
 
 test('StorageService.removeConversation - removes target conversation by id or c_id', async () => {

@@ -1,5 +1,3 @@
-// src/background/tabAction.ts - Tab action icon contextual state management (color on Gemini, grayscale elsewhere)
-
 export const ACTION_COLOR_ICONS: Record<number, string> = {
     16: 'icons/icon16.png',
     48: 'icons/icon48.png',
@@ -12,27 +10,15 @@ export const ACTION_GRAY_ICONS: Record<number, string> = {
     128: 'icons/icon128_gray.png'
 };
 
-/**
- * Determine if a given URL belongs to the Gemini web domain.
- */
-export function isGeminiTabUrl(urlStr?: string | null): boolean {
-    if (!urlStr || typeof urlStr !== 'string') return false;
-    try {
-        const u = new URL(urlStr);
-        return u.hostname === 'gemini.google.com';
-    } catch {
-        return false;
-    }
-}
+import { isGeminiUrl } from '../core/utils/pathUtils.js';
 
-/**
- * Update the extension browser action icon and tooltip based on the current tab URL.
- */
+export const isGeminiTabUrl = isGeminiUrl;
+
 export function updateTabActionState(tabId?: number | null, url?: string | null): void {
     if (typeof chrome === 'undefined' || !chrome.action || !tabId) return;
     const isGemini = isGeminiTabUrl(url);
     const icons = isGemini ? ACTION_COLOR_ICONS : ACTION_GRAY_ICONS;
-    const title = isGemini ? 'Gemini Exporter (Active)' : 'Gemini Exporter (未激活 - 当前非 Gemini 页面)';
+    const title = isGemini ? 'AI Exporter (Active)' : 'AI Exporter (未激活 - 当前非 Gemini 页面)';
     try {
         chrome.action.setIcon({ tabId, path: icons }).catch(() => {});
         chrome.action.setTitle({ tabId, title }).catch(() => {});
@@ -41,9 +27,6 @@ export function updateTabActionState(tabId?: number | null, url?: string | null)
     }
 }
 
-/**
- * Initialize tab activation and URL update listeners to automatically update action icons.
- */
 export function initTabActionListeners(): void {
     if (typeof chrome === 'undefined' || !chrome.tabs) return;
     try {
@@ -63,7 +46,6 @@ export function initTabActionListeners(): void {
                 }
             });
         }
-        // Initial tab check on service worker startup
         if (chrome.tabs.query) {
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs && tabs[0]?.id) {

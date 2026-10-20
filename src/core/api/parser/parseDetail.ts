@@ -1,7 +1,9 @@
-// parseDetail.ts - hNvQHb conversation detail RPC response parser
-import type { Message, Conversation, TitleSources } from "../../../types/index.js";
-import type { GeminiParserExtractorsModule, GeminiJspbSchema, TurnDriftReport } from "./extractors.js";
-import type { GeminiParserAttachmentsModule, ImageAttachment, UserFileAttachment, DeepResearchDocMeta } from "./attachments.js";
+import type { Message, TitleSources } from "../../../types/index.js";
+import { stripInternalChipMarkdown } from "../../utils/chipUtils.js";
+import { sanitizeFileName } from "../../utils/pathUtils.js";
+import { __resolveModule } from "../../utils/moduleOverrides.js";
+import type { TurnDriftReport } from "./extractors.js";
+import type { ImageAttachment, UserFileAttachment, DeepResearchDocMeta } from "./attachments.js";
 
 export interface DetailParseResult {
     id: string;
@@ -23,6 +25,10 @@ export interface DetailParseResult {
         remainingToken: string | null;
     };
     schemaDrift?: string[];
+    turnsRejected?: number;
+    truncated?: boolean;
+    isTruncated?: boolean;
+    truncateReason?: string;
     _raw?: any;
     _debug?: any;
 }
@@ -32,17 +38,14 @@ export interface GeminiParserParseDetailModule {
     isTurnsArray: (arr: unknown) => boolean;
     findTurnsDeep: (root: unknown, depth?: number) => unknown[] | null;
     parseDetail: (text: string, targetConvId?: string, overrides?: any) => DetailParseResult;
-}
-
-declare global {
-    var GeminiParserParseDetail: GeminiParserParseDetailModule;
-    var findTurnsDeep: (root: unknown, depth?: number) => unknown[] | null;
-    var parseDetail: (text: string, targetConvId?: string, overrides?: any) => DetailParseResult;
+    extractTurnRequestId?: (turn: any) => string | undefined;
+    DOC_TITLE_FALLBACK_RE?: RegExp;
 }
 
 import {
     GEMINI_JSPB_SCHEMA,
     detectTurnSchemaDrift,
+    hasTurnContentMarkers,
     extractModelCandidates,
     extractCandidateText,
     safeStructureClean,
@@ -50,6 +53,7 @@ import {
     deepWalk,
     extractThoughts,
     extractCitations,
+    extractGroundingCitationMarkers,
     extractConversationId,
     smartSummarizePrompt,
     extractConversationTitle,
@@ -61,6 +65,7 @@ import {
 } from "./extractors.js";
 import {
     extractImages,
+    extractResponseImages,
     extractUserFiles,
     extractDocumentsMeta,
     findDocContentById,
@@ -70,551 +75,660 @@ import {
     highResVariant,
     isInternalChipUrl
 } from "./attachments.js";
-import GeminiProtocol, { WRB, RPCS } from "../../protocol/protocol.js";
+import GeminiProtocol from "../../protocol/protocol.js";
 import GeminiUtils from "../../utils/utils.js";
+import { extractInnerPayload, extractNextPageToken } from "./payload.js";
+import { resolveDetailTitle, RESEARCH_PROMPT_PREFIX_RE } from "../../utils/titleUtils.js";
+import { shortId, shortScope as getShortScope } from "../../utils/pathUtils.js";
+import { extractStructuredContent } from "./structuredContent.js";
 
-function getExtractors(): any {
-    return {
-        GEMINI_JSPB_SCHEMA,
-        detectTurnSchemaDrift,
-        extractModelCandidates,
-        extractCandidateText,
-        safeStructureClean,
-        robustFirstPayload,
-        deepWalk,
-        extractThoughts,
-        extractCitations,
-        extractConversationId,
-        smartSummarizePrompt,
-        extractConversationTitle,
-        extractMetaTitleFromTop,
-        extractTurnTimestamp,
-        normId,
-        cleanTitle,
-        isRealTitle
-    };
-}
-
-function getAttachments(): any {
-    return {
-        extractImages,
-        extractUserFiles,
-        extractDocumentsMeta,
-        findDocContentById,
-        parseDocSections,
-        findDocMarkdownByClues,
-        filterNewImages,
-        highResVariant,
-        isInternalChipUrl
-    };
-}
+const DOC_TITLE_FALLBACK_RE = /^#\s+(.+)$/m;
 
 function getUtils(): any {
-    return (typeof globalThis !== "undefined" && (globalThis as any).GeminiUtils) || GeminiUtils;
+    return __resolveModule('GeminiUtils', GeminiUtils);
 }
 
 function getProtocol(): any {
-    return (typeof globalThis !== "undefined" && (globalThis as any).GeminiProtocol) || GeminiProtocol;
+    return __resolveModule('GeminiProtocol', GeminiProtocol);
 }
-
-const FALLBACK_SCHEMA = GEMINI_JSPB_SCHEMA;
 
 function getSchema(): any {
     return GEMINI_JSPB_SCHEMA;
 }
 
-const RESEARCH_PROMPT_PREFIX_RE = /^(?:我已经完成了研究|我拟定了一个研究方案|I've completed your research|Here is a research plan)/i;
+const isTurnCache = new WeakMap<object, boolean>();
 
+function extractUserTextFromPayload(userPayload: unknown): string {
+    if (!Array.isArray(userPayload) || userPayload.length === 0) return "";
+    const first = userPayload[0];
+    if (typeof first === "string") return first;
+    if (Array.isArray(first) && typeof first[0] === "string") return first[0];
+    return "";
+}
 
-    function isTurn(turn: unknown): boolean {
-        if (!Array.isArray(turn) || turn.length < 3) return false;
-        const head = turn[0];
-        let idStr = "";
-        if (typeof head === "string") idStr = head;
-        else if (Array.isArray(head) && head.length) {
-            idStr = typeof head[0] === "string" ? head[0] : (Array.isArray(head[0]) && typeof head[0][0] === "string" ? head[0][0] : "");
+/**
+ * Extract turn request ID from Gemini JSPB turn structure.
+ *
+ * Schema investigation evidence:
+ * In Google's Gemini JSPB wire format, turn[GEMINI_JSPB_SCHEMA.TURN.ID_META] (index 0)
+ * is a metadata tuple [conversationId, requestId, ...].
+ * - Standard slot (REQUEST_ID_SLOT = 1): `idMeta[1]` is "r_<requestId>" (e.g. ["c_d3226d9a046c1116", "r_turn_1"]).
+ * - Alternate slot 0: `idMeta[0]` is "r_<requestId>" when conversationId is omitted.
+ * - String idMeta: `idMeta` is directly "r_<requestId>".
+ * - Never search in turn[1] (which is TIMESTAMP: [seconds, nanos]).
+ * - Strict contract: no heuristic .find() scanning; unconfirmed slots return undefined to prevent accidental dedupe.
+ */
+function extractTurnRequestId(turn: any): string | undefined {
+    const idMeta = turn?.[GEMINI_JSPB_SCHEMA.TURN.ID_META];
+    let raw: string | undefined;
+
+    if (Array.isArray(idMeta)) {
+        const reqSlot = GEMINI_JSPB_SCHEMA.TURN.REQUEST_ID_SLOT;
+        if (typeof idMeta[reqSlot] === "string" && idMeta[reqSlot].startsWith("r_")) {
+            raw = idMeta[reqSlot];
+        } else if (typeof idMeta[0] === "string" && idMeta[0].startsWith("r_")) {
+            raw = idMeta[0];
         }
-        if (!idStr || (!idStr.startsWith("c_") && !idStr.startsWith("r_"))) return false;
-        // 需含 user 文本或 candidate rc_
+    } else if (typeof idMeta === "string" && idMeta.startsWith("r_")) {
+        raw = idMeta;
+    }
+
+    if (!raw) return undefined;
+    const match = raw.match(/^r_([0-9a-fA-F]+)$/i);
+    return match ? match[1].toLowerCase() : raw.replace(/^r_/i, '').toLowerCase();
+}
+
+function isTurn(turn: unknown): boolean {
+    if (!Array.isArray(turn) || turn.length < 3) return false;
+    const cached = isTurnCache.get(turn);
+    if (cached !== undefined) return cached;
+    const head = turn[0];
+    let idStr = "";
+    if (typeof head === "string") idStr = head;
+    else if (Array.isArray(head) && head.length) {
+        idStr = typeof head[0] === "string" ? head[0] : (Array.isArray(head[0]) && typeof head[0][0] === "string" ? head[0][0] : "");
+    }
+    let result = false;
+    if (idStr && (idStr.startsWith("c_") || idStr.startsWith("r_"))) {
+        result = hasTurnContentMarkers(turn);
+    }
+    isTurnCache.set(turn, result);
+    return result;
+}
+
+function isTurnsArray(arr: unknown): boolean {
+    if (!Array.isArray(arr) || arr.length === 0) return false;
+    let cnt = 0;
+    for (const t of arr) if (isTurn(t)) cnt++;
+    return cnt >= 1 && cnt / arr.length >= 0.5;
+}
+
+function findTurnsDeep(root: unknown, depth: number = 0): unknown[] | null {
+    if (!root || depth > 6) return null;
+    if (isTurnsArray(root)) return root as unknown[];
+    if (Array.isArray(root)) {
+        for (const el of root) {
+            const found = findTurnsDeep(el, depth + 1);
+            if (found) return found;
+        }
+    } else if (root && typeof root === "object") {
+        for (const k in (root as Record<string, unknown>)) {
+            const found = findTurnsDeep((root as Record<string, unknown>)[k], depth + 1);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+interface TurnsExtractionResult {
+    turns: any[];
+    inner: any;
+    schemaDriftWarnings: string[];
+    turnsRejected: number;
+}
+
+function extractTurnsFromInner(
+    inner: any,
+    top: unknown[] | null,
+    innerStr: string | null,
+    isStandardWrb: boolean,
+    wrb: string,
+    detailRpc: string,
+    isDevMode: boolean
+): TurnsExtractionResult {
+    const schemaDriftWarnings: string[] = [];
+    if (Array.isArray(top) && top.length > 0 && !isStandardWrb && innerStr) {
+        schemaDriftWarnings.push(`Envelope drift: batchexecute response missing standard WRB detail RPC header [${wrb}, ${detailRpc}], fell back to heuristic payload discovery`);
+    }
+
+    let activeInner = inner;
+    let turns: any[] | null = null;
+    const innerSchema = GEMINI_JSPB_SCHEMA.INNER;
+
+    if (isTurnsArray(activeInner?.[innerSchema.TURNS_OR_LIST_PRIMARY])) {
+        turns = activeInner[innerSchema.TURNS_OR_LIST_PRIMARY];
+    }
+    if (!turns) turns = findTurnsDeep(activeInner);
+    if (!turns && Array.isArray(top)) {
+        for (const item of top) {
+            if (!Array.isArray(item) || typeof item[2] !== "string") continue;
+            if (item[2] === innerStr) continue;
+            try {
+                const altInner = JSON.parse(item[2]);
+                const altTurns = findTurnsDeep(altInner);
+                if (altTurns) {
+                    turns = altTurns;
+                    activeInner = altInner;
+                    break;
+                }
+            } catch { /* intentional: parse chunk candidate fallback */ }
+        }
+        if (!turns) {
+            const topTurns = findTurnsDeep(top);
+            if (topTurns) turns = topTurns;
+        }
+    }
+    if (!turns) turns = [];
+
+    // 4. Detect "metadata-only" response: inner = [null, null, [[conv_id_str, title, ...]]]
+    const metaListIdx = innerSchema.METADATA_ONLY_LIST;
+    const isMetadataOnly = !turns.length
+        && activeInner[innerSchema.TURNS_OR_LIST_PRIMARY] === null
+        && activeInner[innerSchema.LIST_SECONDARY] === null
+        && Array.isArray(activeInner[metaListIdx]) && activeInner[metaListIdx].length > 0
+        && typeof activeInner[metaListIdx][0]?.[0] === "string" && activeInner[metaListIdx][0][0].startsWith("c_");
+
+    if (isMetadataOnly) {
+        schemaDriftWarnings.push(`metadata-only payload: hNvQHb returned no turns (inner[${metaListIdx}][0] looks like a list-format row); exported messages will be empty`);
+    }
+    if (isMetadataOnly && isDevMode) {
+        console.warn("[Parser] hNvQHb returned metadata-only payload (no turns). " +
+            `inner[${metaListIdx}][0] looks like a list-format row, not a turns array. ` +
+            "conv:", activeInner[metaListIdx][0]?.[0], "title:", activeInner[metaListIdx][0]?.[1],
+            "rc_count:", activeInner[metaListIdx][0]?.filter((x: any) => typeof x === "string" && x.startsWith("rc_")).length);
+    }
+    if (!turns.length && activeInner && Array.isArray(activeInner) && activeInner.length > 0 && !isMetadataOnly) {
+        schemaDriftWarnings.push(`Payload drift: inner JSON array present (length ${activeInner.length}) but unable to locate turns array`);
+    }
+
+    // P1-8: count elements the turn recognizer rejects. They are dropped from
+    // the exported messages, so the count must travel with the result instead
+    // of being silently lost. The array itself is left untouched.
+    let turnsRejected = 0;
+    for (const t of turns) {
+        if (!isTurn(t)) turnsRejected++;
+    }
+
+    return { turns, inner: activeInner, schemaDriftWarnings, turnsRejected };
+}
+
+function buildUserMessage(
+    turn: any,
+    ts: number | null,
+    shortScope: string,
+    getUniqueLocalName: (p: string) => string,
+    dedupSet: Set<string>,
+    docDedupSet: Set<string>,
+    imageSeq: { value: number }
+): Message | null {
+    const userPayload = turn?.[GEMINI_JSPB_SCHEMA.TURN.USER_PAYLOAD];
+    const uText = extractUserTextFromPayload(userPayload);
+    const uImgs = filterNewImages(extractImages(userPayload, imageSeq), dedupSet);
+    const uFiles = extractUserFiles(userPayload).filter((f: UserFileAttachment) => {
+        const key = f.id || f.sourceUrl || f.fileName;
+        if (!key || docDedupSet.has(key)) return false;
+        docDedupSet.add(key);
+        return true;
+    });
+
+    if (!uText && !uImgs.length && !uFiles.length) return null;
+
+    let userMsgId = "";
+    if (Array.isArray(turn?.[0])) {
+        userMsgId = turn[0].find((x: any) => typeof x === "string" && x.startsWith("r_"))
+            || (typeof turn[0][1] === "string" ? turn[0][1] : "")
+            || (typeof turn[0][0] === "string" ? turn[0][0] : "");
+    } else if (typeof turn?.[0] === "string") {
+        userMsgId = turn[0];
+    }
+
+    const formattedImages = uImgs.length ? uImgs.map((i: ImageAttachment) => ({
+        ...i,
+        resolvedUrl: highResVariant(i.sourceUrl),
+        localName: getUniqueLocalName(`assets/${shortScope}${sanitizeFileName(i.fileName || "img.jpg", "img.jpg")}`),
+        type: "image",
+        isImage: true
+    })) : void 0;
+
+    const formattedDocs = uFiles.length ? uFiles.map((f: UserFileAttachment) => {
+        const safeFileName = sanitizeFileName(f.fileName || "attachment", "attachment");
+        return {
+            id: f.id,
+            title: f.fileName || safeFileName,
+            createdAt: ts,
+            chipUrl: "",
+            sections: [],
+            links: [],
+            contentMarkdown: void 0,
+            url: f.sourceUrl,
+            candidates: f.thumbnailUrl ? [f.sourceUrl, f.thumbnailUrl] : [f.sourceUrl],
+            localName: getUniqueLocalName(`files/${shortScope}${safeFileName}`),
+            type: "file"
+        };
+    }) : void 0;
+
+    const attachments: any[] = [];
+    if (formattedImages) {
+        for (const im of formattedImages) {
+            attachments.push({
+                type: "image",
+                src: im.resolvedUrl || im.sourceUrl,
+                localName: im.localName || `assets/${shortScope}${im.fileName}`,
+                alt: im.fileName,
+                isBlob: false,
+                isImage: true,
+                originalUrl: im.sourceUrl
+            });
+        }
+    }
+    if (formattedDocs) {
+        for (const d of formattedDocs) {
+            attachments.push({
+                type: "file",
+                name: d.title || d.id,
+                title: d.title,
+                url: d.url,
+                localName: d.localName,
+                contentMarkdown: d.contentMarkdown
+            });
+        }
+    }
+
+    const userRequestId = extractTurnRequestId(turn);
+
+    return {
+        id: userMsgId,
+        role: "user",
+        providerRequestId: userRequestId || void 0,
+        turnId: userMsgId || void 0,
+        content: uText,
+        timestamp: ts,
+        images: formattedImages,
+        documents: formattedDocs,
+        attachments: attachments.length ? attachments : void 0,
+        attachmentCount: attachments.length,
+        messageCount: 1
+    };
+}
+
+function parseCandidateResponse(
+    cand: any,
+    turn: any,
+    ts: number | null,
+    inner: any,
+    shortScope: string,
+    getUniqueLocalName: (p: string) => string,
+    dedupSet: Set<string>,
+    docDedupSet: Set<string>,
+    imageSeq: { value: number },
+    candidateIndex = 0,
+    convId?: string
+): Message | null {
+    const candidateId = cand?.[GEMINI_JSPB_SCHEMA.CANDIDATE.ID] || "";
+    const candidateBlock = cand?.[GEMINI_JSPB_SCHEMA.CANDIDATE.BODY] || cand;
+    let responseText = extractCandidateText(cand);
+
+    if (!responseText) {
+        const textArr: string[] = [];
+        deepWalk(cand, (node: any) => {
+            if (Array.isArray(node)) {
+                if (node.length >= 1 && typeof node[0] === "string" && node[0].length > 0 && !node[0].startsWith("http") && !node[0].startsWith("rc_") && !node[0].startsWith("c_")) {
+                    if (node[0].trim().length > 2 && !textArr.includes(node[0])) {
+                        textArr.push(node[0]);
+                    }
+                }
+            }
+        });
+        responseText = textArr.join("\n\n");
+    }
+
+    const structuredContent = extractStructuredContent(turn, cand, candidateIndex);
+    const rawAnswerDocument = candidateIndex === 0 && Array.isArray(turn?.[GEMINI_JSPB_SCHEMA.TURN.MODEL_PAYLOAD])
+        ? turn[GEMINI_JSPB_SCHEMA.TURN.MODEL_PAYLOAD][GEMINI_JSPB_SCHEMA.MODEL_PAYLOAD.STRUCTURED_CONTENT ?? 12]
+        : undefined;
+    const answerBody = cand?.[GEMINI_JSPB_SCHEMA.CANDIDATE.BODY];
+    const candImages = extractResponseImages(cand, [answerBody, rawAnswerDocument, structuredContent], responseText, imageSeq);
+    const filteredImages = filterNewImages(candImages, dedupSet);
+
+    let docsMeta: DeepResearchDocMeta[] = extractDocumentsMeta(candidateBlock);
+    if (!docsMeta.length && !docDedupSet.size) {
+        docsMeta = extractDocumentsMeta(inner);
+    }
+    const docs = docsMeta.filter((docItem: DeepResearchDocMeta) => {
+        const key = docItem.id || docItem.chipUrl;
+        if (!key || docDedupSet.has(key)) return false;
+        const isRc = /^rc_/.test(docItem.id) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(docItem.id);
+        const isHttp = docItem.id.includes("immersive_entry_chip") || docItem.id.startsWith("http");
+        if (!isRc && isHttp) return false;
+        docDedupSet.add(key);
+        return true;
+    });
+
+    const docDetails: any[] = [];
+    if (docs.length) {
         try {
-            const s = JSON.stringify(turn);
-            return s.includes("rc_") || s.includes("c_d") || s.includes("r_") || Array.isArray(turn[2]);
-        } catch {
-            return false;
+            for (const metaItem of docs) {
+                const primary = findDocContentById(inner, metaItem.id);
+                const alt = metaItem.contentId ? findDocContentById(inner, metaItem.contentId) : null;
+                const parsedPrimary = parseDocSections(primary);
+                const parsedAlt = alt ? parseDocSections(alt) : { sections: [], links: [], contentMarkdown: void 0 };
+                const md = parsedPrimary.contentMarkdown || parsedAlt.contentMarkdown || findDocMarkdownByClues(inner, metaItem);
+                const cleanMd = md ? stripInternalChipMarkdown(md).trim() : "";
+                if (!cleanMd) continue;
+
+                let docTitle = metaItem.title || "";
+                if (!docTitle || RESEARCH_PROMPT_PREFIX_RE.test(docTitle) || docTitle === "Document") {
+                    const hMatch = cleanMd.match(DOC_TITLE_FALLBACK_RE);
+                    if (hMatch && hMatch[1].trim()) {
+                        docTitle = hMatch[1].trim();
+                    }
+                }
+                if (!docTitle || RESEARCH_PROMPT_PREFIX_RE.test(docTitle)) {
+                    docTitle = `深度研究报告_${shortId(metaItem.id || "doc")}`;
+                }
+
+                // P1-9: 上游链任一 heuristic 标记 → 外层写 hasFabricatedText + 日志，
+                // 不得静默把拼凑结果转成正常可信结果
+                const heuristicChain = metaItem.source === "heuristic-flat"
+                    || (parsedPrimary as any)?.contentMatch === "substring"
+                    || (parsedAlt as any)?.contentMatch === "substring";
+                if (heuristicChain && typeof console !== "undefined" && console.warn) {
+                    console.warn(`[GemExporter:parseDetail.ts] heuristic doc content for "${docTitle}" (id=${metaItem.id}); marked hasFabricatedText`);
+                }
+                docDetails.push({
+                    id: metaItem.id,
+                    title: docTitle,
+                    createdAt: metaItem.createdAt,
+                    chipUrl: "",
+                    sections: [...parsedPrimary.sections, ...parsedAlt.sections],
+                    links: [...parsedPrimary.links, ...parsedAlt.links],
+                    contentMarkdown: cleanMd,
+                    url: "",
+                    localName: getUniqueLocalName(`files/${shortScope}${sanitizeFileName(docTitle, "doc").slice(0, 60)}.md`),
+                    type: "file",
+                    ...(heuristicChain ? { hasFabricatedText: true } : {})
+                });
+            }
+        } catch (er) {
+            console.warn("doc parse err", er);
         }
     }
 
-    function isTurnsArray(arr: unknown): boolean {
-        if (!Array.isArray(arr) || arr.length === 0) return false;
-        let cnt = 0;
-        for (const t of arr) if (isTurn(t)) cnt++;
-        return cnt >= 1 && cnt / arr.length >= 0.5;
+    const thoughts = extractThoughts(candidateBlock);
+    const citations = extractCitations(candidateBlock);
+    const groundingCitationMarkers = extractGroundingCitationMarkers(cand || candidateBlock);
+
+    if (responseText) {
+        responseText = responseText.replace(/^rc_[a-z0-9_]{10,}\s*/i, "");
+        responseText = stripInternalChipMarkdown(responseText);
     }
 
-    function findTurnsDeep(root: unknown, depth: number = 0): unknown[] | null {
-        if (!root || depth > 6) return null;
-        if (isTurnsArray(root)) return root as unknown[];
-        if (Array.isArray(root)) {
-            for (const el of root) {
-                const found = findTurnsDeep(el, depth + 1);
-                if (found) return found;
-            }
-        } else if (root && typeof root === "object") {
-            for (const k in (root as Record<string, unknown>)) {
-                const found = findTurnsDeep((root as Record<string, unknown>)[k], depth + 1);
-                if (found) return found;
+    const providerRequestId = extractTurnRequestId(turn);
+    let genOrdinal = 0;
+    const formattedImages = filteredImages.length ? filteredImages.map((img: any) => {
+        const isGen = !!img.isGenerated;
+        const ordinal = isGen ? genOrdinal++ : undefined;
+        return {
+            ...img,
+            resolvedUrl: highResVariant(img.sourceUrl),
+            localName: getUniqueLocalName(`assets/${shortScope}${sanitizeFileName(img.fileName || "img.jpg", "img.jpg")}`),
+            type: "image",
+            providerRequestId: isGen ? providerRequestId : undefined,
+            imageOrdinal: ordinal,
+            ...(isGen && providerRequestId ? {
+                generation: {
+                    chatId: String(convId || '').replace(/^c_/, ''),
+                    providerRequestId,
+                    imageOrdinal: ordinal,
+                    generationOrdinal: 0,
+                }
+            } : {})
+        };
+    }) : void 0;
+
+    const attachments: any[] = [];
+    if (formattedImages) {
+        for (const img of formattedImages) {
+            attachments.push({
+                type: "image",
+                src: img.resolvedUrl || img.sourceUrl,
+                localName: img.localName || `assets/${shortScope}${img.fileName}`,
+                alt: img.fileName,
+                isBlob: false,
+                isImage: true,
+                originalUrl: img.sourceUrl,
+                token: img.token,
+                providerRequestId: img.providerRequestId,
+                imageOrdinal: img.imageOrdinal,
+                ...(img.isGenerated ? { isGenerated: true } : {}),
+                ...(img.generation ? { generation: img.generation } : {})
+            });
+        }
+    }
+    if (docDetails.length) {
+        for (const d of docDetails) {
+            if (d.contentMarkdown || (d.url && !isInternalChipUrl(d.url))) {
+                attachments.push({
+                    type: "file",
+                    name: d.title || d.id,
+                    title: d.title,
+                    url: d.url,
+                    localName: d.localName,
+                    contentMarkdown: d.contentMarkdown
+                });
             }
         }
-        return null;
     }
 
-    function parseDetail(text: string, targetConvId?: string, overrides: any = {}): DetailParseResult {
-        const ext = Object.assign({}, getExtractors(), overrides.extractors);
-        const att = Object.assign({}, getAttachments(), overrides.attachments);
+    if (!responseText && !thoughts && !attachments.length && !docDetails.length && !structuredContent) return null;
 
-        const schema = ext.GEMINI_JSPB_SCHEMA || getSchema();
-        const robustFirstPayload = ext.robustFirstPayload || ((t: string) => { try { return JSON.parse(t); } catch (_) { return null; } });
-        const detectTurnSchemaDrift = ext.detectTurnSchemaDrift || (() => ({ isDrifted: false, warnings: [] }));
-        const extractConversationId = ext.extractConversationId || ((inner: any) => inner?.[0] || "c_unknown");
-        const extractTurnTimestamp = ext.extractTurnTimestamp || (() => null);
-        const extractModelCandidates = ext.extractModelCandidates || (() => []);
-        const extractCandidateText = ext.extractCandidateText || (() => "");
-        const extractThoughts = ext.extractThoughts || (() => null);
-        const extractCitations = ext.extractCitations || (() => []);
-        const extractMetaTitleFromTop = ext.extractMetaTitleFromTop || (() => null);
-        const extractConversationTitle = ext.extractConversationTitle || (() => ({ title: "未命名对话", source: "default" }));
-        const cleanTitle = ext.cleanTitle || ((t: any) => String(t || "").trim());
-        const isRealTitle = ext.isRealTitle || ((t: any) => !!(t && String(t).trim().length >= 2));
-        const deepWalk = ext.deepWalk || ((root: any, visitor: any) => {
-            function walk(node: any) {
-                if (!node || typeof node !== "object") return;
-                visitor(node);
-                if (Array.isArray(node)) for (let el of node) walk(el);
-                else for (let k in node) if (Object.prototype.hasOwnProperty.call(node, k)) walk(node[k]);
-            }
-            walk(root);
+    const fallbackTurnId = Array.isArray(turn?.[0])
+        ? (turn[0].find((x: any) => typeof x === "string" && (x.startsWith("rc_") || x.startsWith("r_"))) || turn[0][1] || turn[0][0])
+        : turn?.[0];
+
+    return {
+        id: candidateId || fallbackTurnId || "",
+        role: "model",
+        content: responseText || "",
+        providerRequestId: providerRequestId || void 0,
+        turnId: fallbackTurnId || void 0,
+        thoughts: thoughts || void 0,
+        citations: citations.length ? citations : void 0,
+        timestamp: ts,
+        images: formattedImages,
+        documents: docDetails.length ? docDetails : void 0,
+        attachments: attachments.length ? attachments : void 0,
+        attachmentCount: attachments.length,
+        messageCount: 1,
+        ...(structuredContent ? { structuredContent } : {}),
+        ...(groundingCitationMarkers.length ? { groundingCitationMarkers } : {})
+    };
+}
+
+function parseDetail(text: string, targetConvId?: string, _overrides: any = {}): DetailParseResult {
+    try {
+        const top = robustFirstPayload(text);
+        const utils = getUtils();
+        const isDevMode = (utils && typeof utils.isDevMode === "function") ? utils.isDevMode() : false;
+
+        const protocol = getProtocol();
+        const wrb = protocol.WRB || "wrb.fr";
+        const detailRpc = protocol.RPCS ? protocol.RPCS.DETAIL : "hNvQHb";
+
+        const { inner: extractedInner, innerStr, isStandardWrb } = extractInnerPayload(top, {
+            wrb,
+            rpcId: detailRpc,
+            heuristicFilter: s => /c_[a-zA-Z0-9_-]{8,64}/.test(s) || s.includes("rc_") || s.startsWith("[[")
         });
 
-        const filterNewImages = att.filterNewImages || ((imgs: any) => imgs);
-        const extractImages = att.extractImages || (() => []);
-        const extractUserFiles = att.extractUserFiles || (() => []);
-        const extractDocumentsMeta = att.extractDocumentsMeta || (() => []);
-        const findDocContentById = att.findDocContentById || (() => null);
-        const parseDocSections = att.parseDocSections || (() => ({ sections: [], links: [], contentMarkdown: void 0 }));
-        const findDocMarkdownByClues = att.findDocMarkdownByClues || (() => "");
-        const highResVariant = att.highResVariant || ((u: any) => u);
-        const isInternalChipUrl = att.isInternalChipUrl || (() => false);
+        if (!extractedInner) throw new Error("invalid");
 
-        try {
-            let top = robustFirstPayload(text);
-            const utils = getUtils();
-            const isDevMode = (utils && typeof utils.isDevMode === "function") ? utils.isDevMode() : false;
-            const shouldVerbose = !!isDevMode;
+        const { turns, inner, schemaDriftWarnings, turnsRejected } = extractTurnsFromInner(
+            extractedInner,
+            top,
+            innerStr,
+            isStandardWrb,
+            wrb,
+            detailRpc,
+            isDevMode
+        );
 
-            const protocol = getProtocol();
-            const wrb = protocol.WRB || "wrb.fr";
-            const detailRpc = protocol.RPCS ? protocol.RPCS.DETAIL : "hNvQHb";
+        let convId = extractConversationId(inner, turns);
+        if (convId === "c_unknown" && targetConvId) convId = targetConvId;
+        const shortScope = getShortScope(convId);
 
-            if (shouldVerbose) {
-                try {
-                    const summary = Array.isArray(top) ? top.map((it, i) => {
-                        const rpc = Array.isArray(it) ? it[1] : String(it).slice(0, 20);
-                        const innerLen = Array.isArray(it) && typeof it[2] === "string" ? it[2].length : (typeof it === "string" ? it.length : 0);
-                        const preview = Array.isArray(it) && typeof it[2] === "string" ? it[2].slice(0, 300).replace(/\n/g, " ") : "";
-                        return { idx: i, rpc, innerLen, preview };
-                    }) : { topType: typeof top, len: text?.length };
-                    if (!top || !Array.isArray(top)) console.log("[Parser Verbose] top candidates", summary);
-                    if (!top || (Array.isArray(top) && !top.some(it => Array.isArray(it) && it[1] === detailRpc && typeof it[2] === "string" && it[2].includes("rc_")))) {
-                        console.warn("[Parser Verbose] no hNvQHb with rc_ found, top summary", summary);
-                    }
-                } catch (e) { if (typeof console !== "undefined" && console.debug) console.debug("[GemExporter:parseDetail.ts]", e); }
+        const allMsgs: Message[] = [];
+        const dedupSet = new Set<string>();
+        const docDedupSet = new Set<string>();
+        const usedLocalNames = new Set<string>();
+        const getUniqueLocalName = (preferredPath: string): string => {
+            if (!usedLocalNames.has(preferredPath)) {
+                usedLocalNames.add(preferredPath);
+                return preferredPath;
+            }
+            const dotIdx = preferredPath.lastIndexOf('.');
+            const base = dotIdx !== -1 ? preferredPath.slice(0, dotIdx) : preferredPath;
+            const ext = dotIdx !== -1 ? preferredPath.slice(dotIdx) : '';
+            let idx = 2;
+            while (usedLocalNames.has(`${base}_${idx}${ext}`)) {
+                idx++;
+            }
+            const unique = `${base}_${idx}${ext}`;
+            usedLocalNames.add(unique);
+            return unique;
+        };
+
+        const imageSeq = { value: 1 };
+        const rev = [...turns].reverse();
+
+        for (const turn of rev) {
+            const drift: TurnDriftReport = detectTurnSchemaDrift(turn, convId);
+            if (drift.isDrifted) {
+                schemaDriftWarnings.push(...drift.warnings);
+            }
+            const ts = extractTurnTimestamp(turn) ?? null;
+
+            const userMsg = buildUserMessage(turn, ts, shortScope, getUniqueLocalName, dedupSet, docDedupSet, imageSeq);
+            if (userMsg) {
+                allMsgs.push(userMsg);
             }
 
-            let schemaDriftWarnings: string[] = [];
-            let innerStr: string | null = null;
-            if (Array.isArray(top)) {
-                let foundStandardWrb = false;
-                for (let item of top) {
-                    if (Array.isArray(item) && item[0] === wrb && item[1] === detailRpc && typeof item[2] === "string") {
-                        innerStr = item[2];
-                        foundStandardWrb = true;
-                        break;
-                    }
-                }
-                if (!innerStr) {
-                    for (let item of top) {
-                        if (Array.isArray(item) && typeof item[2] === "string" && (item[2].includes("c_") || item[2].includes("rc_") || item[2].startsWith("[["))) {
-                            innerStr = item[2];
-                            break;
-                        }
-                    }
-                    if (top.length > 0 && !foundStandardWrb && innerStr) {
-                        schemaDriftWarnings.push(`Envelope drift: batchexecute response missing standard WRB detail RPC header [${wrb}, ${detailRpc}], fell back to heuristic payload discovery`);
-                    }
-                }
-            }
-
-            let inner: any = null;
-            if (innerStr) {
-                try {
-                    inner = JSON.parse(innerStr);
-                } catch { /* intentional: parse chunk candidate fallback */ }
-            }
-            if (!inner && Array.isArray(top)) {
-                for (let item of top) {
-                    if (typeof item === "string" && item.startsWith("[[")) {
-                        try {
-                            inner = JSON.parse(item);
-                        } catch { /* intentional: parse chunk candidate fallback */ }
-                    }
-                    if (inner) break;
-                }
-            }
-            if (!inner) throw new Error("invalid");
-
-            let turns: any[] | null = null;
-            // 优先按原协议 inner[0] 快速路径
-            if (isTurnsArray(inner?.[0])) turns = inner[0];
-            // 全量深搜 inner
-            if (!turns) turns = findTurnsDeep(inner);
-            // 再搜 top 的其他条目（hNvQHb 为 list 形态时，turns 在 MaZiqc 的 inner 中）
-            if (!turns && Array.isArray(top)) {
-                for (const item of top) {
-                    if (!Array.isArray(item) || typeof item[2] !== "string") continue;
-                    if (item[2] === innerStr) continue;
-                    try {
-                        const altInner = JSON.parse(item[2]);
-                        const altTurns = findTurnsDeep(altInner);
-                        if (altTurns) { turns = altTurns; inner = altInner; break; }
-                    } catch { /* intentional: parse chunk candidate fallback */ }
-                }
-                if (!turns) {
-                    const topTurns = findTurnsDeep(top);
-                    if (topTurns) turns = topTurns;
-                }
-            }
-            if (!turns) turns = [];
-
-            // Detect "metadata-only" response: inner = [null, null, [[conv_id_str, title, ...]]]
-            const isMetadataOnly = !turns.length
-                && inner[0] === null && inner[1] === null
-                && Array.isArray(inner[2]) && inner[2].length > 0
-                && typeof inner[2][0]?.[0] === "string" && inner[2][0][0].startsWith("c_");
-            if (isMetadataOnly && isDevMode) {
-                console.warn("[Parser] hNvQHb returned metadata-only payload (no turns). " +
-                    "inner[2][0] looks like a list-format row, not a turns array. " +
-                    "conv:", inner[2][0]?.[0], "title:", inner[2][0]?.[1],
-                    "rc_count:", inner[2][0]?.filter((x: any) => typeof x === "string" && x.startsWith("rc_")).length);
-            }
-            if (!turns.length && inner && Array.isArray(inner) && inner.length > 0 && !isMetadataOnly) {
-                schemaDriftWarnings.push(`Payload drift: inner JSON array present (length ${inner.length}) but unable to locate turns array`);
-            }
-
-            let convId = extractConversationId(inner, turns);
-            if (convId === "c_unknown" && targetConvId) convId = targetConvId;
-            let shortScope = convId ? String(convId).replace(/^c_/, "").slice(-6) + "_" : "";
-            let msgs: any[] = [];
-            let dedupSet = new Set<string>();
-            let docDedupSet = new Set<string>();
-            let usedLocalNames = new Set<string>();
-            const getUniqueLocalName = (preferredPath: string): string => {
-                if (!usedLocalNames.has(preferredPath)) {
-                    usedLocalNames.add(preferredPath);
-                    return preferredPath;
-                }
-                const dotIdx = preferredPath.lastIndexOf('.');
-                const base = dotIdx !== -1 ? preferredPath.slice(0, dotIdx) : preferredPath;
-                const ext = dotIdx !== -1 ? preferredPath.slice(dotIdx) : '';
-                let idx = 2;
-                while (usedLocalNames.has(`${base}_${idx}${ext}`)) {
-                    idx++;
-                }
-                const unique = `${base}_${idx}${ext}`;
-                usedLocalNames.add(unique);
-                return unique;
-            };
-            let imageSeq = { value: 1 };
-            let rev = [...turns].reverse();
-
-            for (let turn of rev) {
-                let drift: TurnDriftReport = detectTurnSchemaDrift(turn, convId);
-                if (drift.isDrifted) {
-                    schemaDriftWarnings.push(...drift.warnings);
-                }
-                let ts = extractTurnTimestamp(turn) || Date.now();
-                let uText = turn?.[schema.TURN.USER_PAYLOAD]?.[0]?.[0] || "";
-                let uImgs = filterNewImages(extractImages(turn?.[schema.TURN.USER_PAYLOAD], imageSeq), dedupSet);
-                let uFiles = extractUserFiles(turn?.[schema.TURN.USER_PAYLOAD]).filter((f: UserFileAttachment) => {
-                    let key = f.id || f.sourceUrl || f.fileName;
-                    if (!key || docDedupSet.has(key)) return false;
-                    docDedupSet.add(key);
-                    return true;
-                });
-                if (uText || uImgs.length || uFiles.length) {
-                    msgs.push({
-                        id: turn?.[0]?.[0] || "",
-                        role: "user",
-                        content: uText,
-                        timestamp: ts,
-                        images: uImgs.length ? uImgs.map((i: ImageAttachment) => ({
-                            ...i,
-                            resolvedUrl: highResVariant(i.sourceUrl),
-                            localName: getUniqueLocalName(`assets/${shortScope}${(i.fileName || "img.jpg").replace(/[\\/:*?"<>|]/g, "_")}`),
-                            type: "image",
-                            isImage: true
-                        })) : void 0,
-                        documents: uFiles.length ? uFiles.map((f: UserFileAttachment) => ({
-                            id: f.id,
-                            title: f.fileName,
-                            createdAt: ts,
-                            chipUrl: "",
-                            sections: [],
-                            links: [],
-                            contentMarkdown: void 0,
-                            url: f.sourceUrl,
-                            localName: getUniqueLocalName(`files/${shortScope}${(f.fileName || "doc.md").replace(/[\\/:*?"<>|]/g, "_")}`),
-                            type: "file"
-                        })) : void 0
-                    });
-                }
-
-                let candList = extractModelCandidates(turn);
-                if (Array.isArray(candList)) {
-                    for (let cand of candList) {
-                        let candidateId = cand?.[schema.CANDIDATE.ID] || "";
-                        let candidateBlock = cand?.[schema.CANDIDATE.BODY] || cand;
-                        let responseText = extractCandidateText(cand);
-                        if (!responseText) {
-                            let textArr: string[] = [];
-                            deepWalk(cand, (node: any) => {
-                                if (Array.isArray(node)) {
-                                    if (node.length >= 1 && typeof node[0] === "string" && node[0].length > 0 && !node[0].startsWith("http") && !node[0].startsWith("rc_") && !node[0].startsWith("c_")) {
-                                        if (node[0].trim().length > 2 && !textArr.includes(node[0])) {
-                                            textArr.push(node[0]);
-                                        }
-                                    }
-                                }
-                            });
-                            responseText = textArr.join("\n\n");
-                        }
-                        let candImages = extractImages(cand, imageSeq);
-                        let filteredImages = filterNewImages(candImages, dedupSet);
-                        let docsMeta: DeepResearchDocMeta[] = extractDocumentsMeta(candidateBlock);
-                        if (!docsMeta.length && !docDedupSet.size) {
-                            docsMeta = extractDocumentsMeta(inner);
-                        }
-                        let docs = docsMeta.filter((docItem: DeepResearchDocMeta) => {
-                            let key = docItem.id || docItem.chipUrl;
-                            if (!key || docDedupSet.has(key)) return false;
-                            let isRc = /^rc_/.test(docItem.id) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(docItem.id);
-                            let isHttp = docItem.id.includes("immersive_entry_chip") || docItem.id.startsWith("http");
-                            if (!isRc && isHttp) return false;
-                            docDedupSet.add(key);
-                            return true;
-                        });
-                        let docDetails: any[] = [];
-                        if (docs.length) {
-                            try {
-                                docDetails = docs.map((metaItem: DeepResearchDocMeta) => {
-                                    let primary = findDocContentById(inner, metaItem.id);
-                                    let alt = metaItem.contentId ? findDocContentById(inner, metaItem.contentId) : null;
-                                    let parsedPrimary = parseDocSections(primary);
-                                    let parsedAlt = alt ? parseDocSections(alt) : {
-                                        sections: [],
-                                        links: [],
-                                        contentMarkdown: void 0
-                                    };
-                                    let md = parsedPrimary.contentMarkdown || parsedAlt.contentMarkdown || findDocMarkdownByClues(inner, metaItem);
-
-                                    let docTitle = metaItem.title || "";
-                                    if (!docTitle || RESEARCH_PROMPT_PREFIX_RE.test(docTitle) || docTitle === "Document") {
-                                        if (md) {
-                                            let hMatch = md.match(/^#\\s+(.+)$/m);
-                                            if (hMatch && hMatch[1].trim()) {
-                                                docTitle = hMatch[1].trim();
-                                            }
-                                        }
-                                    }
-                                    if (!docTitle || RESEARCH_PROMPT_PREFIX_RE.test(docTitle)) {
-                                        docTitle = `深度研究报告_${String(metaItem.id || "doc").replace(/[^a-zA-Z0-9_-]/g, "").slice(-6)}`;
-                                    }
-
-                                    if (!md) return null;
-
-                                    return {
-                                        id: metaItem.id,
-                                        title: docTitle,
-                                        createdAt: metaItem.createdAt,
-                                        chipUrl: "",
-                                        sections: [...parsedPrimary.sections, ...parsedAlt.sections],
-                                        links: [...parsedPrimary.links, ...parsedAlt.links],
-                                        contentMarkdown: md,
-                                        url: "",
-                                        localName: getUniqueLocalName(`files/${shortScope}${docTitle.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)}.md`),
-                                        type: "file"
-                                    };
-                                }).filter(Boolean);
-                            } catch (er) {
-                                console.warn("doc parse err", er);
-                            }
-                        }
-                        let thoughts = extractThoughts(candidateBlock);
-                        let citations = extractCitations(candidateBlock);
-                        if (responseText) {
-                            responseText = responseText.replace(/^rc_[a-z0-9_]{10,}\\s*/i, "");
-                            responseText = responseText.replace(/(?:^|\n)\\s*(?:\[)?https?:\/\/googleusercontent\.com\/(?:immersive_entry_chip|deep_research_confirmation_content|map_content|map_location_reference|grounding_content|web_search_content|youtube_content|flights_content|hotels_content|workspace_content)(?:\/[^\s\n\]]*)?(?:\])?\\s*(?=\n|$)/gi, "\n");
-                            responseText = responseText.replace(/\[([^\]]+)\]\(https?:\/\/googleusercontent\.com\/(?:immersive_entry_chip|deep_research_confirmation_content|map_content|map_location_reference|grounding_content|web_search_content|youtube_content|flights_content|hotels_content|workspace_content)[^\)]*\)/gi, "$1");
-                            responseText = responseText.replace(/https?:\/\/googleusercontent\.com\/(?:immersive_entry_chip|deep_research_confirmation_content|map_content|map_location_reference|grounding_content|web_search_content|youtube_content|flights_content|hotels_content|workspace_content)(?:\/[^\s\n\)]*)?/gi, "").trim();
-                            if (filteredImages.length > 0) {
-                                responseText = responseText.replace(/(?:^|\n)\\s*(?:\[)?https?:\/\/googleusercontent\.com\/(?:image_generation_content|imagegenerationcontent|generated_image)(?:\/[^\s\n\]]*)?(?:\])?\\s*(?=\n|$)/gi, "\n");
-                                responseText = responseText.replace(/\[([^\]]+)\]\(https?:\/\/googleusercontent\.com\/(?:image_generation_content|imagegenerationcontent|generated_image)[^\)]*\)/gi, "$1");
-                                responseText = responseText.replace(/https?:\/\/googleusercontent\.com\/(?:image_generation_content|imagegenerationcontent|generated_image)(?:\/[^\s\n\)]*)?/gi, "").trim();
-                            }
-                        }
-                        if (responseText || thoughts || filteredImages.length || docDetails.length) {
-                            msgs.push({
-                                id: candidateId || turn?.[0]?.[0] || "",
-                                role: "model",
-                                content: responseText || "",
-                                thoughts: thoughts || void 0,
-                                citations: citations.length ? citations : void 0,
-                                timestamp: ts,
-                                images: filteredImages.length ? filteredImages.map((img: any) => ({
-                                    ...img,
-                                    resolvedUrl: highResVariant(img.sourceUrl),
-                                    localName: getUniqueLocalName(`assets/${shortScope}${(img.fileName || "img.jpg").replace(/[\\/:*?"<>|]/g, "_")}`),
-                                    type: "image"
-                                })) : void 0,
-                                documents: docDetails.length ? docDetails : void 0
-                            });
-                        }
+            const candList = extractModelCandidates(turn);
+            if (Array.isArray(candList)) {
+                for (let ci = 0; ci < candList.length; ci++) {
+                    const cand = candList[ci];
+                    const modelMsg = parseCandidateResponse(
+                        cand,
+                        turn,
+                        ts,
+                        inner,
+                        shortScope,
+                        getUniqueLocalName,
+                        dedupSet,
+                        docDedupSet,
+                        imageSeq,
+                        ci,
+                        convId
+                    );
+                    if (modelMsg) {
+                        allMsgs.push(modelMsg);
                     }
                 }
             }
-
-            if (!convId) convId = extractConversationId(inner, turns);
-            if (convId === "c_unknown" && targetConvId) convId = targetConvId;
-            let metaTitle = extractMetaTitleFromTop(top, convId || targetConvId);
-            let titleObj = extractConversationTitle(inner, turns);
-            let nextToken: string | null = null;
-            if (typeof inner[1] === "string" && inner[1].startsWith("tC")) nextToken = inner[1];
-            let url = `https://gemini.google.com/app/${String(convId).replace(/^c_/, "")}`;
-            let times = turns.map(t => extractTurnTimestamp(t)).filter((x: any): x is number => Number.isFinite(x));
-            let minTs = times.length ? Math.min(...times) : null;
-            let maxTs = times.length ? Math.max(...times) : null;
-
-            let allMsgs: Message[] = msgs.map(m => {
-                let atts: any[] = [];
-                if (m.images) {
-                    for (let im of m.images) {
-                        if (im.resolvedUrl || im.sourceUrl) {
-                            atts.push({
-                                type: "image",
-                                src: im.resolvedUrl || im.sourceUrl,
-                                localName: im.localName || `assets/${shortScope}${im.fileName}`,
-                                alt: im.fileName,
-                                isBlob: false,
-                                isImage: true,
-                                originalUrl: im.sourceUrl
-                            });
-                        }
-                    }
-                }
-                if (m.documents) {
-                    for (let d of m.documents) {
-                        if (d.contentMarkdown || (d.url && !isInternalChipUrl(d.url))) {
-                            atts.push({
-                                type: "file",
-                                name: d.title || d.id,
-                                title: d.title,
-                                url: d.url || d.sourceUrl,
-                                localName: d.localName,
-                                contentMarkdown: d.contentMarkdown
-                            });
-                        }
-                    }
-                }
-                return {
-                    ...m,
-                    attachments: atts.length ? atts : void 0,
-                    attachmentCount: atts.length,
-                    messageCount: 1
-                };
-            });
-
-            let cleanT = metaTitle || cleanTitle(titleObj.title || convId);
-            let isReal = isRealTitle(cleanT, convId);
-            let finalSource = metaTitle ? "rpc" : (isReal ? titleObj.source : "default");
-            if (!isReal && !metaTitle) {
-                let firstUser = allMsgs.find(m => m.role === "user" && m.content && m.content.trim());
-                if (firstUser) {
-                    let candidate = cleanTitle(firstUser.content.trim().slice(0, 60).replace(/\n+/g, " "));
-                    if (isRealTitle(candidate, convId)) {
-                        cleanT = candidate;
-                        finalSource = "sniff";
-                    }
-                }
-            }
-            const titlesMap: TitleSources = {};
-            if (finalSource !== "default" && cleanT) {
-                titlesMap[finalSource as keyof TitleSources] = cleanT;
-            }
-            if (metaTitle) {
-                titlesMap.rpc = metaTitle;
-            }
-
-            let _debug: any = null;
-            if (!allMsgs.length) {
-                try {
-                    _debug = { turnsLen: turns?.length || 0, innerKeys: inner ? Object.keys(inner) : null, innerPreview: JSON.stringify(inner).slice(0, 1500), topPreview: top ? JSON.stringify(top).slice(0, 800) : null };
-                } catch (e) { if (typeof console !== "undefined" && console.debug) console.debug("[GemExporter:parseDetail.ts]", e); }
-            }
-            if (schemaDriftWarnings.length) {
-                if (!_debug) _debug = {};
-                _debug.schemaDriftWarnings = schemaDriftWarnings;
-            }
-
-            return {
-                id: convId,
-                title: cleanT,
-                titleSource: finalSource,
-                titles: titlesMap,
-                messages: allMsgs,
-                createdAt: minTs,
-                chatTime: maxTs || minTs,
-                timestamp: maxTs || minTs,
-                updatedAt: maxTs,
-                url,
-                nextPageToken: nextToken,
-                attachmentCount: allMsgs.reduce((a, m) => a + (m.attachmentCount || 0), 0),
-                schemaDrift: schemaDriftWarnings.length ? schemaDriftWarnings : void 0,
-                _raw: inner,
-                _debug
-            };
-        } catch (e: any) {
-            throw new Error("detail parse fail: " + e.message);
         }
+
+        const metaTitle = Array.isArray(top) ? extractMetaTitleFromTop(top, convId || targetConvId) : null;
+        const titleObj = extractConversationTitle(inner, turns);
+        const nextToken = extractNextPageToken(inner, GEMINI_JSPB_SCHEMA.INNER.NEXT_TOKEN_CANDIDATES);
+        const url = `https://gemini.google.com/app/${String(convId).replace(/^c_/, "")}`;
+        const times = turns.map(t => extractTurnTimestamp(t)).filter((x: any): x is number => Number.isFinite(x));
+        const minTs = times.length ? Math.min(...times) : null;
+        const maxTs = times.length ? Math.max(...times) : null;
+
+        let cleanT = metaTitle || cleanTitle(titleObj.title || convId);
+        const isReal = isRealTitle(cleanT, convId);
+        let finalSource = metaTitle ? "rpc" : (isReal ? titleObj.source : "default");
+        if (!isReal && !metaTitle) {
+            const sniffed = resolveDetailTitle(allMsgs, convId);
+            if (sniffed) {
+                cleanT = sniffed.title;
+                finalSource = sniffed.source;
+            }
+        }
+        const titlesMap: TitleSources = {};
+        if (finalSource !== "default" && cleanT) {
+            titlesMap[finalSource as keyof TitleSources] = cleanT;
+        }
+
+        let _debug: any = null;
+        if (!allMsgs.length) {
+            try {
+                _debug = {
+                    turnsLen: turns?.length || 0,
+                    innerKeys: inner ? Object.keys(inner) : null,
+                    innerPreview: JSON.stringify(inner).slice(0, 1500),
+                    topPreview: top ? JSON.stringify(top).slice(0, 800) : null
+                };
+            } catch (e) {
+                if (typeof console !== "undefined" && console.debug) console.debug("[GemExporter:parseDetail.ts]", e);
+            }
+        }
+        if (schemaDriftWarnings.length) {
+            if (!_debug) _debug = {};
+            _debug.schemaDriftWarnings = schemaDriftWarnings;
+        }
+
+        return {
+            id: convId,
+            title: cleanT,
+            titleSource: finalSource,
+            titles: titlesMap,
+            messages: allMsgs,
+            createdAt: minTs,
+            chatTime: maxTs || minTs,
+            timestamp: maxTs || minTs,
+            updatedAt: maxTs,
+            url,
+            nextPageToken: nextToken,
+            attachmentCount: allMsgs.reduce((a, m) => a + (m.attachmentCount || 0), 0),
+            schemaDrift: schemaDriftWarnings.length ? schemaDriftWarnings : void 0,
+            turnsRejected: turnsRejected > 0 ? turnsRejected : void 0,
+            _raw: inner,
+            _debug
+        };
+    } catch (e: any) {
+        throw new Error("detail parse fail: " + e.message);
     }
+}
 
 export {
     isTurn,
     isTurnsArray,
     findTurnsDeep,
-    parseDetail
+    parseDetail,
+    extractTurnRequestId,
+    DOC_TITLE_FALLBACK_RE
 };
 
 export const GeminiParserParseDetail: GeminiParserParseDetailModule = {
     isTurn,
     isTurnsArray,
     findTurnsDeep,
-    parseDetail
+    parseDetail,
+    extractTurnRequestId,
+    DOC_TITLE_FALLBACK_RE
 };
 
-if (typeof globalThis !== 'undefined') {
-    (globalThis as any).GeminiParserParseDetail = GeminiParserParseDetail;
-    (globalThis as any).findTurnsDeep = findTurnsDeep;
-    (globalThis as any).parseDetail = parseDetail;
-}
 if (typeof module === 'object' && module.exports) module.exports = GeminiParserParseDetail;
 
 export default GeminiParserParseDetail;

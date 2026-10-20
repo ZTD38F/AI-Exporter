@@ -61,7 +61,22 @@ fs.readFileSync = function(pathArg, options) {
                 const source = origReadFileSync.call(fs, tsPath, 'utf8');
                 // If it's protocol.js, hookCredentials.js, or bootstrap.js (which tests execute inside vm.runInContext), transpile it
                 if (pathArg.endsWith('protocol.js') || pathArg.endsWith('hookCredentials.js') || pathArg.endsWith('bootstrap.js')) {
-                    const isScript = pathArg.endsWith('bootstrap.js') || pathArg.endsWith('protocol.js') || pathArg.endsWith('hookCredentials.js');
+                    if (pathArg.endsWith('bootstrap.js')) {
+                        const bResult = esbuild.buildSync({
+                            entryPoints: [tsPath],
+                            bundle: true,
+                            format: 'iife',
+                            target: 'chrome120',
+                            write: false,
+                            logLevel: 'silent',
+                            logOverride: { 'commonjs-variable-in-esm': 'silent' },
+                        });
+                        const code = bResult.outputFiles[0].text;
+                        const encoding = typeof options === 'string' ? options : (options && options.encoding);
+                        if (encoding) return code;
+                        return Buffer.from(code, 'utf8');
+                    }
+                    const isScript = pathArg.endsWith('protocol.js') || pathArg.endsWith('hookCredentials.js');
                     const cleanSource = isScript
                         ? source
                             .replace(/import\s+(?:type\s+)?(?:\{[^}]*\}|[\w*\s,]+)\s*from\s*['"][^'"]+['"];?\s*/g, '')

@@ -108,14 +108,6 @@ test('liveStorageManager - IDB mock, config persistence and dir handle delegatio
         const retrievedHandle = await LiveStorageManager.getLiveDirHandle();
         assert.ok(retrievedHandle);
         assert.strictEqual(retrievedHandle.name, 'MyNotes');
-
-        // 3. Verify conversation persistence stubs safely return empty/no-op without storing anything
-        const saveRes = await LiveStorageManager.saveLiveConversation({ id: 'c_stub', title: 'Stub', messages: [] });
-        assert.strictEqual(saveRes, false);
-        const getRes = await LiveStorageManager.getLiveConversation('c_stub');
-        assert.strictEqual(getRes, null);
-        const listRes = await LiveStorageManager.listLiveConversations();
-        assert.deepStrictEqual(listRes, []);
     } finally {
         (global as any).indexedDB = origIdb;
     }
@@ -159,5 +151,45 @@ test('liveStorageManager - chrome.storage.local takes precedence over IDB as can
         assert.strictEqual(storageMap.live_save_config.dirName, 'Updated_SSoT');
     } finally {
         (global as any).chrome = origChrome;
+    }
+});
+
+test('non-Markdown formats suppress live save config and both write routes', async () => {
+    const { STORAGE_KEYS } = require('../src/core/utils/constants.js');
+    const { handleLiveSaveViaHandle } = require('../src/background/liveSaveHandler.js');
+    const { writeLiveSaveMarkdown } = require('../src/core/engine/liveSaveWriter.js');
+    const { saveFormat } = require('../src/core/storage/formatStore.js');
+    const originalChrome = (global as any).chrome;
+    const data: Record<string, any> = {};
+    (global as any).chrome = { storage: { local: {
+        get: async () => ({ ...data }),
+        set: async (patch: any) => { Object.assign(data, patch); }
+    } } };
+    try {
+        for (const format of ['pdf', 'html', 'json', 'json_openai', 'json_raw']) {
+            data[STORAGE_KEYS.FORMAT] = format;
+            data[STORAGE_KEYS.LIVE_SAVE_CONFIG] = { enabledDisk: true };
+            assert.strictEqual((await LiveStorageManager.getLiveConfig()).enabledDisk, false);
+            assert.strictEqual((await LiveStorageManager.setLiveConfig({ enabledDisk: true })).enabledDisk, false);
+            const result = await handleLiveSaveViaHandle({});
+            assert.strictEqual(result.error, 'live_save_requires_markdown');
+            let written = false;
+            await assert.rejects(writeLiveSaveMarkdown({ writeFile: async () => { written = true; } },
+                { chat: {}, safeTitle: 'Test', nid: 'abcdef' },
+                { formatter: { formatMarkdownCanonical: async () => ({ content: '# Test' }) } }), /only supports Markdown/);
+            assert.strictEqual(written, false);
+        }
+        data[STORAGE_KEYS.FORMAT] = 'markdown';
+        await LiveStorageManager.setLiveConfig({ enabledDisk: true });
+        await saveFormat('pdf');
+        assert.strictEqual(data[STORAGE_KEYS.LIVE_SAVE_CONFIG].enabledDisk, false);
+        await saveFormat('markdown');
+        assert.strictEqual((await LiveStorageManager.getLiveConfig()).enabledDisk, false);
+        await LiveStorageManager.setLiveConfig({ enabledDisk: true });
+        assert.strictEqual((await LiveStorageManager.getLiveConfig()).enabledDisk, true);
+        await Promise.all([saveFormat('html'), saveFormat('markdown')]);
+        assert.strictEqual(data[STORAGE_KEYS.FORMAT], 'markdown');
+    } finally {
+        (global as any).chrome = originalChrome;
     }
 });

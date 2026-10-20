@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AI Exporter - Export & Archive AI Chats",
+    "message": "AI Exporter - Save All Your Chats",
     "description": "The name of the extension."
   },
   "extDesc": {
-    "message": "Privacy-first local exporter for AI conversations. Gemini export is supported now; multi-provider support is being added without sending chats to external servers.",
+    "message": "100% Free & open-source • 100% local, no tracking • One-click export all chats • PDF, HTML & Markdown • Hands-off background export",
     "description": "The description of the extension."
   }
 }

@@ -2,7 +2,7 @@ export {};
 const test = require('node:test');
 const assert = require('node:assert');
 const { GeminiResponseParserClass, isRealTitle } = require('../src/core/api/geminiParser.js');
-const { isRealTitle: utilsIsRealTitle, cleanTitle } = require('../src/core/utils/utils.js');
+const { cleanTitle } = require('../src/core/utils/utils.js');
 
 test('gemini_parser - isRealTitle', () => {
     assert.strictEqual(isRealTitle(''), false);
@@ -262,7 +262,6 @@ test('gemini_parser - sub-modules and unified deepWalk verification', () => {
     const extractors = require('../src/core/api/parser/extractors.js');
     const attachments = require('../src/core/api/parser/attachments.js');
     const parseListMod = require('../src/core/api/parser/parseList.js');
-    const parseDetailMod = require('../src/core/api/parser/parseDetail.js');
 
     // 1. deepWalk unified tree walker
     const visited: string[] = [];
@@ -272,8 +271,7 @@ test('gemini_parser - sub-modules and unified deepWalk verification', () => {
             visited.push(Object.keys(node).join(','));
         }
     });
-    assert.ok(visited.includes('a,d'));
-    assert.ok(visited.includes('b,c'));
+    assert.deepStrictEqual(visited, ['a,d', 'b,c']);
 
     // Early termination in deepWalk
     let earlyCount = 0;

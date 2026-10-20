@@ -1,4 +1,5 @@
 // Canonical Direct Write prompt semantics preserved across Workbench recovery changes.
+import { isDirectWritePromptSuppressed, setDirectWritePromptSuppressed, setZipPreference } from '../../core/storage/userPreferences.js';
 
 export function installCanonicalDirectWritePrompt(Dialogs: any, DirHandle: any): void {
     if (!Dialogs || Dialogs.__canonicalDirectWriteInstalled || typeof Dialogs.showDirectWritePrompt !== 'function') return;
@@ -17,10 +18,9 @@ export function installCanonicalDirectWritePrompt(Dialogs: any, DirHandle: any):
             return;
         }
 
-        const suppressKey = 'gemini_suppress_direct_write_prompt';
         try {
-            const stored = await chrome.storage.local.get([suppressKey]);
-            if (stored?.[suppressKey]) {
+            const suppressed = await isDirectWritePromptSuppressed();
+            if (suppressed) {
                 await onZip();
                 return;
             }
@@ -30,7 +30,7 @@ export function installCanonicalDirectWritePrompt(Dialogs: any, DirHandle: any):
 
         const suppressOnce = async (): Promise<void> => {
             try {
-                await chrome.storage.local.set({ [suppressKey]: true });
+                await setDirectWritePromptSuppressed(true);
             } catch (error) {
                 console.warn('[GemExporter:storage] Storage operation failed:', error);
             }
@@ -41,7 +41,7 @@ export function installCanonicalDirectWritePrompt(Dialogs: any, DirHandle: any):
             async () => {
                 await suppressOnce();
                 try {
-                    await chrome.storage.local.set({ gemini_export_zip: false });
+                    await setZipPreference(false);
                 } catch (error) {
                     console.warn('[GemExporter:storage] Storage operation failed:', error);
                 }
