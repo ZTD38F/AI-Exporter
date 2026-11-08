@@ -146,17 +146,15 @@ test('manual Tour opens and closes without obsolete v1 tour-state persistence', 
     await expect(page.locator('.tour-popover')).toHaveCount(0);
 });
 
-test('approved 2.1 upgrade highlights shows once without resurrecting retired v1 feature tips', async ({ context, extensionId }) => {
+test('Gemini-only upgrade shows the compatible 2.0 notice rather than unavailable platforms', async ({ context, extensionId }) => {
     const page = await workbench(context, extensionId);
     await page.evaluate(async () => Reflect.get(globalThis, 'uiFixture').updateSettings({ lastSeenFeatureVersion: '1.4.0' }));
     await page.reload(); await exposeUIStorage(page);
     await expect(page.locator('body')).toHaveAttribute('data-busy', 'false');
-    await expect(page.locator('.tour-popover h2')).toHaveText('Multi-platform support (Beta)');
+    await expect(page.locator('.tour-popover h2')).toHaveText('Gemini Exporter 2.0 is Here!');
     await expect.poll(async () => (await page.evaluate(async () =>
-        Reflect.get(globalThis, 'uiFixture').getSettings())).lastSeenFeatureVersion).toBe('2.1.0');
-    await page.locator('#tourNextBtn').click();
-    await page.locator('#tourNextBtn').click();
-    await page.getByRole('button', { name: 'Start using', exact: true }).click();
+        Reflect.get(globalThis, 'uiFixture').getSettings())).lastSeenFeatureVersion).toBe('2.0.0');
+    await page.locator('#tourUpgradeDismissBtn').click();
     await page.reload(); await exposeUIStorage(page);
     await expect(page.locator('.tour-popover')).toHaveCount(0);
     await page.locator('#btnTourGuide').click();

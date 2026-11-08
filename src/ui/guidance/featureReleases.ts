@@ -1,4 +1,5 @@
 import { isVersionGreater } from '../../shared/utils/pathUtils.js';
+import { ACTIVE_SOURCE_PLATFORMS } from '../../shared/platformHosts.js';
 type FeatureReleaseConfig =
     | { version: string; stepId: string }
     | { version: string; kind: 'upgrade' | 'platforms' };
@@ -10,5 +11,8 @@ export const FEATURE_RELEASES: FeatureReleaseConfig[] = [
 ];
 export function getLatestEligibleFeature(lastSeen: string, current: string): FeatureReleaseConfig | null {
     const baseline = /^\d+\.\d+\.\d+(?:\.\d+)?$/.test(lastSeen) ? lastSeen : current;
-    return FEATURE_RELEASES.find(feature => !isVersionGreater(feature.version, current) && isVersionGreater(feature.version, baseline)) ?? null;
+    // A Gemini-only build must never advertise unavailable ChatGPT/Claude/Grok support.
+    return FEATURE_RELEASES.find(feature => (ACTIVE_SOURCE_PLATFORMS.length > 1
+        || !('kind' in feature) || feature.kind !== 'platforms')
+        && !isVersionGreater(feature.version, current) && isVersionGreater(feature.version, baseline)) ?? null;
 }

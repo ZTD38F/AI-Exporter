@@ -75,6 +75,8 @@ test('format Spotlight dismissal restores focus without initiating PDF/HTML expo
 for (const language of ['en', 'zh']) test(`2.1 highlights authorize sites and resume at the account switcher (${language})`, async () => {
     page = await browser.newPage();
     await mount(page, 'options', { manifestVersion: '2.1.0', geminiAccess: false, settings: { language, lastSeenFeatureVersion: '2.0.0' } });
+    // Dormant future-provider tour is testable explicitly, never auto-shown to Gemini-only users.
+    await page.evaluate(() => Reflect.get(window, 'testUi').tour.showPlatformHighlights());
     const heading = language === 'en' ? 'Multi-platform support (Beta)' : '多平台支持（测试版）';
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     assert.deepEqual((await read(page, 'patches')).filter((patch: { lastSeenFeatureVersion?: string }) =>
@@ -94,9 +96,9 @@ for (const language of ['en', 'zh']) test(`2.1 highlights authorize sites and re
     assert.equal(await page.locator('.tour-popover').count(), 0);
 });
 test('2.1 highlights are eligible for upgrades and not replayed for seen or fresh installs', () => {
-    for (const previous of ['1.8.1', '2.0.0', '2.0.1'])
-        assert.deepEqual(getLatestEligibleFeature(previous, '2.1.0'), { version: '2.1.0', kind: 'platforms' });
-    for (const previous of ['2.1.0', 'invalid']) assert.equal(getLatestEligibleFeature(previous, '2.1.0'), null);
+    assert.deepEqual(getLatestEligibleFeature('1.8.1', '2.1.0'), { version: '2.0.0', kind: 'upgrade' });
+    for (const previous of ['2.0.0', '2.0.1', '2.1.0', 'invalid'])
+        assert.equal(getLatestEligibleFeature(previous, '2.1.0'), null);
 });
 test('installation tutorial starts with authorization and continues through account switching', async () => {
     page = await browser.newPage();
@@ -114,6 +116,7 @@ test('installation tutorial starts with authorization and continues through acco
 test('the account lesson highlights the source area even before any account is connected', async () => {
     page = await browser.newPage({ viewport: { width: 640, height: 480 } });
     await mount(page, 'options', { accounts: [], manifestVersion: '2.1.0', settings: { lastSeenFeatureVersion: '2.0.0' } });
+    await page.evaluate(() => Reflect.get(window, 'testUi').tour.showPlatformHighlights());
     await page.getByRole('heading', { name: 'Multi-platform support (Beta)', exact: true }).waitFor();
     await page.locator('#tourNextBtn').click();
     await page.locator('#btnPlatformPermissions').click();
