@@ -172,3 +172,18 @@ test('an invalidation starting during a read still replaces it when the stale re
     assert.equal(await next, true);
     assert.equal(state.indexes[0].title, 'latest');
 });
+
+test('Gemini-only Workbench ignores dormant provider account choices without deleting their records', async () => {
+    const oldAccount = { id: '10000000-0000-4000-8000-000000000004', providerId: 'chatgpt', providerAccountId: 'future' };
+    const source = [oldAccount, accounts[0]];
+    const readIds: string[] = [];
+    const state = new ConversationViewState({
+        listAccounts: async () => source,
+        listIndexes: async id => { readIds.push(id); return id === A ? [row('gemini')] : []; },
+        listExportRecords: async () => ({}),
+    });
+    await state.refresh();
+    assert.deepEqual(state.accounts.map(account => account.id), [A]);
+    assert.deepEqual(readIds, [A]);
+    assert.deepEqual(source, [oldAccount, accounts[0]], 'stored future-provider accounts remain intact');
+});

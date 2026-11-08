@@ -1,4 +1,5 @@
 import { listAccounts } from '../../../runtime/api/accountRegistry.js';
+import { ACTIVE_SOURCE_PLATFORMS } from '../../../shared/platformHosts.js';
 import { listIndexes, listExportRecords } from '../../../l3a/storageService.js';
 import type { Account } from '../../../l2/accountRegistry.js';
 import { compareConversationIndexes } from '../../../l2/conversationIndex.js';
@@ -28,7 +29,9 @@ export class ConversationViewState {
         const isolated = this.activeRefreshes++ === 0;
         try {
             const revision = ++this.revision;
-            const accounts = await this.reads.listAccounts();
+            // Keep dormant providers in persistent Storage, but never expose or activate them in Gemini-only Workbench.
+            const accounts = (await this.reads.listAccounts()).filter(account =>
+                ACTIVE_SOURCE_PLATFORMS.some(platform => platform === account.providerId));
             if (revision !== this.revision) return false;
             const id = accounts.some(a => a.id === this.accountId) ? this.accountId : accounts[0]?.id ?? null;
             const accountsChanged = JSON.stringify(accounts) !== JSON.stringify(this.accounts);
