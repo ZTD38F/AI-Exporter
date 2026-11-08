@@ -210,7 +210,8 @@ test('Tour startup intent is consumed once from URL with no durable completion p
     assert.deepEqual(await read(page, 'patches'), []);
 });
 test('Takeout prompt marks Settings when shown, including before dismissal', async () => {
-    await open(); await page.evaluate(() => { Reflect.get(window, 'harness').scanCount = 151; });
+    await open(); await page.evaluate(() => { const h=Reflect.get(window, 'harness'); h.scanCount=151;
+        h.scanResult={status:'partial_limit',reason:'provider_limit',pagesFetched:4,conversationsFetched:151}; });
     await page.locator('#btnSyncAll').click(); await page.locator('.tour-popover').waitFor();
     await page.waitForFunction(() => Reflect.get(window, 'harness').patches.some((patch: { takeoutPromptCompleted?: boolean }) => patch.takeoutPromptCompleted));
     assert.deepEqual(await read(page, 'patches'), [{ takeoutPromptCompleted: true }]);

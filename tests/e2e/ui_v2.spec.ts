@@ -327,7 +327,7 @@ test('UI v2: account switch clears selection and only selected current keys expo
     await page.evaluate(()=>{(window as any).harness.finishExport();}); await expect(page.locator('#accountIdSelect')).toBeEnabled();
     expect((await read(page,'exports'))[0].keys).toEqual([{accountId:B,conversationId:'b'}]);
 });
-test('UI v2: Takeout prompts at 151 committed records regardless of Scan reason', async ({ page }) => {
+test('UI v2: Takeout prompt requires a verified Gemini provider limit, never only 151 records', async ({ page }) => {
     await mount(page,'options',{indexes:[],holdScan:true}); await expect(page.locator('#btnSyncAll')).toBeEnabled();
     await page.locator('#btnSyncAll').click(); await expect(page.locator('#scanStatus')).toHaveText('Committed 2 pages, 150 source entries');
     expect(await read(page,'scans')).toEqual([{accountId:A}]);
@@ -336,11 +336,13 @@ test('UI v2: Takeout prompts at 151 committed records regardless of Scan reason'
     await expect(page.locator('.tour-popover')).toHaveCount(0);
     await page.evaluate(()=>{Object.assign((window as any).harness,{holdScan:false,scanCount:151});});
     await page.locator('#btnSyncAll').click();
+    await expect(page.locator('.tour-popover')).toHaveCount(0);
+    await page.evaluate(()=>{(window as any).harness.scanResult={status:'partial_limit',reason:'provider_limit',pagesFetched:4,conversationsFetched:151};});
+    await page.locator('#btnSyncAll').click();
     await expect(page.locator('.tour-popover')).toContainText('This scan fetched 151 conversations');
     await expect.poll(async () => read(page, 'patches')).toContainEqual({takeoutPromptCompleted:true});
     await page.getByRole('button',{name:'Got it, don’t show again'}).click();
     await expect(page.locator('.tour-popover')).toHaveCount(0);
-    expect(await read(page,'patches')).toContainEqual({takeoutPromptCompleted:true});
     await page.locator('#btnSyncAll').click();
     await expect(page.locator('.tour-popover')).toHaveCount(0);
 });
