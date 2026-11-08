@@ -399,7 +399,7 @@ export async function initWorkbench(): Promise<void> {
                 result.status === 'error' ? `Scan failed (${result.reason ?? 'unknown'}) · ${result.pagesFetched} / ${result.conversationsFetched}` : undefined);
             settings = await readSettings();
             if (state.accounts.find(a => a.id === state.accountId)?.providerId === 'gemini'
-                && (result.status === 'partial_limit' || result.conversationsFetched > 150) && !settings.takeoutPromptCompleted) {
+                && (result.status === 'partial_limit' && result.reason === 'provider_limit') && !settings.takeoutPromptCompleted) {
                 TourGuide.showTakeoutPrompt(result.conversationsFetched,
                     () => {},
                     () => { fileInput.click(); },
