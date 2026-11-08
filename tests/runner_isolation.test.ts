@@ -1,3 +1,4 @@
+import { fixtureAccount, fixtureKey } from './helpers/domainFixture.js';
 /**
  * tests/runner_isolation.test.ts
  *
@@ -47,12 +48,12 @@ test('Runner Isolation Matrix [1/8]: Baseline Success / Candidate Success', asyn
         outputPath: ISOLATION_REPORT_PATH,
         corpusCategory: 'isolation' as any,
         compileTypst: false,
-        baselineParser: async (text: string) => ({
-            bundle: { conversation: { messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
+        baselineParser: async (text: string) => ({ account: fixtureAccount(),
+            conversation: { index: { key: fixtureKey(String('isolation'), 'gemini'),   titleSource: "derived",  title: '',  }, detail: { key: fixtureKey(String('isolation'), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [{ role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
             diagnostics: [],
         }),
-        candidateParser: async (text: string) => ({
-            bundle: { conversation: { messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
+        candidateParser: async (text: string) => ({ account: fixtureAccount(),
+            conversation: { index: { key: fixtureKey(String('isolation'), 'gemini'),   titleSource: "derived",  title: '',  }, detail: { key: fixtureKey(String('isolation'), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [{ role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
             diagnostics: [],
         }),
         baselineConverter: (latex: string) => ({ typst: latex }),
@@ -99,12 +100,12 @@ test('Runner Isolation Matrix [3/8]: Baseline Success / Candidate Fail (Fallback
         outputPath: ISOLATION_REPORT_PATH,
         corpusCategory: 'isolation' as any,
         compileTypst: false,
-        baselineParser: async (text: string) => ({
-            bundle: { conversation: { messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
+        baselineParser: async (text: string) => ({ account: fixtureAccount(),
+            conversation: { index: { key: fixtureKey(String('isolation'), 'gemini'),   titleSource: "derived",  title: '',  }, detail: { key: fixtureKey(String('isolation'), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [{ role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
             diagnostics: [],
         }),
-        candidateParser: async () => ({
-            bundle: { conversation: { messages: [{ blocks: [{ type: 'unknown', sourceType: 'unsupported', text: 'Unsupported content' }] }] } },
+        candidateParser: async () => ({ account: fixtureAccount(),
+            conversation: { index: { key: fixtureKey(String('isolation'), 'gemini'),   titleSource: "derived",  title: '',  }, detail: { key: fixtureKey(String('isolation'), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [{ role: 'user', content: [{ type: 'unknown', sourceType: 'unsupported', text: 'Unsupported content' }] }] } },
             diagnostics: [{ code: 'CANDIDATE_FALLBACK', message: 'Candidate fallback' }],
         }),
     });
@@ -131,8 +132,8 @@ test('Runner Isolation Matrix [4/8]: Baseline Throw (Crash) / Candidate Success'
         baselineParser: async () => {
             throw new Error('Fatal crash in baseline parser');
         },
-        candidateParser: async (text: string) => ({
-            bundle: { conversation: { messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
+        candidateParser: async (text: string) => ({ account: fixtureAccount(),
+            conversation: { index: { key: fixtureKey(String('isolation'), 'gemini'),   titleSource: "derived",  title: '',  }, detail: { key: fixtureKey(String('isolation'), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [{ role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
             diagnostics: [],
         }),
     });
@@ -157,8 +158,8 @@ test('Runner Isolation Matrix [5/8]: Baseline Success / Candidate Throw (Crash)'
         outputPath: ISOLATION_REPORT_PATH,
         corpusCategory: 'isolation' as any,
         compileTypst: false,
-        baselineParser: async (text: string) => ({
-            bundle: { conversation: { messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
+        baselineParser: async (text: string) => ({ account: fixtureAccount(),
+            conversation: { index: { key: fixtureKey(String('isolation'), 'gemini'),   titleSource: "derived",  title: '',  }, detail: { key: fixtureKey(String('isolation'), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [{ role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text }] }] }] } },
             diagnostics: [],
         }),
         candidateParser: async () => {

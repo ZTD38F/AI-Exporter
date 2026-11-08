@@ -1,172 +1,144 @@
 /**
- * Phase A (P1-2) 回归测试：partial 记录可重试。
- *
- * 契约：
- *   1. 坏 base64 附件 -> handleLiveSaveViaHandle 返回 ok:false + failedAssets，
- *      导出记录标 status:'partial' + hasFailedAssets:true（不再静默标成功）。
- *   2. checkIsUpdated 对 partial 记录永远返回 true —— 即使会话时间戳未变化，
- *      下次增量也不得跳过，保证失败附件可重试。
- *
- * 运行: node -r ./tests/ts_register.js --test tests/partial_retry.test.ts
+ * Real v2 Live Save / Export partial-retry behavior:
+ * L2 Detail -> L3a Index/Detail -> L1 resource -> Application -> L3b/L4
+ * Folder Writer -> committed minimal ExportRecord. External disk and HTTP only
+ * are simulated. The v1 asset Base64, 'hasFailedAssets' and StorageService
+ * APIs were intentionally removed.
  */
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { runLiveSave } from '../src/runtime/background/liveSaveHandler.js';
+import { runExport } from '../src/application/export/runExport.js';
+import { getExportRecord, listExportRecords } from '../src/l3a/storageService.js';
+import { updateSettings, getSettings } from '../src/application/settings/index.js';
+import { liveKey, seedLiveDetail, v2LiveSaveHost } from './helpers/v2LiveSaveHost.js';
 
-function mockChromeStorage() {
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = {
-        storage: {
-            local: {
-                get: async () => ({ live_save_config: {} }),
-                set: async () => {}
-            }
-        }
-    };
-    return () => { (global as any).chrome = origChrome; };
+const png = (id: string, url: string) => ({ id, kind: 'image' as const,
+    name: id + '.png', sourceUri: url, mediaType: 'image/png' });
+const request = (id: string) => ({ keys: [liveKey(id)], format: 'markdown' as const,
+    delivery: 'folderWriter' as const, includeAssets: true, skipUnchanged: true });
+function markdown(files: Map<string, string | Uint8Array>): string {
+    const result = [...files.entries()].find(([name]) => name.endsWith('.md') && !name.startsWith('files/'));
+    assert.ok(result, 'the real folder writer must have saved Markdown');
+    assert.equal(typeof result[1], 'string');
+    return result[1] as string;
 }
 
-function mockDirHandle(writtenFiles: Record<string, any>) {
-    const mockAssetsDir = {
-        name: 'assets',
-        getFileHandle: async (name: string) => ({
-            createWritable: async () => ({
-                write: async (content: any) => { writtenFiles[`assets/${name}`] = content; },
-                close: async () => {}
-            })
-        })
-    };
-    const mockBatchDir = {
-        name: 'gemini_export',
-        getFileHandle: async (name: string) => ({
-            createWritable: async () => ({
-                write: async (content: any) => { writtenFiles[name] = content; },
-                close: async () => {}
-            })
-        }),
-        getDirectoryHandle: async () => mockAssetsDir
-    };
-    return {
-        name: 'UserSelectedFolder',
-        queryPermission: async () => 'granted',
-        getDirectoryHandle: async () => mockBatchDir
-    };
-}
+test('Live Save: unavailable bytes write readable partial Markdown, remain retryable at the same source version, then recover', async t => {
+    const host = v2LiveSaveHost(t), id = 'retry-image', url = 'https://example.test/retry.png';
+    await seedLiveDetail(id, [png('image', url)], { title: 'Attachment retry' });
+    host.source(url, null);
 
-test('坏 base64 附件 -> ok:false + failedAssets + partial 记录', async () => {
-    const { handleLiveSaveViaHandle } = require('../src/background/liveSaveHandler.js');
-    const idbStore = require('../src/core/storage/idbHandleStore.js');
-    const storageMod = require('../src/core/storage/storageService.js');
+    const first = await runLiveSave(liveKey(id));
+    assert.ok(first);
+    assert.equal(first.exported, 1);
+    assert.equal(first.partial, 1);
+    assert.deepEqual(first.failed, []);
+    assert.match(markdown(host.files), /Answer for retry-image/);
+    assert.match(markdown(host.files), /\[Open source\]\(https:\/\/example\.test\/retry\.png\)/);
+    assert.doesNotMatch(markdown(host.files), /!\[[^\]]*\]\(https:/);
+    assert.equal([...host.files.keys()].filter(name => name.startsWith('assets/')).length, 0);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'partial');
+    assert.deepEqual(Object.keys(await listExportRecords(liveKey(id).accountId)), [id]);
 
-    const writtenFiles: Record<string, any> = {};
-    const origGetHandle = idbStore.getStoredDirHandle;
-    idbStore.getStoredDirHandle = async () => mockDirHandle(writtenFiles);
-    const origSave = storageMod.StorageService.saveExportRecord;
-    let savedRecord: any = null;
-    storageMod.StorageService.saveExportRecord = async (slot: string, nid: string, rec: any) => {
-        savedRecord = { slot, nid, rec };
-    };
-    const restoreChrome = mockChromeStorage();
+    // SkipUnchanged applies only to a matching 'ok' record, never a partial.
+    const stillFailed = await runExport(request(id));
+    assert.equal(stillFailed.skipped, 0);
+    assert.equal(stillFailed.exported, 1);
+    assert.equal(stillFailed.partial, 1);
 
-    try {
-        const res = await handleLiveSaveViaHandle({
-            chat: {
-                title: 'Bad Asset Chat',
-                messages: [{ role: 'user', content: 'hi' }]
-            },
-            safeTitle: 'Bad Asset Chat',
-            nid: 'c_abcdef1234567890',
-            assets: [
-                // 纯非法 base64 字符：Node 的 Buffer.from 会解码出空 buffer，
-                // 走 "no valid binary data" 失败路径（浏览器 atob 则直接抛错，
-                // 同样进 failedAssets）
-                { fileName: 'bad_img.png', subDir: 'assets', base64: '!!!' }
-            ]
-        }, 'u0');
+    const bytes = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10, 9, 8, 7);
+    host.source(url, bytes);
+    const recovered = await runLiveSave(liveKey(id));
+    assert.ok(recovered);
+    assert.equal(recovered.exported, 1);
+    assert.equal(recovered.partial, 0);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'ok');
 
-        assert.strictEqual(res.ok, false, '坏 base64 附件应使 ok=false');
-        assert.ok(Array.isArray(res.failedAssets) && res.failedAssets.length === 1,
-            'failedAssets 应累积该附件');
-        assert.strictEqual(res.failedAssets[0].file, 'bad_img.png');
-        assert.ok(res.targetFile && res.targetFile in writtenFiles, '主 md 应照常落盘');
-        assert.ok(savedRecord, '应写导出记录');
-        assert.strictEqual(savedRecord.rec.status, 'partial');
-        assert.strictEqual(savedRecord.rec.hasFailedAssets, true);
-    } finally {
-        idbStore.getStoredDirHandle = origGetHandle;
-        storageMod.StorageService.saveExportRecord = origSave;
-        restoreChrome();
-    }
+    const asset = [...host.files.entries()].find(([name]) => name.startsWith('assets/') && name.endsWith('.png'));
+    assert.ok(asset);
+    assert.deepEqual(asset[1], bytes);
+    assert.ok(markdown(host.files).includes(asset[0]), 'recovered Markdown uses its actual saved asset path');
+    const unchanged = await runExport(request(id));
+    assert.equal(unchanged.skipped, 1);
+    assert.equal(unchanged.exported, 0);
+    assert.equal(Object.keys(await listExportRecords(liveKey(id).accountId)).length, 1);
 });
 
-test('全部附件成功 -> ok:true 且记录不带 partial', async () => {
-    const { handleLiveSaveViaHandle } = require('../src/background/liveSaveHandler.js');
-    const idbStore = require('../src/core/storage/idbHandleStore.js');
-    const storageMod = require('../src/core/storage/storageService.js');
+test('Live Save: local attachments survive source failure, while deleted attachments remain retryable', async t => {
+    const host = v2LiveSaveHost(t), id = 'source-regressed', url = 'https://example.test/dynamic.png';
+    await seedLiveDetail(id, [png('fresh-image', url)]);
+    host.source(url, Uint8Array.of(12, 34, 56));
+    const first = await runLiveSave(liveKey(id));
+    assert.equal(first?.exported, 1);
+    assert.equal(first?.partial, 0);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'ok');
 
-    const writtenFiles: Record<string, any> = {};
-    const origGetHandle = idbStore.getStoredDirHandle;
-    idbStore.getStoredDirHandle = async () => mockDirHandle(writtenFiles);
-    const origSave = storageMod.StorageService.saveExportRecord;
-    let savedRecord: any = null;
-    storageMod.StorageService.saveExportRecord = async (slot: string, nid: string, rec: any) => {
-        savedRecord = { slot, nid, rec };
-    };
-    const restoreChrome = mockChromeStorage();
-
-    try {
-        const res = await handleLiveSaveViaHandle({
-            chat: {
-                title: 'Good Chat',
-                messages: [{ role: 'user', content: 'hi' }]
-            },
-            safeTitle: 'Good Chat',
-            nid: 'c_abcdef1234567890',
-            assets: [
-                { fileName: 'good_img.png', subDir: 'assets', base64: Buffer.from('img-bytes').toString('base64') }
-            ]
-        }, 'u0');
-
-        assert.strictEqual(res.ok, true, '附件全成功时 ok 应为 true');
-        assert.ok(savedRecord, '应写导出记录');
-        assert.strictEqual(savedRecord.rec.status, 'ok', '成功记录应清除旧 partial 状态');
-        assert.strictEqual(savedRecord.rec.hasFailedAssets, false);
-
-        const partial = await handleLiveSaveViaHandle({
-            chat: { title: 'Good Chat', messages: [{ role: 'user', content: 'hi' }] },
-            safeTitle: 'Good Chat', nid: 'c_abcdef1234567890', assets: [],
-            failedAssets: [{ file: 'missing.png', error: 'image download returned no bytes' }]
-        }, 'u0');
-        assert.strictEqual(partial.ok, false, '后台必须保留内容脚本下载失败');
-        assert.strictEqual(savedRecord.rec.status, 'partial');
-        assert.strictEqual(savedRecord.rec.hasFailedAssets, true);
-
-    } finally {
-        idbStore.getStoredDirHandle = origGetHandle;
-        storageMod.StorageService.saveExportRecord = origSave;
-        restoreChrome();
-    }
+    host.source(url, null);
+    const second = await runLiveSave(liveKey(id));
+    assert.equal(second?.exported, 1, 'Live Save is triggered by accepted Detail changes, not by skipUnchanged');
+    assert.equal(second?.partial, 0);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'ok');
+    assert.match(markdown(host.files), /assets\//, 'existing local bytes remain usable when their source expires');
+    assert.deepEqual(host.requests, [url], 'the existing file bypasses reacquisition');
+    for (const path of host.files.keys()) if (path.startsWith('assets/')) host.files.delete(path);
+    const missing = await runLiveSave(liveKey(id));
+    assert.equal(missing?.partial, 1);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'partial');
+    assert.doesNotMatch(markdown(host.files), /assets\//, 'a missing local file with an unavailable source cannot retain a dangling link');
+    const pending = await runExport(request(id));
+    assert.equal(pending.skipped, 0);
+    assert.equal(pending.partial, 1);
 });
 
-test('checkIsUpdated: partial 记录即使时间戳未变化也判 true', async () => {
-    const { checkIsUpdated } = require('../src/core/utils/titleUtils.js');
-    // 会话时间戳 1000，记录 exportedAt=5000：无 partial 守卫时会因"导出新鲜锁"判 false（跳过）
-    const c = { id: 'chat-p', timestamp: 1000, updatedAt: 1000 };
-    const partialRec = {
-        exportedAt: new Date(5000).toISOString(),
-        status: 'partial',
-        hasFailedAssets: true
-    };
-    assert.strictEqual(checkIsUpdated(c, partialRec), true,
-        'partial 记录必须判 true，否则失败附件永远得不到重试');
+test('Live Save: an L4 folder-sidecar write error preserves a written Markdown file but never commits a successful record', async t => {
+    const host = v2LiveSaveHost(t), id = 'disk-fails', url = 'https://example.test/disk.png';
+    await seedLiveDetail(id, [png('image', url)]);
+    host.source(url, Uint8Array.of(1, 2, 3, 4));
+    host.failWrite('assets/');
+    const failed = await runLiveSave(liveKey(id));
+    assert.ok(failed);
+    assert.equal(failed.exported, 0);
+    assert.deepEqual(failed.failed, [liveKey(id)]);
+    assert.equal(await getExportRecord(liveKey(id)), null);
+    assert.ok([...host.files.keys()].some(name => name.endsWith('.md')));
+    assert.ok(![...host.files.keys()].some(name => name.startsWith('assets/')));
+    assert.ok(host.events.some(event => event.startsWith('abort:assets/')));
 
-    // 仅 hasFailedAssets（无 status）同样判 true
-    assert.strictEqual(
-        checkIsUpdated(c, { exportedAt: new Date(5000).toISOString(), hasFailedAssets: true }),
-        true, 'hasFailedAssets 单独也应判 true');
+    host.failWrite(null);
+    const retried = await runLiveSave(liveKey(id));
+    assert.equal(retried?.exported, 1);
+    assert.equal(retried?.partial, 0);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'ok');
+    assert.ok([...host.files.keys()].some(name => name.startsWith('assets/')));
+});
 
-    // 对照：干净记录在同样时间戳下判 false（增量可跳过）
-    assert.strictEqual(
-        checkIsUpdated(c, { exportedAt: new Date(5000).toISOString(), status: 'success' }),
-        false, '干净记录在时间戳未变化时应判 false');
+test('Live Save: a missing or revoked directory prompts reauthorization without asking permission in the Worker', async t => {
+    const host = v2LiveSaveHost(t), id = 'permission';
+    await seedLiveDetail(id);
+    host.directory(null);
+    await assert.rejects(runLiveSave(liveKey(id)), /Choose a Live Save directory in Options/);
+    host.directory(host.root);
+    host.permission('prompt');
+    await assert.rejects(runLiveSave(liveKey(id)), /Reauthorize the Live Save directory in Options/);
+    assert.equal(host.requestCount(), 0);
+    assert.equal(host.queryCount(), 1);
+    assert.equal(host.files.size, 0);
+    assert.equal(await getExportRecord(liveKey(id)), null);
+    assert.equal((await getSettings()).enabledDisk, true, 'intention is retained for explicit reauthorization');
+});
+
+test('Live Save: disabled intention or non-Markdown format does not touch the directory or create records', async t => {
+    const host = v2LiveSaveHost(t), id = 'paused-live';
+    await seedLiveDetail(id);
+    await updateSettings({ enabledDisk: false });
+    assert.equal(await runLiveSave(liveKey(id)), null);
+    await updateSettings({ enabledDisk: true, defaultFormat: 'pdf' });
+    assert.equal(await runLiveSave(liveKey(id)), null);
+    await updateSettings({ defaultFormat: 'html' });
+    assert.equal(await runLiveSave(liveKey(id)), null);
+    assert.equal(host.queryCount(), 0);
+    assert.equal(host.requestCount(), 0);
+    assert.equal(host.files.size, 0);
+    assert.equal(await getExportRecord(liveKey(id)), null);
 });

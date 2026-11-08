@@ -106,18 +106,17 @@ class SerialActionExecutor:
         driver: Any,
         prompt_text: str,
         max_wait: int = 300,
-        is_image: bool = False,
         cooldown_seconds: float = 0.0
     ) -> PipelineResult:
         """
         基于 ChatPlatformDriver 的平台策略驱动单飞流水线执行。
-        1. 执行 driver.prepare_turn_environment(is_image) 确保环境就绪
+        1. 执行 driver.prepare_turn_environment() 确保环境就绪
         2. 由 driver.build_turn_pipeline(...) 构建定制原子动作序列
         3. run_pipeline 绝对串行单飞执行
         """
         try:
             if hasattr(driver, "prepare_turn_environment"):
-                driver.prepare_turn_environment(is_image=is_image)
+                driver.prepare_turn_environment()
         except Exception as ex:
             return PipelineResult(
                 success=False,
@@ -130,7 +129,6 @@ class SerialActionExecutor:
         actions = driver.build_turn_pipeline(
             prompt_text=prompt_text,
             max_wait=max_wait,
-            is_image=is_image,
             cooldown_seconds=cooldown_seconds
         )
         return self.run_pipeline(ctx, cdp, actions)

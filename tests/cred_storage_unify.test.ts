@@ -2,46 +2,49 @@ export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-// cred_storage_unify.test.ts — regression test for the getCredStorage drift.
-//
-// Three copies of getCredStorage existed:
-//   - src/content/bootstrap.ts            (tracked sessionAccessFailed + "not allowed" downgrade)
-//   - src/core/api/client/credentialManager.ts  (naive copy, no downgrade)
-//   - src/core/storage/storageService.ts        (naive copy, no downgrade)
-//
-// After unification all surfaces share one module-level flag in
-// src/core/api/client/credStorage.ts, so a "not allowed" session failure
-// observed on ANY path downgrades ALL paths to chrome.storage.local.
+// Shared credential storage owns the session-to-local downgrade. Reload only
+// the three modules under test, then restore their original require.cache and
+// Chrome globals so the suite cannot change module singletons for other tests.
+const modulePaths = [
+    '../src/l1/client/gemini/api/credStorage.js',
+    '../src/l1/client/gemini/api/credentialManager.js',
+    '../src/l1/client/gemini/bootstrap.js',
+];
 
-function bustRequireCache(p: string) {
+async function withCredentialModules<T>(
+    chromeMock: unknown,
+    check: (modules: { credStorage: any; credManager: any; bootstrap: any }) => Promise<T> | T,
+): Promise<T> {
+    const g = globalThis as any;
+    const chromeDescriptor = Object.getOwnPropertyDescriptor(g, 'chrome');
+    const ids = modulePaths.map((p) => require.resolve(p));
+    const previous = ids.map((id: string) => require.cache[id]);
+    if (chromeMock === undefined) delete g.chrome;
+    else Object.defineProperty(g, 'chrome', { value: chromeMock, writable: true, configurable: true });
     try {
-        delete require.cache[require.resolve(p)];
-    } catch { /* never required */ }
+        for (const id of ids) delete require.cache[id];
+        const credStorage = require('../src/l1/client/gemini/api/credStorage.js');
+        const credManager = require('../src/l1/client/gemini/api/credentialManager.js').default;
+        const bootstrap = require('../src/l1/client/gemini/bootstrap.js');
+        return await check({ credStorage, credManager, bootstrap });
+    } finally {
+        ids.forEach((id: string, i: number) => {
+            if (previous[i]) require.cache[id] = previous[i];
+            else delete require.cache[id];
+        });
+        if (chromeDescriptor) Object.defineProperty(g, 'chrome', chromeDescriptor);
+        else delete g.chrome;
+    }
 }
 
-function freshModules() {
-    bustRequireCache('../src/core/api/client/credStorage.js');
-    bustRequireCache('../src/core/api/client/credentialManager.js');
-    bustRequireCache('../src/content/bootstrap.js');
-    // Pre-fix the shared module does not exist yet — the drift repro below
-    // only needs the two pre-existing surfaces.
-    let credStorage: any = null;
-    try {
-        credStorage = require('../src/core/api/client/credStorage.js');
-    } catch { /* pre-fix: shared module not yet created */ }
-    const credManager = require('../src/core/api/client/credentialManager.js').default;
-    const bootstrap = require('../src/content/bootstrap.js');
-    return { credStorage, credManager, bootstrap };
-}
-
-function makeChromeMock(sessionThrows: boolean) {
+function makeChromeMock(sessionFailure: 'get' | 'set' | null) {
     const sessionCalls: string[] = [];
     const denied = new Error('not allowed to access chrome.storage.session');
     const stores: Record<string, Record<string, any>> = { local: {}, session: {} };
     const area = (name: 'local' | 'session') => ({
         get: async (keys: any) => {
             if (name === 'session') sessionCalls.push('get');
-            if (name === 'session' && sessionThrows) throw denied;
+            if (name === 'session' && sessionFailure === 'get') throw denied;
             const out: Record<string, any> = {};
             for (const k of (Array.isArray(keys) ? keys : [keys])) {
                 if (Object.prototype.hasOwnProperty.call(stores[name], k)) out[k] = stores[name][k];
@@ -50,87 +53,75 @@ function makeChromeMock(sessionThrows: boolean) {
         },
         set: async (items: any) => {
             if (name === 'session') sessionCalls.push('set');
-            if (name === 'session' && sessionThrows) throw denied;
-            Object.assign(stores[name], JSON.parse(JSON.stringify(items)));
+            if (name === 'session' && sessionFailure === 'set') throw denied;
+            Object.assign(stores[name], structuredClone(items));
         },
         remove: async (keys: any) => {
             if (name === 'session') sessionCalls.push('remove');
             for (const k of (Array.isArray(keys) ? keys : [keys])) delete stores[name][k];
         },
     });
-    return { mock: { storage: { local: area('local'), session: area('session') } }, sessionCalls };
+    return { mock: { storage: { local: area('local'), session: area('session') } }, stores, sessionCalls };
 }
 
-test('unified: healthy session is preferred by every surface', () => {
-    const { mock } = makeChromeMock(false);
-    (globalThis as any).chrome = mock;
-    const { credStorage, credManager, bootstrap } = freshModules();
-
-    assert.strictEqual(credManager.getCredStorage(), mock.storage.session, 'credentialManager prefers session');
-    assert.strictEqual(bootstrap.getCredStorage(), mock.storage.session, 'bootstrap prefers session');
-    if (credStorage) {
-        assert.strictEqual(credStorage.getCredStorage(), mock.storage.session, 'shared module prefers session');
-    }
-
-    delete (globalThis as any).chrome;
+test('unified: every surface prefers a healthy session and reads its credentials', async () => {
+    const { mock, stores } = makeChromeMock(null);
+    await withCredentialModules(mock, async ({ credStorage, credManager, bootstrap }) => {
+        assert.strictEqual(bootstrap.getCredStorage(), mock.storage.session);
+        assert.strictEqual(credStorage.getCredStorage(), mock.storage.session);
+        await bootstrap.saveCredentials(new Map([['u0', { at: 'fake-token' }]]));
+        assert.deepStrictEqual(await bootstrap.loadCredentialsMap(), new Map([['u0', { at: 'fake-token' }]]));
+        assert.strictEqual((await credManager.resolveCred('default')).at, 'fake-token');
+        assert.equal(Object.keys(stores.session).length > 0, true, 'healthy session must hold the saved map');
+    });
 });
 
-test('unified: "not allowed" on session downgrades ALL surfaces to local', async () => {
-    const { mock, sessionCalls } = makeChromeMock(true);
-    (globalThis as any).chrome = mock;
-    const { credManager, bootstrap } = freshModules();
-
-    // Trip the failure through the bootstrap path (this is where the flag lived).
-    const map = await bootstrap.loadCredentialsMap();
-    assert.deepStrictEqual(map, {}, 'loadCredentialsMap falls back to local on "not allowed"');
-
-    // Every surface must now resolve to local — pre-fix the credentialManager
-    // copy kept returning the broken session area.
-    assert.strictEqual(bootstrap.getCredStorage(), mock.storage.local, 'bootstrap downgraded');
-    assert.strictEqual(
-        credManager.getCredStorage(),
-        mock.storage.local,
-        'credentialManager must share the downgrade flag (drift: returned session)'
-    );
-
-    // Subsequent calls must not touch session at all.
-    sessionCalls.length = 0;
-    bootstrap.getCredStorage();
-    credManager.getCredStorage();
-    assert.deepStrictEqual(sessionCalls, [], 'no session access after downgrade');
-
-    delete (globalThis as any).chrome;
+test('unified: session read denial downgrades all surfaces and subsequent I/O to local', async () => {
+    const { mock, stores, sessionCalls } = makeChromeMock('get');
+    await withCredentialModules(mock, async ({ credStorage, credManager, bootstrap }) => {
+        assert.deepStrictEqual(await bootstrap.loadCredentialsMap(), new Map());
+        assert.deepStrictEqual(sessionCalls, ['get'], 'initial session denial must be exercised');
+        for (const surface of [credStorage, bootstrap]) {
+            assert.strictEqual(surface.getCredStorage(), mock.storage.local, 'every surface must share the downgrade');
+        }
+        sessionCalls.length = 0;
+        const map = { u0: { at: 'read-fallback' } };
+        await bootstrap.saveCredentials(new Map(Object.entries(map)));
+        assert.deepStrictEqual(await bootstrap.loadCredentialsMap(), new Map(Object.entries(map)));
+        assert.strictEqual((await credManager.resolveCred('default')).at, 'read-fallback');
+        assert.deepStrictEqual(sessionCalls, [], 'no session I/O after the shared downgrade');
+        assert.ok(Object.values(stores.local).some(value => JSON.stringify(value) === JSON.stringify(map)),
+            'fallback must persist credentials in local storage');
+    });
 });
 
-test('unified: shared module unit behavior', () => {
-    const { mock, sessionCalls } = makeChromeMock(false);
-    (globalThis as any).chrome = mock;
-    const { credStorage } = freshModules();
-    if (!credStorage) {
-        // Pre-fix: the shared module does not exist yet; the fix must create it.
-        assert.fail('shared module src/core/api/client/credStorage.ts does not exist (expected pre-fix)');
-    }
+test('unified: session write denial also downgrades all surfaces and retains the credential map', async () => {
+    const { mock, stores, sessionCalls } = makeChromeMock('set');
+    await withCredentialModules(mock, async ({ credStorage, credManager, bootstrap }) => {
+        const map = { u1: { at: 'write-fallback' } };
+        await bootstrap.saveCredentials(new Map(Object.entries(map)));
+        assert.deepStrictEqual(sessionCalls, ['set'], 'actual session write rejection must be exercised');
+        assert.deepStrictEqual(await bootstrap.loadCredentialsMap(), new Map(Object.entries(map)));
+        assert.strictEqual((await credManager.resolveCred('default')).at, 'write-fallback');
+        for (const surface of [credStorage, bootstrap]) {
+            assert.strictEqual(surface.getCredStorage(), mock.storage.local);
+        }
+        assert.ok(Object.values(stores.local).some(value => JSON.stringify(value) === JSON.stringify(map)));
+        assert.deepStrictEqual(sessionCalls, ['set'], 'retry and read must not touch a denied session');
+    });
+});
 
-    assert.strictEqual(credStorage.getCredStorage(), mock.storage.session, 'prefers session when healthy');
-
-    credStorage.markCredSessionAccessFailed();
-    sessionCalls.length = 0;
-    assert.strictEqual(credStorage.getCredStorage(), mock.storage.local, 'downgrades after flag');
-    assert.deepStrictEqual(sessionCalls, [], 'downgraded resolver never touches session');
-
-    // No session area at all -> local.
-    (globalThis as any).chrome = { storage: { local: mock.storage.local } };
-    const fresh2 = (() => {
-        bustRequireCache('../src/core/api/client/credStorage.js');
-        return require('../src/core/api/client/credStorage.js');
-    })();
-    assert.strictEqual(fresh2.getCredStorage(), mock.storage.local, 'falls back to local without session area');
-
-    // No chrome at all -> null.
-    delete (globalThis as any).chrome;
-    const fresh3 = (() => {
-        bustRequireCache('../src/core/api/client/credStorage.js');
-        return require('../src/core/api/client/credStorage.js');
-    })();
-    assert.strictEqual(fresh3.getCredStorage(), null, 'null without chrome');
+test('unified: shared resolver state and missing browser storage remain explicit', async () => {
+    const { mock } = makeChromeMock(null);
+    await withCredentialModules(mock, ({ credStorage }) => {
+        assert.strictEqual(credStorage.getCredStorage(), mock.storage.session);
+        credStorage.markCredSessionAccessFailed();
+        assert.strictEqual(credStorage.getCredStorage(), mock.storage.local);
+    });
+    await withCredentialModules({ storage: { local: mock.storage.local } }, ({ credStorage }) => {
+        assert.strictEqual(credStorage.getCredStorage(), mock.storage.local, 'missing session uses local');
+    });
+    await withCredentialModules(undefined, ({ credStorage }) => {
+        assert.strictEqual(credStorage.getCredStorage(), null, 'no Chrome storage returns null');
+    });
 });

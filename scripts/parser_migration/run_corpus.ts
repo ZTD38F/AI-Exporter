@@ -1,32 +1,21 @@
-/**
- * scripts/parser_migration/run_corpus.ts
- *
- * Parser Migration Corpus Runner (Section 6, 23 & Remediation Plan 1.1)
- * Evaluates 110 documents (108 scenario inputs + 2 synthetic fixtures | Real Gemini Output: 0).
- *
- * Capabilities:
- * 1. Injectable Architecture:
- *    Accepts baseline vs candidate parser (for PR 2 Markdown) and converter (for PR 4 MiTeX).
- * 2. Segmented Evaluation:
- *    Can target specific corpus sets ('real_gemini_output', 'scenario_inputs', 'synthetic_fixtures', or 'all').
- * 3. Real Typst WASM Compilation Gate:
- *    Actually compiles converted Typst expressions via TypstSandboxCompiler to compute genuine compileFailures.
- * 4. Machine-Readable Report Output conforming to Section 23.
- */
+import { fixtureAccount, fixtureKey } from '../../tests/helpers/domainFixture.js';
+import { historicalFixture } from '../../tests/helpers/nativeFixture.js';
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { normalizeGeminiConversation } from '../../src/core/export/canonical/normalizeGemini.js';
-import { convertMathWithMitex, initMitexWasm } from '../../src/core/export/typst/mathConverter.js';
+import { composeDomainDocument } from '../../src/l3b/compose/composeDomainDocument.js';
+import type { DomainConversationWithDetail } from '../../src/l2/conversation.js';
+import type { Diagnostic } from '../../src/shared/diagnostics/diagnostic.js';
+import { convertMathWithMitex, initMitexWasm } from '../../src/l4/format/typst/mathConverter.js';
 import { compareMarkdownAst, compareMathConversion, type DiffCategory } from './diff_runner.js';
-import { TypstSandboxCompiler } from '../../src/core/export/typst/typstSandboxCompiler.js';
-import { toTypstPayload } from '../../src/core/export/typst/payload.js';
+import { TypstSandboxCompiler } from '../../src/l4/format/pdf/typst/typstSandboxCompiler.js';
+import { renderDocumentTypstCore } from '../../src/l4/format/typst/renderTypstCore.js';
 import { RealWasmSandboxHost, repoRoot } from '../../tests/helpers/realWasmSandbox.js';
 
-export type MarkdownParserFn = (content: string, id: string) => Promise<{ bundle: any; diagnostics: any[] }>;
-export type MathConverterFn = (latex: string, display: boolean) => { typst?: string; diagnostic?: any };
+type MarkdownParserFn = (content: string, id: string) => Promise<{ conversation: DomainConversationDetail; diagnostics: Diagnostic[] }>;
+type MathConverterFn = (latex: string, display: boolean) => { typst?: string; diagnostic?: any };
 
-export interface CorpusRunnerOptions {
+interface CorpusRunnerOptions {
     corpusPath?: string;
     outputPath?: string;
     corpusCategory?: 'all' | 'real_gemini_output' | 'scenario_inputs' | 'synthetic_fixtures';
@@ -37,7 +26,7 @@ export interface CorpusRunnerOptions {
     compileTypst?: boolean;
 }
 
-export interface CorpusReport {
+interface CorpusReport {
     timestamp: string;
     corpusSet: string;
     markdown: {
@@ -117,19 +106,19 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
 
     // Default baseline parser & converter if not injected
     const defaultBaselineParser: MarkdownParserFn = async (content, id) => {
-        return normalizeGeminiConversation({
+        return historicalFixture({
             id,
             messages: [{ id: 'm1', role: 'user', content }],
-        });
+        }, { providerId: 'gemini' });
     };
 
     const activeBaselineParser = options.baselineParser || defaultBaselineParser;
     const activeCandidateParser = options.candidateParser;
-    const defaultBaselineConverter: MathConverterFn = (latex, display) => convertMathWithMitex(latex, display);
+    const defaultBaselineConverter: MathConverterFn = (latex, display) => convertMathWithMitex(latex, 'latex', display);
     const activeBaselineConverter = options.baselineConverter || defaultBaselineConverter;
 
     const defaultCandidateConverter: MathConverterFn = (latex, display) => {
-        const res = convertMathWithMitex(latex, display);
+        const res = convertMathWithMitex(latex, 'latex', display);
         return { typst: res.typst, diagnostic: res.diagnostic };
     };
     const activeCandidateConverter = 'candidateConverter' in options
@@ -205,7 +194,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
         diffs: [],
     };
 
-    // 1. Process Markdown documents
     const mdStart = Date.now();
     for (const doc of documents) {
         let baseRes: any = null;
@@ -213,7 +201,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
         let candRes: any = null;
         let candErr: any = null;
 
-        // 1a. Run Baseline parser in isolated try/catch
         try {
             baseRes = await activeBaselineParser(doc.text, doc.id);
             for (const d of baseRes?.diagnostics || []) {
@@ -225,8 +212,8 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
                 });
             }
 
-            const msg = baseRes?.bundle?.conversation?.messages?.[0];
-            for (const block of msg?.blocks || []) {
+            const msg = baseRes?.conversation?.detail.messages?.[0];
+            for (const block of msg?.content || []) {
                 report.markdown.baseline.blockDistribution[block.type] =
                     (report.markdown.baseline.blockDistribution[block.type] || 0) + 1;
                 if (block.type === 'unknown') {
@@ -256,8 +243,8 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
                     });
                 }
 
-                const msg = candRes?.bundle?.conversation?.messages?.[0];
-                for (const block of msg?.blocks || []) {
+                const msg = candRes?.conversation?.detail.messages?.[0];
+                for (const block of msg?.content || []) {
                     report.markdown.candidate!.blockDistribution[block.type] =
                         (report.markdown.candidate!.blockDistribution[block.type] || 0) + 1;
                     if (block.type === 'unknown') {
@@ -275,10 +262,9 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
             }
         }
 
-        // 1c. Differential comparison if candidate parser was active
         if (activeCandidateParser) {
             if (baseRes && candRes) {
-                const diff = compareMarkdownAst(doc.text, baseRes.bundle, candRes.bundle);
+                const diff = compareMarkdownAst(doc.text, baseRes.conversation.detail.messages[0]?.content ?? [], candRes.conversation.detail.messages[0]?.content ?? []);
                 if (diff.hasDiff) {
                     report.markdown.diffCount += 1;
                     if (diff.category) {
@@ -293,7 +279,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
                     });
                 }
             } else if (!baseErr && candErr) {
-                // Baseline succeeded, candidate threw
                 report.markdown.diffCount += 1;
                 report.markdown.diffsByCategory.D_CANNOT_DETERMINE += 1;
                 report.diffs.push({
@@ -303,7 +288,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
                     rationale: `Candidate threw fatal exception while baseline succeeded: ${candErr.message || String(candErr)}`,
                 });
             } else if (baseErr && !candErr) {
-                // Baseline threw, candidate succeeded
                 report.markdown.diffCount += 1;
                 report.markdown.diffsByCategory.D_CANNOT_DETERMINE += 1;
                 report.diffs.push({
@@ -313,7 +297,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
                     rationale: `Baseline threw fatal exception while candidate succeeded. Candidate recovery observed.`,
                 });
             } else if (baseErr && candErr) {
-                // Both threw
                 report.markdown.diffCount += 1;
                 report.markdown.diffsByCategory.D_CANNOT_DETERMINE += 1;
                 report.diffs.push({
@@ -333,7 +316,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
     report.markdown.fallbacks = report.markdown.baseline.fallbacks;
     report.markdown.blockDistribution = report.markdown.baseline.blockDistribution;
 
-    // 2. Process Math expressions
     const mathStart = Date.now();
     const baselineSuccessful: Array<{ id: string; latex: string; display: boolean; typst: string }> = [];
     const candidateSuccessful: Array<{ id: string; latex: string; display: boolean; typst: string }> = [];
@@ -344,7 +326,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
         let candRes: any = null;
         let candErr: any = null;
 
-        // 2a. Run Baseline converter in isolated try/catch
         try {
             baseRes = activeBaselineConverter(expr.latex, !!expr.display);
             if (baseRes?.typst) {
@@ -410,7 +391,6 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
             }
         }
 
-        // 2c. Differential comparison if candidate converter was injected
         if (activeCandidateConverter) {
             if (baseRes && candRes) {
                 const diff = compareMathConversion(expr.latex, baseRes, candRes);
@@ -467,48 +447,29 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
     // 3. Genuine Typst WASM compilation gate (100% of expressions evaluated, no truncation)
     // Compiles the EXACT output obtained from conversion phase; never re-invokes converters.
     if (options.compileTypst) {
-        // 3a. Baseline Typst compile gate
         if (baselineSuccessful.length > 0) {
             try {
                 const host = new RealWasmSandboxHost(repoRoot());
                 const compiler = new TypstSandboxCompiler({ host });
                 try {
-                    const bundle = {
-                        schemaVersion: 1,
-                        conversation: {
-                            key: { providerId: 'gemini', conversationId: 'corpus-math-baseline-compile-gate' },
-                            title: { value: 'Corpus Math Baseline Compile Gate' },
-                            createdAt: '2026-09-28T00:00:00Z',
-                            messages: [{
-                                id: 'm1',
-                                role: 'assistant',
-                                blocks: baselineSuccessful.map((e, idx) => ({
-                                    id: `b${idx + 1}`,
-                                    type: 'math',
-                                    source: e.latex,
-                                })),
-                            }],
-                        },
-                        assets: [],
-                        citations: [],
-                    };
-                    // Direct lookup of the cached exact Typst output from conversion phase:
+                    const domain: DomainConversationWithDetail = { index: { titleSource: 'derived', key: fixtureKey('corpus-math-baseline-compile-gate'),
+                        title: 'Corpus Math Baseline Compile Gate', createdAt: Date.parse('2026-09-28T00:00:00Z') }, detail: { key: fixtureKey('corpus-math-baseline-compile-gate'), quality: { status: 'unknown' },
+                        assets: [], messages: [{ id: 'm1', role: 'assistant',
+                            content: baselineSuccessful.map(e => ({ type: 'math', source: e.latex })),
+                        }],
+                    } };
                     const baseTypstMap = new Map<string, string>();
                     for (const e of baselineSuccessful) {
                         baseTypstMap.set(e.latex, e.typst);
                     }
                     const convertMathFn = (s: string) => baseTypstMap.get(s);
-                    const { payload: document } = toTypstPayload(bundle, { assetPath: (a: any) => `/assets/${a.id}`, convertMath: convertMathFn });
+                    const document = renderDocumentTypstCore(composeDomainDocument(domain, fixtureAccount()), {}, {}, { convertMath: convertMathFn });
                     const compileRes = await compiler.compile({
                         rendererSchemaVersion: 1,
-                        sourceSchemaVersion: 1,
-                        bundle,
                         document,
                         assetPaths: new Map(),
                     }, {
-                        bundle: null,
                         assets: { resolve: async () => null },
-                        locale: 'zh',
                         signal: new AbortController().signal,
                         reportProgress: () => {},
                     });
@@ -529,48 +490,29 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
             }
         }
 
-        // 3b. Candidate Typst compile gate (compiles candidate's genuine typst output)
         if (activeCandidateConverter && candidateSuccessful.length > 0) {
             try {
                 const host = new RealWasmSandboxHost(repoRoot());
                 const compiler = new TypstSandboxCompiler({ host });
                 try {
-                    const bundle = {
-                        schemaVersion: 1,
-                        conversation: {
-                            key: { providerId: 'gemini', conversationId: 'corpus-math-candidate-compile-gate' },
-                            title: { value: 'Corpus Math Candidate Compile Gate' },
-                            createdAt: '2026-09-28T00:00:00Z',
-                            messages: [{
-                                id: 'm1',
-                                role: 'assistant',
-                                blocks: candidateSuccessful.map((e, idx) => ({
-                                    id: `b${idx + 1}`,
-                                    type: 'math',
-                                    source: e.latex,
-                                })),
-                            }],
-                        },
-                        assets: [],
-                        citations: [],
-                    };
-                    // Direct lookup of the cached exact Typst output from conversion phase:
+                    const domain: DomainConversationWithDetail = { index: { titleSource: 'derived', key: fixtureKey('corpus-math-candidate-compile-gate'),
+                        title: 'Corpus Math Candidate Compile Gate', createdAt: Date.parse('2026-09-28T00:00:00Z') }, detail: { key: fixtureKey('corpus-math-candidate-compile-gate'), quality: { status: 'unknown' },
+                        assets: [], messages: [{ id: 'm1', role: 'assistant',
+                            content: candidateSuccessful.map(e => ({ type: 'math', source: e.latex })),
+                        }],
+                    } };
                     const candTypstMap = new Map<string, string>();
                     for (const e of candidateSuccessful) {
                         candTypstMap.set(e.latex, e.typst);
                     }
                     const convertMathFn = (s: string) => candTypstMap.get(s);
-                    const { payload: document } = toTypstPayload(bundle, { assetPath: (a: any) => `/assets/${a.id}`, convertMath: convertMathFn });
+                    const document = renderDocumentTypstCore(composeDomainDocument(domain, fixtureAccount()), {}, {}, { convertMath: convertMathFn });
                     const compileRes = await compiler.compile({
                         rendererSchemaVersion: 1,
-                        sourceSchemaVersion: 1,
-                        bundle,
                         document,
                         assetPaths: new Map(),
                     }, {
-                        bundle: null,
                         assets: { resolve: async () => null },
-                        locale: 'zh',
                         signal: new AbortController().signal,
                         reportProgress: () => {},
                     });
@@ -590,14 +532,12 @@ export async function runCorpus(options: CorpusRunnerOptions = {}): Promise<Corp
         }
     }
 
-    // Save JSON report
     fs.mkdirSync(path.dirname(finalOutputPath), { recursive: true });
     fs.writeFileSync(finalOutputPath, JSON.stringify(report, null, 2), 'utf-8');
 
     return report;
 }
 
-// CLI execution
 if (require.main === module) {
     (async () => {
         try {

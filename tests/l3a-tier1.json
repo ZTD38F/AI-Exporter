@@ -1,0 +1,28 @@
+{
+  "suites": [
+    "tests/storage_v2.test.ts",
+    "tests/storage_export_surface.test.ts",
+    "tests/storage_service.test.ts",
+    "tests/idb_handle_store.test.ts",
+    "tests/storage_reconciliation.test.ts",
+    "tests/ts_c2_storage_service.test.ts",
+    "tests/storage_trust_snapshot.test.ts",
+    "tests/live_storage_manager.test.ts",
+    "tests/schema_badge.test.ts"
+  ],
+  "integrationSuites": [
+    "tests/conversation_index_storage.test.ts",
+    "tests/coverage_atomic_admission.test.ts",
+    "tests/account_registry.test.ts",
+    "tests/domain-storage.test.ts",
+    "tests/crosstab_write_queue.test.ts",
+    "tests/clear_exported_race.test.ts",
+    "tests/exportedids_readpath_normalization.test.ts",
+    "tests/concurrency_consistency.test.ts",
+    "tests/storage_read_canonical.test.ts",
+    "tests/storage_alias_migration_race.test.ts"
+  ],
+  "typeTests": [
+    "scripts/framework/v2_probe.ts"
+  ]
+}

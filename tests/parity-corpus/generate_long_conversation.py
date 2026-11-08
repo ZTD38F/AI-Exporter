@@ -5,7 +5,7 @@ Deterministic (seeded) so the committed JSON is reproducible. The fixture is
 NOT hand-written: regenerate with
     python3 generate_long_conversation.py --messages 121 --out long-conversation-121.json
 
-Every message carries a unique id/block id, source array order, and
+Every message carries a unique message id, source array order, and
 mixed Chinese/English content so the HTML/PDF parity harness has realistic
 long-document material (page breaks, repeated headings, mid-document tables
 and code blocks).
@@ -53,52 +53,52 @@ def emphasis(t):
     return {"type": "emphasis", "children": [text(t)]}
 
 
-def paragraph(bid, *children):
-    return {"id": bid, "type": "paragraph", "children": list(children)}
+def paragraph(*children):
+    return {"type": "paragraph", "children": list(children)}
 
 
 def build_message(idx, role, rng):
-    """idx is 1-based. Returns a MessageNode dict."""
+    """idx is 1-based. Returns a DisplayMessage dict."""
     mid = f"{'u' if role == 'user' else 'a'}{idx}"
     tpl = rng.choice(USER_TEMPLATES if role == "user" else ASSISTANT_TEMPLATES)
     n = (idx + 1) // 2  # round number
-    blocks = [paragraph(f"{mid}:b0", text(tpl.format(n=n)))]
+    blocks = [paragraph(text(tpl.format(n=n)))]
     # Sprinkle block variety deterministically so the long fixture exercises
     # more than plain paragraphs.
     if role == "assistant" and idx % 10 == 0:
         blocks.append({
-            "id": f"{mid}:b1", "type": "code", "language": "python",
+            "type": "code", "language": "python",
             "code": f"def round_{n}():\n    return 'parity-check-{n}'\n",
         })
     if role == "assistant" and idx % 15 == 0:
         blocks.append({
-            "id": f"{mid}:b2", "type": "table",
-            "columns": [{"align": "left"}, {"align": "right"}],
-            "headerRows": [{"cells": [
-                {"children": [text("指标")]},
-                {"children": [text("第 %d 轮" % n)]},
-            ]}],
-            "rows": [{"cells": [
-                {"children": [text("消息数")]},
-                {"children": [text(str(idx))]},
-            ]}],
+            "type": "table",
+            "columnAlignments": ["left", "right"],
+            "headerRows": [[
+                {"children": [text("指标")], "column": 0, "colSpan": 1, "rowSpan": 1},
+                {"children": [text("第 %d 轮" % n)], "column": 1, "colSpan": 1, "rowSpan": 1},
+            ]],
+            "rows": [[
+                {"children": [text("消息数")], "column": 0, "colSpan": 1, "rowSpan": 1},
+                {"children": [text(str(idx))], "column": 1, "colSpan": 1, "rowSpan": 1},
+            ]],
         })
     if role == "assistant" and idx % 21 == 0:
         blocks.append({
-            "id": f"{mid}:b3", "type": "math",
+            "type": "math",
             "source": r"\sum_{i=1}^{%d} i = %d" % (n, n * (n + 1) // 2),
         })
     if role == "user" and idx % 7 == 0:
         blocks.append(paragraph(
-            f"{mid}:b1",
             emphasis("补充："), text("这一轮还请覆盖 "),
             strong("中英文混排"), text(" 与 "),
             {"type": "inlineCode", "code": f"round_{n}"}, text(" 的行内代码。"),
         ))
     msg = {
         "id": mid,
-        "role": role,
-        "createdAt": "2026-09-26T14:%02d:%02d-07:00" % ((idx // 60) % 60, idx % 60),
+        "type": "message",
+        "label": "you" if role == "user" else "assistant",
+        "variant": "bubble" if role == "user" else "flow",
         "blocks": blocks,
     }
     return msg
@@ -126,30 +126,17 @@ def main():
         msg = build_message(idx, role, rng)
         messages.append(msg)
 
-    bundle = {
-        "schemaVersion": 1,
-        "conversation": {
-            "key": {
-                "providerId": "gemini",
-                "accountId": "acct-parity-001",
-                "conversationId": "conv-long-121-001",
-            },
-            "title": {
-                "value": "长会话：121 消息 parity 语料",
-                "source": "provider",
-                "candidates": [
-                    {"value": "长会话：121 消息 parity 语料", "source": "provider"}
-                ],
-            },
-            "createdAt": "2026-09-26T14:00:00-07:00",
-            "updatedAt": "2026-09-26T16:02:00-07:00",
+    fixture = {
+        "document": {
+            "schemaVersion": 2,
+            "metadata": {"id": "long-conversation-121", "provider": "gemini"},
+            "header": {"title": "长会话：121 消息 parity 语料", "providerLabel": "gemini", "date": "2026-09-26", "messageCount": len(messages)},
             "messages": messages,
         },
-        "assets": [],
-        "citations": [],
+        "resourceIds": [],
     }
     with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(bundle, f, ensure_ascii=False, indent=2)
+        json.dump(fixture, f, ensure_ascii=False, indent=2)
     print(f"wrote {args.out}: {len(messages)} messages, "
           f"{sum(len(m['blocks']) for m in messages)} blocks")
 

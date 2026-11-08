@@ -1,428 +1,422 @@
 [
   {
-    "id": "condensed_matter_majorana_zero_modes_topological_braiding",
-    "domain": "topological_superconductivity_majorana_zero_modes",
-    "title": "拓扑超导与量子计算：半导体-超导纳米线马约拉纳零能模与非阿贝尔编织推导",
-    "features": [
-      "math",
-      "latex",
-      "physics",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试 Kitaev 一维 p 波超导链连续极限与 Oreg-Lutchyn 模型推导、马约拉纳零模波函数空间局域指数衰减、四端 T 型结非阿贝尔编织酉矩阵演化 Python 脚本与拓扑量子比特横向对比",
-    "turns": [
-      "在 Oreg-Lutchyn 理论模型下，针对强 Rashba 自旋-轨道耦合（\\alpha_R）半导体纳米线（如 InAs 或 InSb）外延临近接触 s 波超导体（配对能隙 \\Delta）并在平行线轴施加塞曼磁场 V_Z 的一维复合系统，严格推导其 Bogoliubov-de Gennes (BdG) 哈密顿量 \\mathcal{H}_{BdG} = (\\frac{p_x^2}{2m^*} - \\mu)\\tau_z + \\alpha_R p_x \\sigma_y \\tau_z + V_Z \\sigma_x + \\Delta \\tau_x，证明出现拓扑非平庸超导相与端点马约拉纳零模（MZM）的拓扑相变临界充要条件 V_Z > \\sqrt{\\Delta^2 + \\mu^2}。",
-      "从连续介质极限出发，求解准一维有限长纳米线（长 L \\gg \\xi）两端马约拉纳实费米算符 \\gamma_1, \\gamma_2 的零能空间波函数 \\psi_0(x)，证明其局域态密度在端点呈指数衰减 \\psi(x) \\sim e^{-x/\\xi} \\cos(k_F x)，并推导由于两端波函数重叠引起的有限尺寸杂化能隙能级分裂 \\Delta E \\propto e^{-L/\\xi} \\cos(k_F L) 对拓扑简并保护度的物理限制。",
-      "使用 Python 编写脚本，基于紧束缚近似（Tight-Binding Model）离散化一维 N 节点超导纳米线晶格系统，构建 BdG 矩阵并使用 NumPy/SciPy 稀疏对角化求解随塞曼磁场 V_Z 连续调节下的本征能谱流演化曲线，精准再现体能隙闭合、重新打开以及零偏压电导峰（Zero-Bias Conductance Peak, ZBCP, 量子化高度 2e^2/h）对应的孤立零能平带出现。",
-      "推导在四端 T 型纳米线结（T-junction）网络中，通过绝热门电压调节各臂的拓扑/平庸相变边界，实现两个马约拉纳零能模 \\gamma_i 与 \\gamma_j 空间逆时针交换（Braiding）的过程。严格写出非阿贝尔几何贝里相位矩阵（Non-Abelian Berry Phase），证明交换操作对应的拓扑演化算符为单演群酉变换 U_{ij} = \\exp(\\frac{\\pi}{4} \\gamma_i \\gamma_j) = \\frac{1}{\\sqrt{2}}(1 + \\gamma_i \\gamma_j)，论述其为何能天然免疫局域退相干噪声构建拓扑量子编织门。",
-      "使用 Markdown 表格，对比基于马约拉纳零模的拓扑超导量子比特、超导 Transmon 量子比特、半导体量子点自旋量子比特（Loss-DiVincenzo 比特）以及离子阱量子比特在逻辑相干时间保护机制（非局域拓扑存储 vs 动力学解耦/主动纠错）、基本单/双比特量子门操作时标、硬件制造容差鲁棒性以及当前实验物理证据确定性维度的核心指标对比。"
-    ]
-  },
-  {
-    "id": "quantum_thermodynamics_information_engine_jarzynski",
-    "domain": "quantum_thermodynamics_information_engine_jarzynski",
-    "title": "量子热力学与信息引擎：麦克斯韦妖极限、Jarzynski 恒等式与非平衡态推导",
-    "features": [
-      "physics",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试量子开放系统非平衡功分布、Jarzynski 恒等式与 Crooks 涨落定理、Landauer 原理耗散界限及 Python 随机热力学仿真",
-    "turns": [
-      "考虑受任意时间依赖外场驱动且处于有限温度 T 热库中的微观系统，从两时间测量方案 (Two-Point Measurement Scheme) 出发，推导微观做功概率分布 P(W) 严格满足的 Jarzynski 非平衡等式 <exp(-beta * W)> = exp(-beta * Delta F) 并证明热力学第二定律不等式 <W> >= Delta F。",
-      "针对麦克斯韦妖 (Maxwell's Demon) 进行测量反馈的信息发动机，推导引入香农互信息 I(X; Y) 修正后的广义热力学第二定律界限 W_ext <= -Delta F + k_B * T * I，并证明兰道尔擦除原理 (Landauer's Principle) 在信息重置过程中产生的最小热耗散 Q_erase = k_B * T * ln(2)。",
-      "推导由微观可逆性与时间反演对称性决定的 Crooks 涨落定理 P_F(W) / P_R(-W) = exp(beta * (W - Delta F))，并分析在远离热力学平衡的极端非准静态拉伸过程中自由能变化 Delta F 的极大似然估计解析形式。",
-      "使用 Python 编写 Langevin 随机动力学模拟脚本，数值求解布朗粒子在一维谐振子双势阱驱动移动过程中的随机轨迹，统计提取 5000 次独立非平衡实验路径上的做功做功积分，并绘制功分布直方图与 Jarzynski 平均收敛曲线。",
-      "使用 Markdown 表格横向对比经典信息引擎 (Szilard Engine)、量子相干性驱动热机、超导腔量子电动力学热机与单自旋非平衡热机在工作工质尺度、量子相干能增益、最大功输出功率与卡诺效率比值 (Efficiency at Maximum Power)。"
-    ]
-  },
-  {
-    "id": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
-    "domain": "condensed_matter_quantum_spin_liquid_kitaev_honeycomb",
-    "title": "量子自旋液体与Kitaev蜂窝模型：马约拉纳费米子分数化与非阿贝尔任意子拓扑推导",
-    "features": [
-      "physics",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试 Kitaev 蜂窝晶格严格可解自旋哈密顿量 Jordan-Wigner / 四费米子表示、Z2 规范场通量算符积分、非阿贝尔伊辛任意子量子编织",
-    "turns": [
-      "在二维蜂窝晶格中，写出具有方向依赖键交换相互作用的 Kitaev 纯自旋哈密顿量 H = - sum_{<ij>_gamma} J_gamma * sigma_i^gamma * sigma_j^gamma (gamma in {x, y, z})，引入 4 种局域马约拉纳费米子算符 c_i, b_i^x, b_i^y, b_i^z 实现自旋自由度的严格分数化映射。",
-      "证明定义在每个六边形晶胞上的通量算符 W_p = sigma_1^x * sigma_2^y * sigma_3^z * sigma_4^x * sigma_5^y * sigma_6^z 与哈密顿量完全对易且互相独立对易 ([W_p, H] = 0, [W_p, W_q] = 0)，从而证明整个希尔伯特空间能严格对角化为解耦的自由静态 Z_2 规范场扇区与流动马约拉纳费米子谱带。",
-      "在施加外部垂直微扰弱磁场 h_x * h_y * h_z 下，推导由有效时间反演破缺引起的三阶微扰非阿贝尔拓扑相有效哈密顿量，计算非零陈数 (Chern Number) nu = pm 1 导致的半整数量子热霍尔电导率 kappa_{xy} = (nu / 2) * (pi * k_B^2 / (6 * hbar)) * T。",
-      "使用 Python 编写基于动量空间布里渊区的 Kitaev 模型无通量基态能带结构计算脚本，求解并绘制沿 Gamma-M-K 高对称路径的马约拉纳费米子狄拉克锥色散曲线，计算费米速度并在存在质量能隙 Delta_M 时计算贝里曲率分布积分。",
-      "使用 Markdown 表格横向对比 Kitaev 量子自旋液体材料候选物 (如 alpha-RuCl3、Na2IrO3)、 Kagome 晶格自旋液体候选物 (Herbertsmithite) 与有机阻挫自旋液体系统的海森堡/非海森堡交换耦合参数、磁阻挫参数、连续自旋激发谱特征与无序杂质屏蔽机制。"
-    ]
-  },
-  {
-    "id": "quantum_optomechanics_cavity_ground_state_cooling",
-    "domain": "quantum_optomechanics_cavity_cooling",
-    "title": "量子腔光力学：辐射压力耦合线性化与微机械振子基态冷却动力学",
-    "features": [
-      "physics",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试腔光力学非线性哈密顿量有效声子占据数推导、边带分辨极限光力阻尼率分析、朗之万方程双稳态相图 Python 求解与宏观量子基态实验平台横向对比",
-    "turns": [
-      "从单模光学共振腔与微机械谐振子辐射压力耦合哈密顿量 \\hat{H} = \\hbar \\Delta \\hat{a}^\\dagger \\hat{a} + \\hbar \\omega_m \\hat{b}^\\dagger \\hat{b} - \\hbar g_0 \\hat{a}^\\dagger \\hat{a} (\\hat{b} + \\hat{b}^\\dagger) 出发，在强相干光驱动极限下推导有效线性化光力学耦合常数 G = g_0 \\sqrt{\\bar{n}_{cav}}，并求出光力诱导频移 (Optical Spring Effect) \\delta \\omega_m 与有效光力阻尼率 \\Gamma_{opt} 的解析形式。",
-      "在边带分辨良好条件 (Resolved Sideband Regime, \\omega_m \\gg \\kappa) 下，运用量子朗之万方程 (Quantum Langevin Equations) 与玻色输入-输出理论，推导微机械振子经反斯托克斯 (Anti-Stokes) 光子散射冷却后的稳态最小声子占据数 \\bar{n}_{min} = (\\kappa / 4 \\omega_m)^2，证明实现量子基态冷却 (\\bar{n}_{eff} < 1) 所需的临界光力协同度 C = 4 G^2 / (\\kappa \\gamma_m) \\gg n_{th} 条件。",
-      "使用 Python 编写脚本，基于 Scipy 或 QuTiP 求解线性化光力学系统的漂移矩阵 (Drift Matrix) 与稳态协方差矩阵 (Covariance Matrix)，数值计算机械位移对称化功率谱密度 S_{xx}(\\omega)，并可视化展示强耦合区模式分裂 (Normal Mode Splitting) 现象。",
-      "推导微机械振子处于非经典高阶量子态（如 Fock 态 |1\\rangle 或猫态薛定谔态）时的 Wigner 准几率分布函数 W(x, p)，并论证环境热库耗散下 Wigner 函数负值区域的退相干时间尺度 \\tau_{dec} \\approx 1 / (\\gamma_m \\bar{n}_{th}) 的物理起源。",
-      "使用 Markdown 表格，对比光子晶体纳米梁腔 (Optomechanical Crystal Beam)、硅基回音壁微环微环芯 (Whispering Gallery Mode Microtoroid)、氮化硅薄膜在超导微波腔 (Membrane-in-the-Middle) 以及悬浮光镊纳米颗粒 (Levitated Nanoparticle) 在机械共振频率 \\omega_m、机械品质因数 Q_m、单光子耦合强度 g_0 以及基态冷却可达极限维度的关键实验参数。"
-    ]
-  },
-  {
-    "id": "fusion_plasma_tokamak_tearing_modes_mhd",
-    "domain": "fusion_plasma_tokamak_tearing_modes",
-    "title": "受控核聚变等离子体物理：托卡马克新经典撕裂模 (NTM) 磁岛演化推导",
-    "features": [
-      "physics",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试托卡马克阻抗磁流体动力学 (Resistive MHD) 撕裂模色散关系推导、广义 Rutherford 磁岛演化方程、电子回旋电流驱动 (ECCD) 抑制与聚变装置参数对比",
-    "turns": [
-      "在环形托卡马克磁约束等离子体几何与阻抗磁流体动力学 (Resistive MHD) 框架下，针对有理磁面 q(r_s) = m/n 处的撕裂不稳定性，推导经典撕裂模稳定性判据指数 \\Delta' = \\lim_{\\epsilon \\to 0} \\frac{1}{\\psi(r_s)} \\left[ \\frac{d\\psi}{dr}\\Big|_{r_s+\\epsilon} - \\frac{d\\psi}{dr}\\Big|_{r_s-\\epsilon} \\right] 的渐近匹配渐进解，并分析磁剪切 s = (r/q)(dq/dr) 对阻抗撕裂层增长率 \\gamma \\tau_R \\propto (S)^{2/5} (-\\Delta')^{-4/5} 的稳定化效应。",
-      "当等离子体处于无碰撞高温香蕉区 (Banana Regime) 且具有高归一化极向比压 \\beta_p 时，分析自举电流 (Bootstrap Current) 扰动诱发的新经典撕裂模 (Neoclassical Tearing Mode, NTM)。推导修正的广义 Rutherford 方程 \\frac{\\tau_R}{r_s} \\frac{dw}{dt} = r_s \\Delta' + r_s \\Delta'_{BS}(w) - r_s \\Delta'_{GGJ}(w) - r_s \\Delta'_{pol}(w)，给出自举电流亏损项 \\Delta'_{BS} \\propto \\epsilon^{1/2} \\frac{\\beta_p L_q}{L_p} \\frac{w}{w^2 + w_d^2} 导致的非线性亚临界自激增长阈值条件。",
-      "使用 Python 编写脚本，基于 Scipy 对包含自举电流项、极向极化电流项 (Ion Polarization Current) 与有限径向热导展宽特征尺度 w_d 的广义 Rutherford 微分方程进行时域数值积分，绘制磁岛宽度 w(t) 随初始扰动种子宽度 w_0 的相空间轨道分岔图，确定触发 NTM 磁岛爆发的临界种子岛宽度 (Critical Seed Island Width)。",
-      "推导出利用高功率局域电子回旋共振波电流驱动 (ECCD) 对有理磁面磁岛 O 点进行相位同步射频波注入的稳定化功率平衡模型，推导完全抑制稳态磁岛所需的最小局域射频电流驱动密度 j_{cd} / j_{bs} 的临界阈值比例。",
-      "使用 Markdown 表格，对比国际热核聚变实验堆 (ITER)、全超导托卡马克 (EAST)、先进超导托卡马克 (KSTAR) 以及紧凑型高场强托卡马克 (SPARC) 在主半径 R、环向磁场 B_t、等离子体电流 I_p、归一化比压 \\beta_N、自举电流份额 f_{bs} 以及稳态长脉冲运行防破裂 (Disruption Mitigation) 应对策略维度的关键聚变参数。"
-    ]
-  },
-  {
-    "id": "spintronics_magnetic_skyrmion_racetrack_memory",
-    "domain": "spintronics_magnetic_skyrmions",
-    "title": "自旋电子学：拓扑磁斯格明子 Thiele 动力学方程与赛道内存推导",
-    "features": [
-      "physics",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试 Dzyaloshinskii-Moriya 相互作用 (DMI) 手性自旋纹理推导、Thiele 稳态漂移方程拓扑 Magnus 力分析、斯格明子霍尔效应 (THE) 偏转 Python 模拟与超高密度存储技术对比",
-    "turns": [
-      "在空间反演对称性破缺的铁磁/重金属超薄多层膜异质结（如 Pt/Co/AlOx）中，推导海森堡交换作用常数 J 与界面 Dzyaloshinskii-Moriya 相互作用 (iDMI) 矢量 \\mathbf{D}_{ij} 协同竞争下的自旋哈密顿量连续统极限，导出奈尔型 (Néel-type) 磁斯格明子能量泛函并推导形成稳定二维孤子解的临界 DMI 阈值 D_c = \\frac{4\\sqrt{A K_{eff}}}{\\pi}。",
-      "当施加面内自旋极化电流驱动自旋轨道转矩 (SOT) 时，将微磁学 Landau-Lifshitz-Gilbert (LLG) 方程对刚体斯格明子自旋轮廓积分，严格推导稳态漂移运动的 Thiele 方程 \\mathbf{G} \\times \\mathbf{v} - \\alpha \\mathcal{D} \\cdot \\mathbf{v} + 4\\pi \\mathcal{B} \\cdot \\mathbf{j} = 0。证明拓扑荷 Q = \\frac{1}{4\\pi} \\int \\mathbf{m} \\cdot \\left( \\frac{\\partial \\mathbf{m}}{\\partial x} \\times \\frac{\\partial \\mathbf{m}}{\\partial y} \\right) dx dy = \\pm 1 产生的回转张量 \\mathbf{G} = -4\\pi Q \\hat{z} 为拓扑 Magnus 力的物理本质，并导出导致斯格明子撞壁湮灭的斯格明子霍尔角 \\theta_{SkHE} = \\arctan\\left(\\frac{4\\pi Q}{\\alpha \\mathcal{D}_{xx}}\\right)。",
-      "使用 Python 编写脚本，基于 Runge-Kutta (RK4) 数值求解包含边缘排斥势垒、随机钉扎杂质点 (Pinning Sites) 以及脉冲驱动电流的二维 Thiele 动力学微分方程，模拟斯格明子在限制赛道 (Confined Racetrack) 内部的纵向行进轨迹，展示随电流密度增加从蠕变 (Creep) 到退钉扎解卡 (Depinning) 的非线性速度响应曲线。",
-      "推导反铁磁斯格明子 (Antiferromagnetic Skyrmion) 或合成反铁磁 (SAF) 双层耦合系统抵消拓扑 Magnus 力的微观配对机制，证明由两个具有相反拓扑荷 Q_1 = -Q_2 的亚点阵耦合构成的复合斯格明子如何实现严格为零的斯格明子霍尔角 \\theta_{SkHE} = 0，从而根除赛道侧壁碰撞湮灭瓶颈。",
-      "使用 Markdown 表格，对比拓扑磁斯格明子赛道内存 (Skyrmion Racetrack)、传统磁畴壁内存 (Domain Wall Memory)、自旋转移力矩磁阻随机存取存储器 (STT-MRAM) 以及相变存储器 (PCRAM) 在位单元尺寸 (nm)、写入/擦除能耗 (fJ/bit)、读写速度 (ns)、抗外磁场干扰能力以及室温热稳定性因子 \\Delta = E_b / (k_B T) 维度的核心技术指标。"
-    ]
-  },
-  {
-    "id": "archaeometry_ancient_glass_isotope_provenance",
-    "domain": "archaeometry_ancient_glass_isotope_provenance",
-    "title": "考古材料科学：古玻璃同位素溯源与贝叶斯产地归属",
-    "features": [
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "覆盖同位素混合模型、贝叶斯推断、Python 实现和证据对比表格",
-    "turns": [
-      "设想有三处古玻璃原料产地，推导锶、钕同位素比值的双端元混合模型，明确测量误差和污染项如何进入似然函数。",
-      "建立层级贝叶斯模型来判断一块出土玻璃的产地，写出先验、似然、后验及后验预测检验的 LaTeX 表达式。",
-      "用 Python 编写可运行示例，为三个假想产地生成测量数据，并计算一件未知样品的产地后验概率与可信区间。",
-      "用 Markdown 表格比较同位素比值、微量元素指纹、考古地层和器型风格四类证据的辨识能力、常见偏差与交叉验证方法。",
-      "讨论当两处产地的化学分布高度重叠时，如何做灵敏度分析和报告不确定性，避免给出过度确定的单一产地结论。"
-    ]
-  },
-  {
-    "id": "ecology_forest_carbon_flux_data_assimilation",
-    "domain": "ecology_forest_carbon_flux_data_assimilation",
-    "title": "森林生态系统碳通量：涡度协方差与数据同化",
-    "features": [
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "覆盖碳收支方程、通量数据清洗、贝叶斯同化和模型比较",
-    "turns": [
-      "推导森林生态系统净碳交换 NEE 与总初级生产力、生态系统呼吸之间的碳收支关系，并用 LaTeX 说明涡度协方差通量估计量。",
-      "解释夜间低湍流条件为何造成通量低估，给出基于摩擦速度阈值的质量控制步骤和不确定性传播公式。",
-      "使用 Python 写一个小型可复现示例，生成半小时通量数据，完成异常值过滤、缺测填补和年度累积碳收支计算。",
-      "用 Markdown 表格比较涡度协方差、树木样地调查、遥感反演和过程模型在空间尺度、时间分辨率、主要偏差及验证方式上的差异。",
-      "设计一套用贝叶斯数据同化估计森林呼吸参数的方案，明确先验、似然、观测误差协方差和交叉验证策略。"
-    ]
-  },
-  {
-    "id": "causal_inference_cluster_randomized_interference",
-    "domain": "causal_inference_experimental_design",
-    "title": "因果推断：集群随机实验、干扰效应与随机化推断",
-    "features": [
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "覆盖潜在结果与网络干扰公式、Python模拟、随机化统计量、实验设计对比表格。",
-    "turns": [
-      "使用一个完全虚构的社区节能教学实验定义潜在结果与处理分配变量，用 LaTeX 表达无干扰假设和部分干扰假设的区别，避免把相关性当成因果证据。",
-      "推导集群随机设计下直接效应与溢出效应的估计量，解释集群大小不均与组内相关性如何影响方差和有效样本量。",
-      "使用 Python 代码块模拟一个含组内相关性与网络溢出的虚构实验，生成处理与对照数据并计算一个随机化检验的双侧 p 值。",
-      "使用 Markdown 表格比较个体随机、集群随机、两阶段饱和度随机与匹配观察设计，列出识别假设、统计功效、成本和主要偏差来源。",
-      "构建含公式、参数表和伪代码的实验审计方案，分析网络跨群边、差异失访和测量误差对估计的影响，并给出教学模拟的敏感性分析步骤。"
-    ]
-  },
-  {
-    "id": "geophysics_ambient_noise_adjoint_tomography",
-    "domain": "geophysics_ambient_noise_adjoint_tomography",
-    "title": "地球物理学：环境噪声全波形干涉测量与伴随状态层析成像理论",
-    "features": [
-      "code",
-      "math",
-      "latex",
-      "tables",
-      "algorithms",
-      "physics"
-    ],
-    "description": "测试漫散射环境噪声波场格林函数互相关反演声学互易定理、有限频伴随核香蕉甜甜圈敏感核推导、地震干涉预处理 Python 算法与深地成像方法对比",
-    "turns": [
-      "基于声学与弹性动力学互易定理（Elastodynamic Reciprocity Theorem），严格推导在均匀无规分布的被动源（如海浪微震与大气扰动）激励下，两个独立地震台站 A 与 B 处记录的长时间连续环境噪声时间序列互相关函数对时间的导数与台站间的弹性张量格林函数之间的定量对应关系：\\frac{d}{d\\tau} C_{AB}(\\tau) \\propto - [G_{AB}(\\tau) - G_{AB}(-\\tau)]，并说明能量均分假设与漫散射波场条件在消除伪相干信号中的关键作用。",
-      "推导全波形反演（FWI）中基于伴随状态法（Adjoint-State Method）计算走时残差对地下纵波速度 \\alpha(\\mathbf{x}) 与横波速度 \\beta(\\mathbf{x}) 的有限频敏感核函数（Sensitivity Kernels），阐释为何在波长尺度下灵敏度核在几何射线路径中心由于同相相消展现出经典的空心“香蕉-甜甜圈”（Banana-Doughnut Kernel）拓扑几何特征。",
-      "使用 Python 编写一套完整的被动源地震环境噪声互相关数据预处理模块，包含对连续地震动时程记录的均值移除、趋势消除、频域谱白化（Spectral Whitening）以展宽频带，以及时域时间域一比特归一化（1-bit Normalization）以抑制局部大地震尖锐瞬态脉冲污染，最后计算两通道信号的快速傅里叶互相关（FFT Cross-Correlation）并提取对称经验格林函数波形。",
-      "设计一个结构化 Markdown 表格，对比经典射线理论走时层析成像（Ray-Theory Tomography）、环境噪声互相关干涉成像（Ambient Noise Interferometry）、远震接收函数剖面法（P-wave Receiver Function）以及三维全波形伴随层析成像（Adjoint Full-Waveform Inversion）在水平/垂直空间分辨率、对深部构造（地壳 vs 上地幔）速度梯度敏感性、计算复杂度（GPU/CPU核时）及对密集台阵几何分布依赖性。",
-      "阐述多相介质中剪切波速度 \\beta 与介质剪切模量 \\mu、密度 \\rho 的偏微分关系，推导在黏弹性衰减（Q因子）存在时的走时与振幅联合伴随源（Adjoint Source）构造方式，分析如何利用多周期面波频散反演技术有效克服深部克拉通岩石圈底部低速软流圈界面的非线性多解性与局部极小陷阱。"
-    ]
-  },
-  {
-    "id": "astrochemistry_ice_mantle_photolysis_spectroscopy",
-    "domain": "astrochemistry_ice_mantle_photolysis_spectroscopy",
-    "title": "天体化学：星际冰颗粒幔光解反应与红外特征光谱反演",
+    "id": "finance_coupon_bond_duration_convexity_audit",
+    "title": "Coupon bond cash flows and interest-rate sensitivity audit",
+    "domain": "Finance: fixed-income valuation and sensitivity",
     "features": [
       "imagen",
       "multimodal",
-      "attachments",
       "math",
       "latex",
       "code",
       "tables"
     ],
-    "description": "测试星际尘埃表面吸附动力学、宇宙线引发冰幔光化学反应、红外吸收光谱多高斯反卷积 Python 代码与 Imagen 冰幔粒子微观结构生成",
     "turns": [
-      "基于天体物理分子云冷核（T ~ 10 K, n_H ~ 10^4 cm^-3）环境，根据 Langmuir-Hinshelwood 与 Eley-Rideal 表面反应动力学机制，推导气相 CO 与 H 原子在非晶态水冰表面吸附、热扩散与逐级加氢生成甲醛 (H2CO) 及甲醇 (CH3OH) 的速率方程组，写出反应活化能垒与特征时间尺度的解析关系。",
-      "针对韦伯空间望远镜 (JWST) NIRSpec 与 MIRI 观测原恒星盘吸收光谱，推导包含非晶态实水冰 (3.05 μm OH伸缩振动)、CO (4.67 μm) 与 CO2 (15.2 μm 弯曲振动) 的朗伯-比尔吸光度光深度 \\tau(\\lambda) 积分反演分子柱密度 N 的理论公式，解释晶体水冰 3.1 μm 伴峰与 44 μm 晶格振动特征的退火相变判据。",
-      "请生成一张展现星际分子云深处微米级无定形硅酸盐颗粒表面包覆水冰、一氧化碳与甲醇多层复杂冰幔，在极低温度下受宇宙射线诱发次级紫外光子照射并在表面产生自由基重组产生复杂有机分子 (COMs) 的高精度微观三维剖面示意图，高对比度科学插画风格。",
-      "请使用 Python 编写一个处理红外冰特征吸收光谱的局部连续谱拟合与非线性高斯反卷积程序，输入一组波长-通量拟合数据，扣除多项式基线后将 3.0 μm 水冰宽吸收峰分解为主带和短波端游离-OH键小吸收峰，输出各组分的柱密度比例和拟合残差。",
-      "设计一个结构化 Markdown 表格，对比空间红外望远镜 (JWST)、地面亚毫米波干涉阵列 (ALMA)、实验室超高真空表面反应模拟装置 (UHV Setup) 与实验室傅里叶红外光谱仪 (FTIR) 在探测星际冰幔及气相复杂有机分子时的波段覆盖、谱分辨本领 (R = \\lambda/\\Delta\\lambda)、空间分辨率、探测相态（固相冰 vs 气相分子）及各自关键观测局限。"
+      "Draw an original labelled cash-flow timeline for a three-year annual coupon bond with face value 100 and coupon rate 4 percent. Explain payment dates and redemption.",
+      "At annual yield 5 percent, derive the present value, Macaulay duration, modified duration, and convexity using LaTeX. State the compounding convention and all units.",
+      "Provide a Markdown table of discounted cash flows, time weights, and sensitivity contributions. Compute exact repricing for yields 4 percent and 6 percent and compare first- and second-order approximations.",
+      "Write runnable standard-library Python that prices the bond and calculates analytic derivatives. Independently verify derivatives with central finite differences and explicit numerical tolerances.",
+      "Explain the difference between model yield risk, credit risk, and reinvestment risk. Give a bilingual reproducibility checklist and identify assumptions that invalidate the simple duration estimate."
     ]
   },
   {
-    "id": "cryo_em_single_particle_ab_initio_reconstruction",
-    "domain": "cryo_em_single_particle_ab_initio_reconstruction",
-    "title": "冷冻电镜单颗粒技术：从头三维重构投影切片定理与贝叶斯优化",
+    "id": "logic_two_sat_implication_scc_certificate",
+    "title": "2-SAT implication graphs with verifiable assignment and contradiction certificates",
+    "domain": "Logic: satisfiability via strongly connected components",
     "features": [
       "math",
       "latex",
       "code",
       "tables",
-      "algorithms",
-      "physics"
+      "algorithms"
     ],
-    "description": "测试冷冻电镜傅里叶中心投影截面定理推导、CTF调谐对比度传递函数反卷积、Python CTF曲线生成与现代结构生物学方法综合对比",
     "turns": [
-      "严格证明三维投影切片定理（Fourier Projection-Slice Theorem）：推导沿三维密度势场 \\rho(\\mathbf{r}) 在任意欧拉角 (\\phi, \\theta, \\psi) 投影方向的二维透射投影图像 p(x, y) 其二维连续傅里叶变换 P(k_x, k_y)，精确等于 \\rho(\\mathbf{r}) 的三维傅里叶变换 \\hat{\\rho}(\\mathbf{k}) 穿过原点且平行于探测器平面的中心二维切面，并阐明其在单颗粒从头三维角重构中的基本几何意义。",
-      "根据部分相干像差理论，推导透射电子显微镜中对比度传递函数（Contrast Transfer Function, CTF）的数学形式 CTF(k) = -A(k) \\sin(\\chi(k)) - Q(k) \\cos(\\chi(k))，其中波差函数 \\chi(k) = \\pi \\lambda k^2 \\Delta z + \\frac{1}{2} \\pi C_s \\lambda^3 k^4，解释散焦量 \\Delta z、球差系数 C_s 与振幅对比度占比 Q 对 CTF 零点振荡及高频包络衰减（B-factor 阻尼）的调制机理。",
-      "请使用 Python 编写计算并绘制 300 kV 冷冻透镜 (波长 \\lambda \\approx 0.01968 \\text{ Å}, C_s = 2.7 \\text{ mm}) 在指定欠焦量 \\Delta z = 1.5 \\,\\mu\\text{m} 和 \\text{B-factor} = 80 \\text{ Å}^2 条件下，径向空间频率 k 从 0 到 0.5 \\text{ Å}^{-1} (即对应 2 \\text{ Å} 分辨率) 的一维理论 CTF 响应曲线函数，并打印前三个零点对应的实空间分辨率。",
-      "设计一个结构化 Markdown 表格，横向系统对比单颗粒冷冻电镜 (SPA Cryo-EM)、冷冻电子断层扫描与亚断层平均 (Cryo-ET / STA)、微晶电子衍射 (MicroED) 以及 X 射线自由电子激光 (XFEL) 在样品制备要求、辐射损伤容限、最高理论空间分辨率、适用的生物大分子质量范围 (kDa) 及动态构象异质性解析能力。",
-      "推导基于经验贝叶斯最大后验概率估计（Empirical Bayes MAP / Expectation-Maximization）的冷冻电镜三维分类迭代算法目标函数，详细阐述 RELION 算法如何在未知单颗粒颗粒取向分布函数 P(\\phi, \\theta, \\psi, \\mathbf{t}) 存在强高斯白噪声与局部对比度掩蔽条件下，结合正则化先验平滑滤波实现抗过拟合的金标准黄金傅里叶壳层相关 (Gold-Standard FSC = 0.143) 独立半数据集真实分辨率评估。"
+      "Explain the implication-graph reduction for 2-SAT with clear notation in LaTeX. Use clauses (a or b), (not a or c), (not b or not c), and (a or not c).",
+      "Build a Markdown table mapping each clause to its two directed implications. Enumerate graph vertices and prove that the construction preserves satisfiability.",
+      "Compute strongly connected components for the example by hand. Produce a concrete satisfying assignment and check every original clause explicitly.",
+      "Provide runnable standard-library Python implementing iterative Kosaraju SCC decomposition and a 2-SAT solver with explicit literal encoding.",
+      "Add an independent verifier that checks a returned assignment against the original clause list. Exhaustively cross-check the solver on all small formulas over two variables.",
+      "Create an unsatisfiable example with a variable and its negation in the same SCC. Return two explicit directed paths witnessing the contradiction and verify each path edge against a source clause.",
+      "Add negative tests for malformed literals, out-of-range variables, empty formulas, repeated clauses, and variables not appearing in any clause. Explain supported input contracts.",
+      "Summarize correctness and O(V+E) complexity. Include the condensation DAG, assignment extraction convention, and a bilingual audit checklist that distinguishes evidence for SAT from evidence for UNSAT."
     ]
   },
   {
-    "id": "computational_neuroscience_retinal_connectome_bipolar_cell",
-    "domain": "computational_neuroscience_retinal_connectome_bipolar_cell",
-    "title": "计算神经科学：视网膜双极细胞突触连接组重构与感受野动力学推导",
+    "id": "crystallography_bragg_synthetic_peak_audit",
+    "title": "Crystallography: synthetic Bragg peaks and lattice spacing",
+    "domain": "crystallography_diffraction",
     "features": [
       "imagen",
       "multimodal",
-      "attachments",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试视网膜突触带三联体微观结构生图、时空感受野差分滤波核推导、神经电生理发放序列数值模拟与视网膜中间神经元突触动力学横向对比",
-    "turns": [
-      "请生成一幅超高分辨率的视网膜外丛状层 (Outer Plexiform Layer, OPL) 纳米尺度突触连接组结构示意图：画面必须清晰呈现视杆/视锥细胞终球 (Spherule/Pedicle) 内的突触带 (Synaptic Ribbon)、系留突触囊泡以及内陷突触三联体 (Invaginating Triad) 中水平细胞突起与 ON/OFF 双极细胞树突末梢的接触空间拓扑，标注谷氨酸受体分布。",
-      "基于线性-非线性-泊松 (LNP, Linear-Nonlinear-Poisson) 神经编码模型与空间高斯差分 (DoG, Difference-of-Gaussians) 核，严格推导视网膜双极细胞时空感受野中心-周边拮抗 (Center-Surround Antagonism) 冲激响应函数 W(x, y, t) = A_c G_c(x, y) F_c(t) - A_s G_s(x, y) F_s(t) 的时频域傅里叶变换解析式，分析空间对比度调谐特性。",
-      "使用 Python 编写一个视网膜局部神经回路仿真脚本，实现给定正弦漂移光栅刺激 (Sinusoidal Drifting Grating) 下，光感受器膜电位响应、水平细胞侧向抑制电流网络以及 ON 视网膜神经节细胞 (RGC) 的动作电位发放时间列 (Spike Trains) 泊松抽样生成与光栅调谐曲线计算。",
-      "构建结构化 Markdown 对比表格，横向分析感光细胞 (Photoreceptor)、水平细胞 (Horizontal Cell)、ON型双极细胞 (mGluR6受体)、OFF型双极细胞 (AMPA/Kainate受体) 与无长突细胞 (Amacrine Cell) 在神经递质释放类型、受体门控离子通道、感受野极性、突触后电位潜伏期与明暗适应动态范围上的电生理差异。",
-      "深入推导视网膜神经节细胞群体的最大熵原理 (Maximum Entropy Model) 与高阶突触相关性：从伊辛自旋玻璃 (Ising Spin Glass) 哈密顿量出发，推导配分函数 Z 以及观测相关矩阵 \\langle \\sigma_i \\sigma_j \\rangle 与有效突触耦合强度 J_{ij} 之间的平均场反演方程，阐明视网膜为何以群体同步发放编码自然场景高阶统计特征。"
-    ]
-  },
-  {
-    "id": "seismology_planetary_core_mantle_boundary_ultralow_velocity_zone",
-    "domain": "seismology_planetary_core_mantle_boundary_ultralow_velocity_zone",
-    "title": "行星地球物理学：核幔边界超低速带 (ULVZ) 走时异常与剪切波全波形反演",
-    "features": [
-      "physics",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试核幔边界 PcP/ScS 走时残差敏感核推导、伴随波动方程全波形反演渐近分析、反射率法合成地震图 Python 求解器与下地幔热化学非均匀性对比",
-    "turns": [
-      "在球对称各向同性参考地球模型 (PREM) 背景下，推导核幔边界 (Core-Mantle Boundary, CMB, 深度 2891 km) 反射震相 PcP 与 ScS 相对于震中距 \\Delta 的走时射线积分方程，并使用 Born 散射近似推导局部超低速带 (ULVZ) 产生的初至延迟 \\delta t 与波形前后尾波畸变的 Fréchet 敏感核核函数 K_{\\alpha}(\\mathbf{x}), K_{\\beta}(\\mathbf{x})。",
-      "详细推导弹性波动方程全波形反演 (Full Waveform Inversion, FWI) 中的伴随状态法 (Adjoint State Method)：构造目标波形 L2 范数残差能量泛函 E = \\frac{1}{2} \\int \\| u(t) - d(t) \\|^2 dt，推导反向传播的伴随波场 \\mathbf{u}^\\dagger(\\mathbf{x}, t) 所满足的无源波动偏微分方程，并给出核幔边界介质密度 \\rho 与拉梅参数 \\lambda, \\mu 的梯度更新算子。",
-      "使用 Python 编写基于一维层状介质反射率法 (Kennett Reflectivity Method) 或频散波慢度求和法的小型数值仿真脚本，合成高频震相 SPdKS 在经过具有 15 km 厚度、-10% P波降速与 -30% S波降速的核幔边界 ULVZ 介质时的合成三分量地震位移记录图。",
-      "设计结构化 Markdown 表格，系统对比下地幔底部 D\" 层四大核心构造：大剪切波低速省 (LLVP)、超低速带 (ULVZ)、俯冲板块残余巨型石板 (Subducted Slab Graveyard) 以及全地幔柱根 (Mantle Plume Root) 在横波波速异常 \\delta V_s、纵横波波速比 \\delta \\ln V_s / \\delta \\ln V_p、密度异常 \\delta \\rho、空间分布尺度与富铁硅酸盐部分熔融热力学状态。",
-      "从高压凝聚态物理矿物相变角度，推导后钙钛矿 (Post-Perovskite, pPv, (Mg,Fe)SiO3) 相变与富铁方镁铁矿 ((Mg,Fe)O) 在 CMB 强剪切流动下的晶格择优取向 (LPO)，分析晶体声学各向异性导致横波沿不同偏振方向产生剪切波分裂 (SKS/SKKS Splitting) 的相变微观动力学机制。"
-    ]
-  },
-  {
-    "id": "synthetic_biology_riboswitch_rna_origami_nanostructure",
-    "domain": "synthetic_biology_riboswitch_rna_origami_nanostructure",
-    "title": "合成生物学：RNA 折纸纳米结构与核糖开关变构动力学推导",
-    "features": [
-      "imagen",
-      "multimodal",
-      "attachments",
-      "math",
-      "latex",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试人工合成 RNA 折纸纳米结构生成、四态变构 Monod-Wyman-Changeux 热力学模型、Nussinov-Zuker 动态规划二次结构 Python 求解器与核酸纳米技术横向对比",
-    "turns": [
-      "生成一张完全虚构的高分辨率科学示意图：展示一个人工设计的四面体 RNA 折纸（RNA Origami）纳米笼结构，其四个顶点集成对腺苷变构敏感的 RNA 核糖开关（Riboswitch），包含发卡环识别位点、荧光报告基团与碱基互补杂交双螺旋束的精细分子构象与图例标注。",
-      "使用 LaTeX 建立该核糖开关配体结合与变构诱导的四态变构模型（Monod-Wyman-Changeux 模型拓展），推导配体结合分数 \\theta(L) 与吉布斯自由能能景 \\Delta G_{fold}，分析协同性 Hill 系数 n_H 与解离常数 K_d 的热力学关系。",
-      "编写 Python 代码块，基于 Nussinov-Zuker 动态规划二次结构预测算法的简化自由能邻近规则，计算一段短 RNA 序列的碱基配对最优自由能矩阵，并输出变构前后最小自由能 (MFE) 构象的括号表示法 (Dot-Bracket Notation)。",
-      "使用 Markdown 表格，对比 RNA 折纸技术、DNA 折纸技术（DNA Origami）、蛋白质从头设计（De Novo Protein Design, 如 RFdiffusion）以及超分子共价有机框架（COF）在折叠热稳定性、活细胞内转录自组装能力、载药空间封装效率与体内生物降解半衰期维度的核心技术特征。",
-      "推导该 RNA 纳米笼在活细胞微流控递送环境下的扩散输运方程与酶切降解动力学，建立含胞吞吸收、溶酶体逃逸速率常数与靶向释放产率的常微分方程组 (ODE)，给出解析稳态浓度分布解。"
-    ]
-  },
-  {
-    "id": "quantum_error_correction_surface_code_mwpm_decoder",
-    "domain": "quantum_error_correction_surface_code_mwpm_decoder",
-    "title": "量子纠错与容错量子计算：表面码伴随式测量与最小权重完美匹配译码推导",
-    "features": [
-      "math",
-      "latex",
-      "physics",
-      "code",
-      "tables",
-      "algorithms"
-    ],
-    "description": "测试二维旋转表面码稳定子测量与伴随式代数推导、时空三维译码图构建、MWPM 最小权重匹配译码器 Python 实现与纠错阈值 Ising 映射严格证明",
-    "turns": [
-      "针对二维旋转表面码（Rotated Surface Code, 码距 d），从泡利稳定子群 \\mathcal{S} 与逻辑算符 \\bar{X}, \\bar{Z} 的代数定义出发，推导数据比特与测量辅助比特构成的 X 稳定子与 Z 稳定子伴随式（Syndrome）测量本征方程，严格说明独立相位翻转噪声与比特翻转噪声如何退化为对偶晶格上的点激发缺陷对。",
-      "推导随测量轮次 T 进行的伴随式提取过程中的时空三维译码图（Spatiotemporal Decoding Graph \\mathcal{G} = (V, E)）：详细定义顶点集合 V（测量差分激发点）与边集合 E 的权重计算法则 w_e = \\ln((1 - p)/p)，说明测量误差与数据比特物理错误如何在时空图中形成类空（Spacelike）与类时（Timelike）边。",
-      "使用 Python 编写一个最小权重完美匹配（Minimum-Weight Perfect Matching, MWPM）译码器的核心算法实现，基于无向图的 Dijkstra 或 Floyd-Warshall 算法计算激发缺陷点之间的最短曼哈顿/测地距离矩阵，并调用网络匹配启发式算法寻找最佳配对并返回纠错恢复算符序列。",
-      "使用 Markdown 表格，横向对比最小权重完美匹配译码器 (MWPM, 如 PyMatching)、并查集快速译码器 (Union-Find Decoder)、神经网络置信度译码器 (NN/Transformer Decoder) 以及张量网络最大似然译码器 (Tensor Network MLD) 在时间复杂度渐进阶、逻辑错误率下界阈值、GPU/FPGA 流水线实时延迟 (ns) 以及长距离表面码扩展性四个维度的关键工程指标。",
-      "严格推导表面码阈值定理（Threshold Theorem）：使用统计物理二维 Ising/自旋玻璃无序随机键模型映射（Random-Bond Ising Model, RBIM），证明 Nishimori 线上相变临界温度对应的物理纠错理论容错阈值 p_{th} \\approx 10.9\\%（唯象无损测量下），并推导逻辑错误率随码距 d 增长的指数压制标度律 P_L \\propto C (p/p_{th})^{(d+1)/2}。"
-    ]
-  },
-  {
-    "id": "metamaterials_acoustic_cloaking_transformation_acoustics",
-    "domain": "metamaterials_acoustic_cloaking",
-    "title": "声学超构材料与声隐身：空间坐标变换声学方程推导与迷宫超表面仿真",
-    "features": [
-      "imagen",
-      "multimodal",
-      "attachments",
-      "physics",
       "math",
       "latex",
       "code",
       "tables"
     ],
-    "description": "测试变换声学质量密度张量推导、迷宫超表面声波负折射相位调制、FDTD二维声场Python求解器与超构结构对比表格",
     "turns": [
-      "生成一个用于教学演示的二维声学隐身斗篷（Acoustic Cloaking Carpet Metasurface）微纳结构截面示意图，展示平面声波入射后沿圆弧形梯度迷宫超构单元平滑绕射、在缺陷后方无声影区复原波前的声压场云图，标注阻抗匹配层与相位调制梯度，不使用真实商业图纸。",
-      "从无源非粘性各向同性声波波动方程出发，利用微分几何坐标变换 x^i \to x^{i\\prime}(x)，严格推导出变换声学方程（Transformation Acoustics）。证明变换后介质的等效质量密度张量 \boldsymbol{\rho}^\\prime 与体积模量 \\kappa^\\prime 满足 \boldsymbol{\rho}^\\prime = \rho_0 \\det(A) (A A^T)^{-1} 与 \\kappa^\\prime = \\kappa_0 \\det(A)，并解释为什么物理实现该隐身斗篷必须引入强各向异性质量密度与非均匀惯性特征。",
-      "使用 Python 编写一个基于有限差分时域法 (FDTD) 的紧凑声学波动求解脚本，建立具有阶梯折射率分布的二维梯度迷宫超构表面，模拟单频平面声波穿过非均匀介质层的声压场时域演化，并计算透射侧相位分布以验证广义斯涅尔定律 (Generalized Snell's Law) 的反常折射与全透射无反射条件。",
-      "推导各向异性声学超构材料的等效介质散射消除理论，分析由亚波长亥姆霍兹共振腔与曲折迷宫通道耦合产生的动态等效负有效质量密度 (\rho_{eff} < 0) 与负体积模量 (\\kappa_{eff} < 0) 双负特性，给出由 Kramers-Kronig 因果律关系限定的被动无源超构材料因果性与本构带宽物理极限。",
-      "使用 Markdown 表格，对比五模式超构材料 (Pentamode)、空间卷绕迷宫单元 (Space-Coiling)、局域薄膜共振结构与穿孔板亥姆霍兹共振腔在工作相对带宽、亚波长单元尺寸比 (\\lambda / d)、模态转换损耗 (剪切波耦合)、各向异性比率调节范围以及三维微纳打印制造成熟度等核心工程维度的综合特性。"
+      "Create an original schematic of parallel crystal planes and incident/reflected X-ray rays. Label the interplanar spacing and Bragg angle. Mark the drawing as schematic and give a Markdown table of explicitly synthetic wavelengths and angles with units.",
+      "Derive Bragg’s law and the cubic-lattice spacing relation in LaTeX. State whether each angle is theta or two-theta, order constraints, and the range in which the inverse sine is defined.",
+      "Write complete runnable standard-library Python converting synthetic two-theta peaks into lattice-spacing estimates. Reject invalid angles, nonpositive wavelengths, and zero Miller indices; include executable tests.",
+      "Produce a Markdown table comparing several synthetic cubic peaks with predicted angles, recovered lattice constants and numerical residuals. Propagate a stated angular uncertainty and distinguish random from systematic errors.",
+      "Write a Chinese-English reproducibility audit containing formulas, complete Python, boundary tests and units. Explain why this synthetic geometric calculation cannot identify a real material without independent evidence."
     ]
   },
   {
-    "id": "gravitational_waves_post_newtonian_inspiral_matched_filtering",
-    "domain": "gravitational_waves_post_newtonian",
-    "title": "引力波天文学：后牛顿展开致密双星旋近波形推导与匹配滤波搜索",
+    "id": "network_flow_residual_cut_certificate",
+    "title": "Network flow: residual edges and a minimum-cut certificate",
+    "domain": "graph_maximum_flow",
     "features": [
       "math",
       "latex",
-      "physics",
       "code",
       "tables",
       "algorithms"
     ],
-    "description": "测试 3.5PN 致密双星旋近相位演化推导、稳相近似频域 TaylorF2 波形、频域维纳匹配滤波 Python 算法与波形模板族横向对比",
     "turns": [
-      "在广义相对论爱因斯坦微扰弱场四极辐射理论框架下，针对致密双星（质量 m_1, m_2，总质量 M，啁啾质量 \\mathcal{M} = (m_1 m_2)^{3/5} / M^{1/5}）的准圆轨道旋近过程，推导引力波能量辐射率 dE/dt 与角动量损失率 dJ/dt。证明引力波轨道频率漂移满足 \\dot{f}_{GW} = \frac{96}{5} \\pi^{8/3} (\frac{G \\mathcal{M}}{c^3})^{5/3} f_{GW}^{11/3}，并阐明为什么通过观测频率与频率一阶导数即可独立测定双星系统的绝对啁啾质量。",
-      "采用后牛顿 (Post-Newtonian, PN) 逐阶展开方法，推导引力波频域波形在稳相近似 (Stationary Phase Approximation, SPA) 下的 TaylorF2 闭合解析形式 \tilde{h}(f) = \\mathcal{A} f^{-7/6} e^{i \\Psi(f)}。写出包含 1PN、1.5PN 尾项 (Tail Effect)、2PN、2.5PN 以及 3.5PN 高阶修正的频域相位 \\Psi(f) 级数展开式，并推导自旋-轨道耦合 (Spin-Orbit Coupling) 对双星进动与相位累积演化的特征修正项。",
-      "使用 Python 编写致密双星引力波频域匹配滤波 (Matched Filtering) 核心检测脚本：构建模拟 Advanced LIGO 探测器噪声功率谱密度 (PSD) S_n(f)，在频域对注入高斯白噪声的引力波时域应变信号进行反卷积加权求和，计算最优化匹配信噪比 (Optimal SNR) 与时间序列最大化检验统计量 \rho(t)，并输出检测峰值到达时间与有效距离估计。",
-      "分析地基引力波探测器在低频端 (f < 10 Hz) 由地球重力梯度噪声 (Newtonian Noise) 与悬丝热噪声构成的物理敏感度墙，推导由基准质量局部质量密度波动引发的引力扰动谱密度；进而对比天基引力波探测器（如 LISA），推导基于光不等臂迈克尔逊干涉仪的时延干涉测量技术 (Time-Delay Interferometry, TDI) 如何通过代数消除精确抵消超前 8 个数量级的激光相位波动噪声。",
-      "使用 Markdown 表格，对比后牛顿 TaylorF2 频域波形、时域 TaylorT4 积分波形、有效单体数值相对论波形 (SEOBNR) 以及唯象拟合波形 (IMRPhenomXPH) 在旋近-合并-准简正振荡全时程物理完备性、高阶多极辐射矩 (h_{lm}) 覆盖能力、双星自旋进动动力学支持、计算吞吐速度以及 MCMC 贝叶斯后验参数推断兼容性等关键性能维度的差异。"
+      "Define a small directed capacitated network with a source, sink, antiparallel edges and a disconnected vertex. Present its synthetic capacities in a Markdown table with a textual diagram.",
+      "Derive flow conservation, residual forward/reverse capacity and the cut upper bound in LaTeX. Explain how antiparallel original edges differ from algorithmic reverse edges.",
+      "Write complete runnable standard-library Python for Edmonds-Karp using separately indexed residual edges. Validate vertices and finite nonnegative capacities, and include executable unit tests.",
+      "Trace each augmenting path with a Markdown table of bottleneck, flow value and changed residual capacities. Explain which changes undo an earlier routing choice.",
+      "Compute the residual source-reachable set and its corresponding cut. Provide a machine-checkable certificate that flow value equals cut capacity, with all conservation residuals.",
+      "Independently verify the result by enumerating all source-sink cuts for this small graph. Supply complete Python and a table comparing the optimum certificate with the enumeration.",
+      "Add negative and boundary tests for zero capacity, disconnected sink, parallel and antiparallel edges, self loops, and invalid endpoints. State the chosen self-loop convention explicitly.",
+      "Write a Chinese-English audit containing the derivation, complete runnable code, tables and tests. Explain integer-capacity assumptions, floating-point limitations and the algorithm’s complexity."
     ]
   },
   {
-    "id": "oceanography_internal_solitary_waves_kdv",
-    "domain": "oceanography_internal_solitary_waves",
-    "title": "物理海洋学：深海内孤立波动力学、KdV 方程孤子解与遥感特征反演",
+    "id": "mechanics_damped_oscillator_energy_audit",
+    "title": "Damped oscillator: energy decay and sampling checks",
+    "domain": "mechanics_damped_oscillator",
     "features": [
       "imagen",
       "multimodal",
-      "attachments",
-      "physics",
       "math",
       "latex",
       "code",
       "tables"
     ],
-    "description": "测试两层流体浅水内孤立波 Korteweg-de Vries (KdV) 方程推导、非线性与频散平衡孤立波波形解、SAR 空间合成孔径雷达海面粗糙度特征图 Imagen 生图、Python 伪谱法数值模拟及海洋内波观测技术对比",
     "turns": [
-      "针对两层密度跃层流体系统（上层密度 \\rho_1、厚度 h_1；下层密度 \\rho_2、厚度 h_2，相对密度跃变 \\Delta \\rho / \\rho \\ll 1），从连续性方程和不可压缩欧拉方程出发，运用多重尺度摄动展开法推导界面位移 \\eta(x,t) 满足的经典 Korteweg-de Vries (KdV) 方程：\\frac{\\partial \\eta}{\\partial t} + c_0 \\frac{\\partial \\eta}{\\partial x} + \\alpha \\eta \\frac{\\partial \\eta}{\\partial x} + \\beta \\frac{\\partial^3 \\eta}{\\partial x^3} = 0，并推导线性长波相速度 c_0、非线性系数 \\alpha 与频散系数 \\beta 的解析表达式。",
-      "请生成一张概念图：空间合成孔径雷达（SAR）从近地轨道俯瞰南海或安达曼海海面内孤立波包（Internal Solitary Wave Packets）的微波后向散射灰度图像。画面需清晰展现两组向陆架传播的弧形内波波前（Wavefronts），表现出前沿明亮带（毛细重力波聚集粗糙区）与后缘暗带（水流发散平滑区）交替的周期性条纹明暗对比特征，展现深海内孤立波在海面的独特微波成像印记。",
-      "求解 KdV 方程的稳态单孤子解 \\eta(x, t) = -\\eta_0 \\mathrm{sech}^2\\left(\\frac{x - V t}{\\Delta}\\right)（在 h_1 < h_2 的下凹波情形下），证明其相速度 V 与波幅 \\eta_0 满足非线性正相关 V = c_0 - \\frac{1}{3} \\alpha \\eta_0，并严格证明有效波宽 \\Delta = \\sqrt{\\frac{-12 \\beta}{\\alpha \\eta_0}}，分析为何大振幅内孤立波往往演化为由多个波幅递减孤子组成的裂变孤子包（Soliton Packet Fission）。",
-      "使用 Python 编写数值程序，采用傅里叶伪谱法（Fourier Pseudospectral Method）结合四阶 Runge-Kutta 积分器求解 KdV 方程在周期边界条件下的时间演化。初始化一个高斯扰动波包 \\eta(x, 0) = -A e^{-(x - x_0)^2 / \\sigma^2}，展示波包在非线性与频散共同作用下分裂为排序孤立波列的过程，并输出各出射孤子的波幅与理论预测比值。",
-      "使用 Markdown 表格，对比锚碇潜标海流剖面仪（ADCP）、卫星空间合成孔径雷达（SAR）、地震海洋学（Seismic Oceanography）反射同相轴成像以及水下自主航行器（Glider/AUV）在空间分辨率、全水深垂直结构覆盖能力、时间连续监测能力与深海极端大振幅内波耐受性四个维度的优缺点。"
+      "Create an original schematic of a horizontal spring-mass-damper system, with displacement, velocity and force arrows clearly labelled as schematic. Give a Markdown table of explicitly synthetic SI parameters and initial conditions for an underdamped example.",
+      "Derive the homogeneous damped oscillator solution in LaTeX and its mechanical energy derivative. Distinguish underdamped, critically damped and overdamped regimes; state parameter units and sign assumptions.",
+      "Write complete runnable standard-library Python for the analytic displacement and velocity in all three regimes, including the critical limit. Include executable tests for initial conditions, zero damping and invalid mass or negative damping.",
+      "Compare the analytic solution with step-refined numerical integration in a Markdown error table. Audit whether the discrete energy is monotone and explain how numerical error can imitate physical energy injection. Use only synthetic data.",
+      "Write a Chinese-English reproducibility report containing equations, full code and negative tests. Explain aliasing when recording oscillations and why the schematic image cannot verify force balance or identify physical damping parameters."
     ]
   },
   {
-    "id": "quantum_chemistry_dmrg_active_space",
-    "domain": "quantum_chemistry_dmrg_active_space",
-    "title": "量子化学：多参考态强关联体系矩阵乘积态 (MPS) 与 DMRG 算法推导",
+    "id": "compilers_dominator_fixed_point_certificate",
+    "title": "Control-flow graphs: dominators and independent certificates",
+    "domain": "compilers_control_flow_dominators",
     "features": [
-      "physics",
       "math",
       "latex",
       "code",
       "tables",
       "algorithms"
     ],
-    "description": "测试强关联多电子体系电子积分张量重整化、矩阵乘积态 (MPS) 规范形式与截断误差标度律、单点/双点 DMRG 块哈密顿量对角化 Python 紧凑求解器及多参考电子结构方法纵向对比",
     "turns": [
-      "在二次量子化表象下，写出包含单电子动能/核吸引积分 h_{pq} 与双电子排斥积分 g_{pqrs} 的全分子电子哈密顿量 \\hat{H} = \\sum_{pq} h_{pq} a_p^\\dagger a_q + \\frac{1}{2} \\sum_{pqrs} g_{pqrs} a_p^\\dagger a_q^\\dagger a_s a_r。解释为什么对于过渡金属二聚体（如 Cr_2）或铁硫簇（Fe_4S_4）等多中心强关联体系，单参考态耦合簇理论（CCSD(T)）会出现对称性破缺与发散，必须采用多参考态方法。",
-      "将全组态相互作用（FCI）波函数系数张量 C_{\\sigma_1 \\dots \\sigma_k} 展开为矩阵乘积态（Matrix Product State, MPS）形式 |\\Psi\\rangle = \\sum_{\\sigma_1 \\dots \\sigma_k} A^{\\sigma_1} A^{\\sigma_2} \\dots A^{\\sigma_k} |\\sigma_1 \\dots \\sigma_k\\rangle。通过奇异值分解（SVD）推导左正则（Left-Canonical）与右正则（Right-Canonical）规范条件，证明一维量子链纠缠熵 S_E = -\\sum_i s_i^2 \\ln s_i^2 对 MPS 键维（Bond Dimension M）截断误差 \\epsilon_{tr} 的严格标度关系。",
-      "推导单中心与双中心密度矩阵重整化群（DMRG）的扫场更新（Sweep Optimization）算法。从变分能量极小化 \\min \\langle \\Psi | \\hat{H} | \\Psi \\rangle / \\langle \\Psi | \\Psi \\rangle 出发，推导有效哈密顿量矩阵 \\mathcal{H}_{eff} 的投影构造形式，并说明利用 Davidson 迭代算法求解局部张量基态能级的收敛加速机制。",
-      "使用 Python 编写一个教学版 DMRG 变分优化程序框架，针对简化的 1D 强关联 Hubbard/Heisenberg 自旋链模型（L=8），在固定键维 M=16 下执行左右各 2 次扫场，输出每次扫场后计算基态能量的单调收敛演化过程，并验证截断概率和总纠缠熵。",
-      "使用 Markdown 表格，对比完全活性空间自洽场（CASSCF）、完全活性空间二级微扰论（CASPT2）、密度矩阵重整化群（DMRG-CASSCF）以及辅助场量子蒙特卡洛（AFQMC）在最大活性空间轨道容量（Active Space Orbitals）、动态/静态电子关联处理能力、计算标度律与侵入态（Intruder State）敏感度四个核心维度的对比。"
+      "Define a synthetic directed control-flow graph with a named entry, a branch, a join, a loop and an unreachable node. Provide Markdown tables of nodes and edges. Define precisely which nodes participate in dominance.",
+      "Express the dominator fixed-point equations in LaTeX over entry-reachable nodes. Explain initialization and prove termination and correctness, distinguishing a fixed point from a path-based dominance claim.",
+      "Write complete runnable standard-library Python to validate the graph and compute dominator sets by fixed-point iteration. Include executable tests and deterministic ordering.",
+      "Trace each iteration for the synthetic graph in a Markdown table. Derive immediate dominators and explain the strict-dominator ordering that makes them unique for reachable non-entry nodes.",
+      "Implement an independent certificate checker using reachability after vertex removal instead of the fixed-point recurrence. Reject missing nodes, invented nodes, incorrect entry dominance and false dominance claims.",
+      "Enumerate all tiny directed graphs up to a clearly bounded size and compare the fixed-point solver with the independent checker. Provide full deterministic Python, finite bounds and an honest complexity estimate.",
+      "Add executable tests for self-loops, duplicate edges, an entry with incoming edges, disconnected cycles, unknown endpoints and a one-node graph. State the policy for unreachable nodes and show how the checker enforces it.",
+      "Write a Chinese-English audit including definitions, proof, complete solver/checker code and negative tests. Explain why dominance alone does not prove variable liveness, correct SSA construction or semantic equivalence of compiler optimizations."
+    ]
+  },
+  {
+    "id": "optics_jones_polarization_power_audit",
+    "title": "Polarization optics: Jones vectors and power conservation",
+    "domain": "optics_polarization_jones_calculus",
+    "features": [
+      "imagen",
+      "multimodal",
+      "math",
+      "latex",
+      "code",
+      "tables"
+    ],
+    "turns": [
+      "Create an original schematic of a synthetic optical bench with an ideal linear polarizer, a quarter-wave plate and an analyzer. Label propagation direction and optical axes; distinguish schematic arrows from measured light fields. Give a Markdown table of synthetic angles and normalized input powers.",
+      "Derive the Jones matrices and transmitted intensity in LaTeX for a stated phase convention. Explain global phase, normalized polarization vectors and when Jones calculus cannot represent partially polarized light.",
+      "Write complete runnable standard-library Python using complex numbers to compose the matrices and compute intensity. Include executable tests for unitary retarders, crossed polarizers, Malus law and invalid normalization.",
+      "Provide a Markdown table sweeping analyzer angles for linear and circular input. Independently check power bounds and angle periodicity, including degree-versus-radian negative tests. Use explicitly synthetic values only.",
+      "Write a Chinese-English audit with formulas, full reproducible code and negative tests. Distinguish lossless retarders from lossy polarizers and explain why a schematic image cannot certify actual polarization, alignment or optical power."
+    ]
+  },
+  {
+    "id": "algorithms_bipartite_matching_vertex_cover_certificate",
+    "title": "Bipartite matching: augmenting paths and vertex-cover certificates",
+    "domain": "algorithms_bipartite_matching_certificates",
+    "features": [
+      "math",
+      "latex",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "turns": [
+      "Define a small synthetic bipartite assignment graph with named left and right vertices, at least one isolated vertex and competing choices. Give Markdown tables for vertices and edges. Distinguish maximum-cardinality matching from a maximal matching.",
+      "Define augmenting paths in LaTeX and prove why their absence characterizes maximum matching. State the bipartite partition assumptions and explain the symmetric-difference argument.",
+      "Write complete runnable standard-library Python that validates a bipartite graph and computes a maximum matching via augmenting paths. Include deterministic traversal and executable tests.",
+      "Trace each augmentation on the example in a Markdown table showing the matching before and after, the alternating path and its cardinality. Include an example where a greedy maximal matching is suboptimal.",
+      "Derive a minimum vertex cover using alternating reachability from unmatched left vertices. Prove that it covers every edge and has the same size as the maximum matching.",
+      "Implement an independent certificate checker for matching validity, edge coverage and equal cardinality. Reject repeated endpoints, nonedges, invented vertices and uncovered edges, including executable negative tests.",
+      "Enumerate every graph for a bounded tiny bipartition and compare the solver against brute-force matching and vertex-cover enumeration. Provide complete deterministic Python and explicit computational bounds.",
+      "Write a Chinese-English audit containing the proof, full solver and independent checker, tables and negative tests. Explain why this unweighted graph exercise does not solve weighted assignment, capacity constraints or real-world allocation fairness."
+    ]
+  },
+  {
+    "id": "circuits_rc_step_energy_consistency_audit",
+    "title": "RC step response: transient energy and numerical convergence",
+    "domain": "circuits_rc_transient_energy",
+    "features": [
+      "imagen",
+      "multimodal",
+      "math",
+      "latex",
+      "code",
+      "tables"
+    ],
+    "turns": [
+      "Create an original educational illustration of a series resistor-capacitor circuit connected to a switched DC voltage source. Label current direction and capacitor voltage; state that the illustration is schematic, not measured data.",
+      "For an initially uncharged 100 microfarad capacitor charged through a 2.2 kilohm resistor by a 5 V ideal source at t=0, derive the differential equation and analytic current and capacitor voltage. Define the time constant and show equations in LaTeX.",
+      "Calculate capacitor voltage, current, stored energy, and cumulative resistor dissipation at t/tau=0, 0.5, 1, 2, and 5. Present a Markdown table with units and verify source energy equals capacitor energy plus resistor heat.",
+      "Write self-contained standard-library Python using explicit Euler integration at dt/tau=0.1, 0.05, and 0.025. Compare against the analytic solution, print maximum voltage error, and check the approximate energy-balance residual. Include the code in a fenced block.",
+      "Discuss numerical stability, first-order convergence, and why an ideal charging circuit dissipates half the final source energy in the resistor even for a small positive resistance. Finish with a bilingual English/Chinese summary and a table separating ideal assumptions from real parasitics."
+    ]
+  },
+  {
+    "id": "geometry_convex_hull_orientation_certificate",
+    "title": "Convex hull: exact orientation and independent containment witnesses",
+    "domain": "computational_geometry_convex_hull",
+    "features": [
+      "math",
+      "latex",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "turns": [
+      "Use the planar integer points [(0,0),(4,0),(4,4),(0,4),(2,2),(1,0),(4,2),(2,4),(0,2),(0,0),(3,1)]. Define the signed orientation determinant in LaTeX and explain how its sign classifies a turn.",
+      "Derive Andrew’s monotone-chain convex hull algorithm. State a deterministic convention: remove duplicate points, return extreme vertices counterclockwise beginning at the lexicographically smallest vertex, and omit intermediate collinear boundary points.",
+      "Work through the sorted points and record lower-hull stack pushes and pops in a Markdown table. Explain the determinant and removal condition at each nontrivial pop.",
+      "Provide self-contained standard-library Python implementing the hull with exact integer arithmetic. Include executable assertions for the expected hull, all-identical points, two points, and a fully collinear set in fenced code.",
+      "Construct an independent certificate checker that verifies every original point lies in or on the returned convex polygon using exact orientation tests. Explain special handling of hulls with fewer than three vertices and include Python.",
+      "Prove the O(n log n) time bound, including why each point is popped at most once per chain. Distinguish sorting cost, stack traversal, and certificate-checking complexity in a Markdown table.",
+      "Show an explicit example where a naive fixed epsilon for floating-point orientation can change a hull decision. Explain translation, scaling, exact arithmetic, and robust predicates without claiming one universal epsilon works.",
+      "Conclude with a bilingual English/Chinese audit of vertex order, duplicates, collinear boundaries, containment, and numerical assumptions. Include the final hull and a compact invariant table."
+    ]
+  },
+  {
+    "id": "acoustics_doppler_stationary_medium_audit",
+    "title": "Acoustics: Doppler shifts and sign conventions",
+    "domain": "acoustics_doppler",
+    "features": [
+      "imagen",
+      "multimodal",
+      "math",
+      "latex",
+      "code",
+      "tables"
+    ],
+    "turns": [
+      "Create an original educational illustration of a moving sound source approaching a stationary observer in still air. Label wavefront spacing, velocity directions and the medium reference frame; mark the drawing schematic.",
+      "Derive the classical acoustic Doppler equation with explicit sign conventions for source and observer velocities. Use LaTeX and distinguish sound propagation through a medium from relativistic light shifts.",
+      "For sound speed 343 m/s and source frequency 440 Hz, compare approaching and receding source speeds of 10, 20 and 30 m/s. Give a Markdown table with units and explain the stationary limit.",
+      "Write self-contained standard-library Python to compute these shifts with validated subsonic inputs, including tests for stationary source and observer. Put code in a fenced block.",
+      "Explain how wind, acceleration and finite observer distance affect the assumptions. Finish with an English/Chinese summary and a table separating measured quantities from idealizations."
+    ]
+  },
+  {
+    "id": "number_theory_crt_non_coprime_certificate",
+    "title": "Chinese remainders: compatible noncoprime systems",
+    "domain": "number_theory_generalized_crt",
+    "features": [
+      "math",
+      "latex",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "turns": [
+      "Solve x congruent to 2 modulo 6 and x congruent to 5 modulo 9. State the compatibility condition for noncoprime moduli and describe the full solution class.",
+      "Derive the two-congruence merge algorithm using Bezout coefficients. Use LaTeX to prove both necessity and sufficiency of the gcd compatibility condition.",
+      "Give a Markdown table comparing systems (2 mod 6, 5 mod 9), (2 mod 6, 4 mod 9) and (0 mod 4, 2 mod 6), including gcd, compatibility and resulting modulus.",
+      "Implement extended Euclid and generalized CRT in self-contained Python. Normalize negative residues, reject nonpositive moduli and return an explicit incompatibility result.",
+      "Extend the algorithm to merge a list of congruences and prove its invariant. Explain why the result modulus is the lcm rather than always the product.",
+      "Construct deterministic tests for modulus one, repeated moduli, negative residues, incompatible residues and an empty system. List expected results in a table.",
+      "Write a brute-force checker for small moduli and cross-check every pair of moduli from 1 through 8 against the merge implementation. Explain the finite verification bound.",
+      "Provide a bilingual English/Chinese worked example with three compatible congruences, a merge trace table, and a final substitution certificate for each original congruence."
+    ]
+  },
+  {
+    "id": "biochemistry_michaelis_menten_initial_rate_audit",
+    "title": "Enzyme kinetics: initial-rate saturation and assumptions",
+    "domain": "biochemistry_enzyme_kinetics",
+    "features": [
+      "imagen",
+      "multimodal",
+      "math",
+      "latex",
+      "code",
+      "tables"
+    ],
+    "turns": [
+      "Generate an original educational illustration of a fictional enzyme binding a substrate and releasing a product. Label the catalytic cycle and distinguish schematic icons from molecular structures or measured data.",
+      "Derive the Michaelis-Menten initial-rate equation with the quasi-steady-state approximation. Define all constants in LaTeX and state the assumptions on substrate depletion and product inhibition.",
+      "For Vmax=120 micromolar/min and Km=30 micromolar, tabulate initial rates at substrate concentrations 0, 10, 30, 90 and 300 micromolar. Include fractional saturation in a Markdown table.",
+      "Write standard-library Python to compute rates and the sensitivity to Km and Vmax, validating nonnegative substrate and positive Km. Include exact half-saturation and zero-substrate tests in fenced code.",
+      "Explain why a saturation curve alone does not establish a molecular mechanism and compare competitive versus uncompetitive inhibition. Finish with a bilingual English/Chinese summary and an assumptions table."
+    ]
+  },
+  {
+    "id": "strings_levenshtein_alignment_optimality_certificate",
+    "title": "Edit distance: dynamic programming and alignment certificates",
+    "domain": "algorithms_string_edit_distance",
+    "features": [
+      "math",
+      "latex",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "turns": [
+      "Compute the unit-cost Levenshtein distance between kitten and sitting. Define insertion, deletion and substitution and give one optimal edit sequence.",
+      "Derive the dynamic-programming recurrence and base conditions in LaTeX. Explain what each table cell certifies about prefixes.",
+      "Present the complete dynamic-programming matrix for cat versus cut as a Markdown table and show how a backtrace produces a valid edit script.",
+      "Implement self-contained Python returning both distance and an edit script. Define deterministic tie-breaking and explain how edits refer to changing string positions.",
+      "Prove optimal substructure and termination. Analyze time and memory bounds, including the difference between retaining a full alignment and computing distance alone.",
+      "Give tests for empty strings, identical strings, repeated symbols, Chinese text and an emoji containing multiple code points. State whether the implementation measures code points or grapheme clusters.",
+      "Write a standard-library brute-force checker for binary strings of length at most three and compare it against the dynamic program. Include a function applying each returned script to verify the target.",
+      "Summarize in English and Chinese with a worked alignment table, a certificate that the script cost equals the computed optimum, and limitations for transpositions and Unicode normalization."
+    ]
+  },
+  {
+    "id": "porous_media_darcy_head_flux_units_audit",
+    "title": "Porous media: Darcy flux, head gradients and travel time",
+    "domain": "geoscience_porous_media_flow",
+    "features": [
+      "imagen",
+      "multimodal",
+      "math",
+      "latex",
+      "code",
+      "tables"
+    ],
+    "turns": [
+      "Create an original educational cross-section of a fictional saturated sand column between two water reservoirs. Label head levels, column length, cross-sectional area and flow direction. Mark it schematic rather than measured geological data.",
+      "Derive Darcy discharge from hydraulic conductivity and the head gradient, using LaTeX with explicit units and sign conventions. Distinguish discharge, Darcy flux and pore-water velocity.",
+      "For conductivity 2e-5 m/s, column length 1.5 m, area 0.02 m^2 and porosity 0.35, compare head drops 0.05, 0.15 and 0.30 m. Provide a Markdown table of flow rate, pore velocity and nominal travel time.",
+      "Write self-contained standard-library Python to calculate these values. Validate physical inputs, include the zero-gradient case and explain the infinite travel-time limit with fenced code.",
+      "Explain why preferential flow, dispersion, unsaturated conditions and changing porosity limit the simple model. End with a bilingual English/Chinese summary and a table separating assumptions from observations."
+    ]
+  },
+  {
+    "id": "data_structures_union_find_forest_invariant_audit",
+    "title": "Disjoint sets: union by size and path compression invariants",
+    "domain": "data_structures_disjoint_set_union",
+    "features": [
+      "math",
+      "latex",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "turns": [
+      "Trace disjoint-set unions (0,1), (2,3), (1,2), (4,5), (3,5) over elements 0 through 6. Give the resulting partition and explain the difference between a representative identifier and a semantic component label.",
+      "Define parent-forest, root and size invariants in LaTeX. Explain why union by size preserves acyclicity and how path compression changes the forest without changing the partition.",
+      "Provide a Markdown trace table of parents and root sizes after every union, breaking equal-size ties by the smaller root identifier.",
+      "Implement standard-library Python with validated indices, iterative path compression, union by size, a same-component query and an explicit component counter.",
+      "Give tests for repeated unions, self-unions, empty universes, out-of-range indices and already-connected pairs. Include expected component counts in a table.",
+      "Write an invariant checker that verifies parent indices, acyclicity, root sizes and component count independently. Explain which checks would detect a faulty merge.",
+      "Cross-check against a simple set-partition oracle on deterministic random sequences for small universes. Discuss amortized inverse-Ackermann bounds and why one find operation need not have constant worst-case cost.",
+      "Finish with an English/Chinese worked example, a partition certificate after each operation and limitations for deletions, rollback and concurrent updates."
+    ]
+  },
+  {
+    "id": "structures_simply_supported_beam_equilibrium_audit",
+    "title": "Beam statics: reactions, shear and moment consistency",
+    "domain": "structural_statics_beam_equilibrium",
+    "features": [
+      "imagen",
+      "multimodal",
+      "math",
+      "latex",
+      "code",
+      "tables"
+    ],
+    "turns": [
+      "Generate an original educational schematic of a fictional simply supported beam with a pin at the left, roller at the right and one downward point load. Label the span, load position, reactions and sign conventions; call it a schematic, not a construction drawing.",
+      "Derive support reactions, piecewise shear and bending moment in LaTeX for a downward load P at distance a along span L. Show vertical-force and moment equilibrium and state the idealizations.",
+      "Use L=6 m, P=12 kN and a=2 m. Give a Markdown table of shear and moment at both supports and immediately to either side of the point load, making discontinuities and units explicit.",
+      "Write standard-library Python functions for reactions and piecewise fields, with tests for midpoint loading, support loading limits and invalid geometry. Include fenced code and a numerical equilibrium check.",
+      "Explain why this static calculation alone cannot establish structural safety, deflection or material capacity. Finish with an English/Chinese audit summary distinguishing mathematical checks from engineering design requirements."
+    ]
+  },
+  {
+    "id": "probability_absorbing_random_walk_exact_certificate",
+    "title": "Absorbing random walks: exact hitting probabilities and times",
+    "domain": "probability_absorbing_markov_chains",
+    "features": [
+      "math",
+      "latex",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "turns": [
+      "Consider a fair random walk on states 0 through 4 with absorbing endpoints, starting at 2. Find the probability of absorption at 4 and the expected number of steps to absorption, clearly distinguishing the two quantities.",
+      "Derive the first-step recurrence equations and boundary conditions in LaTeX for arbitrary upward probability p. Explain why absorption occurs almost surely for 0<p<1 on a finite interval.",
+      "Give a Markdown table of exact hitting probabilities and expected times for all five starting states in the fair case. Verify every interior recurrence explicitly.",
+      "Implement standard-library Python using fractions.Fraction and exact Gaussian elimination to solve the transient linear systems. Validate inputs and handle already-absorbed starting states.",
+      "Analyze biased cases p=1/3 and p=2/3 and compare them in a Markdown table. Explain the symmetry obtained by reversing the endpoints.",
+      "Write independent checks using rational residuals, probability bounds, nonnegative expected times and reflection symmetry. Include endpoint cases p=0 and p=1 with their deterministic interpretation.",
+      "Add a seeded Monte Carlo simulation with a stated sample count and uncertainty estimate, comparing estimates against exact answers without treating agreement as proof.",
+      "Finish with a bilingual English/Chinese worked example and a certificate table separating exact identities, numerical estimates and assumptions about independent stationary transition probabilities."
+    ]
+  },
+  {
+    "id": "oceanography_two_constituent_tide_phase_audit",
+    "title": "Tidal harmonics: constituent phases and synthetic water levels",
+    "domain": "oceanography_tidal_harmonics",
+    "features": [
+      "imagen",
+      "multimodal",
+      "math",
+      "latex",
+      "code",
+      "tables"
+    ],
+    "turns": [
+      "Generate an original educational illustration of a fictional coastal tide gauge with a datum, water-level scale and a synthetic oscillating water-level trace. Label it schematic and explicitly state that it is not a navigation prediction.",
+      "Define a two-constituent harmonic tide model in LaTeX, with angular frequencies, amplitudes, phases and a mean datum. Explain units and the difference between a phase lag and a time lag.",
+      "For mean level 1 m, amplitudes 0.8 and 0.3 m, periods 12 and 12.5 hours and zero initial phases, tabulate synthetic levels at 0, 3, 6, 9 and 12 hours in Markdown.",
+      "Write standard-library Python to evaluate the model and its derivative, with checks for positive periods and tests of periodicity for each constituent. Include fenced code and explain why the combined repeat period differs.",
+      "Explain spring-neap modulation, missing constituents, storm surge and datum uncertainty. End with a bilingual English/Chinese assumptions table separating this teaching model from operational flood or navigation forecasts."
+    ]
+  },
+  {
+    "id": "numerics_adaptive_simpson_error_budget_certificate",
+    "title": "Adaptive quadrature: Simpson refinement and error budgets",
+    "domain": "numerical_analysis_adaptive_quadrature",
+    "features": [
+      "math",
+      "latex",
+      "code",
+      "tables",
+      "algorithms"
+    ],
+    "turns": [
+      "Derive the one-panel Simpson quadrature rule on an interval and verify exactness for polynomials of degree at most three. Use LaTeX and distinguish quadrature error from floating-point error.",
+      "Explain the comparison between one panel and two half panels, derive the conventional factor of 15, and state the smoothness assumptions behind the error estimator.",
+      "Provide a Markdown refinement table for integrating x^4 on [0,1], showing one-panel estimate, two-panel estimate, their difference and the exact integral.",
+      "Implement self-contained Python adaptive Simpson integration with reused function evaluations, absolute and relative tolerances, a depth limit and explicit nonconvergence reporting.",
+      "Explain how a global error budget is distributed to child intervals and why a depth limit is a failure state rather than proof of tolerance satisfaction.",
+      "Add tests for reversed bounds, zero-width intervals, a cubic polynomial, sin(x) on [0,pi], and an invalid function value. Give expected results or failure categories in a table.",
+      "Construct a narrow smooth bump that can evade coarse sampling. Explain why the estimator is conditional and compare with an independent dense-grid diagnostic without claiming universal certification.",
+      "Finish with an English/Chinese implementation audit, complexity discussion and a certificate table separating exact polynomial tests, estimated error bounds and unresolved pathological cases."
     ]
   }
 ]

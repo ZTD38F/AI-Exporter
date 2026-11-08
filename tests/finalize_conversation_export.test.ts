@@ -1,1237 +1,379 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-const { normId } = require('../src/core/utils/pathUtils.js');
-const StorageService = require('../src/core/storage/storageService.js');
-const {
-    buildExportCompletion,
-    completeConversationExport,
-    computeExportMessageCount,
-    computeAuthoritativeTimestamp,
-    resolveExportRecordStatus,
-    applyAssetFailureToExportRecord,
-    normalizeReliableTitleSource,
-    resolveReliableTitleSource
-} = require('../src/core/engine/export/exportCompletion.js');
-const { finalizeChatExport } = require('../src/core/engine/export/sessionRecovery.js');
-const { applyExportTitleWriteback, setTitleBySource, resolveTitle, assertCanonicalTitleProvenance } = require('../src/core/utils/titleUtils.js');
-const { resolveChat } = require('../src/core/engine/export/batchWorker.js');
+import { decodeChatGPTDetail } from '../src/l1/parsers/chatgpt/decodeDetail.js';
+import { parseChatGPTConversation } from '../src/l1/parsers/chatgpt/parseConversation.js';
+import { GeminiProvider } from '../src/l1/client/gemini/geminiProvider.js';
+import { ConfirmedSourceEmptyError } from '../src/l1/client/sourceErrors.js';
+/**
+ * V2 export completion regression: L2 admits Index/Detail once, Application
+ * coordinates one runExport path, L4 delivers, and only then L3a records outcome.
+ * No retired SessionRecovery, ExportOrchestrator, BatchWorker or catalog callbacks.
+ */
+import test, { type TestContext } from 'node:test';
+import assert from 'node:assert/strict';
+import { fixtureAccount } from './helpers/domainFixture.js';
+import { v2ExportHost, exportKey, exportRequest, seedExportConversation,
+    seedExportIndexOnly } from './helpers/v2ExportHost.js';
+import { runExport } from '../src/application/export/runExport.js';
+import { ingestDetail, ingestIndexes } from '../src/l2/ingestion.js';
+import { getIndex, getExportRecord, putExportRecord } from '../src/l3a/storageService.js';
+import { readConversation } from '../src/l2/readConversation.js';
+import { ProviderRegistry } from '../src/l1/client/providerRegistry.js';
+import type { AIProvider } from '../src/l1/client/aiProvider.js';
+import type { ExportDiagnostic, ExportRecord, ExportItemUpdate } from '../src/application/export/types.js';
+import { __getZipConstructor, __setZipConstructor } from '../src/l4/packaging/writers/zipWriter.js';
 
-function createMockChromeStorage(initialData: Record<string, any> = {}) {
-    const mockStorage: Record<string, any> = { ...initialData };
-    return {
-        mockStorage,
-        chrome: {
-            storage: {
-                local: {
-                    get: async (keys: any) => {
-                        if (keys === null || keys === undefined) return { ...mockStorage };
-                        if (typeof keys === 'string') keys = [keys];
-                        const res: Record<string, any> = {};
-                        for (const k of (keys || [])) {
-                            if (mockStorage[k] !== undefined) res[k] = mockStorage[k];
-                        }
-                        return res;
-                    },
-                    set: async (obj: any) => {
-                        Object.assign(mockStorage, obj);
-                    },
-                    remove: async (keys: any) => {
-                        if (typeof keys === 'string') keys = [keys];
-                        for (const k of (keys || [])) delete mockStorage[k];
-                    }
-                }
-            }
-        }
+const account = fixtureAccount('gemini');
+const old: ExportRecord = { exportedAt: 90, format: 'markdown', status: 'ok', chatTime: 90 };
+const body = (text: string) => ({
+    savedAt: 100,
+    quality: { status: 'complete' as const },
+    assets: [],
+    messages: [{ role: 'assistant' as const, content: [
+        { type: 'paragraph' as const, children: [{ type: 'text' as const, text }] },
+    ] }],
+});
+function replaceProvider(t: TestContext, fetchConversationDetail: AIProvider['fetchConversationDetail']) {
+    const previous = ProviderRegistry.get('gemini');
+    const provider: AIProvider = {
+        id: 'gemini', name: 'Completion provider test', hostPatterns: [],
+        matchesUrl: () => false, checkReadiness: async () => ({ ready: true }),
+        listConversations: async () => 'source_end',
+        fetchConversationDetail,
+        acquireResource: async () => { throw new Error('No assets in this test'); },
     };
+    ProviderRegistry.register(provider);
+    t.after(() => {
+        ProviderRegistry.unregister('gemini');
+        if (previous) ProviderRegistry.register(previous);
+    });
 }
 
-// 1. Batch production-shape: no conversationUpdate provided, generic existing title promoted
-test('1. Batch production-shape: promotes generic title to real export title without fake provenance', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_batch_1', title: '未命名对话', titleSource: 'default', messageCount: 1, updatedAt: 1000 }
-        ]
+test('a completed delivery creates one minimal v2 ExportRecord without modifying Index metadata', async t => {
+    const observed: string[] = [];
+    const host = v2ExportHost(t, () => observed.push('delivered'));
+    await seedExportConversation('completion-success', 100);
+    const key = exportKey('completion-success');
+    const before = await getIndex(key);
+    assert.ok(before);
+    assert.equal(await getExportRecord(key), null);
+
+    const result = await runExport(exportRequest([key.conversationId]));
+    assert.deepEqual({ exported: result.exported, partial: result.partial, failed: result.failed },
+        { exported: 1, partial: 0, failed: [] });
+    assert.deepEqual(observed, ['delivered']);
+    assert.equal(host.blobs.length, 1);
+    assert.match(await host.blobs[0].text(), /Answer for completion-success/);
+    const record = await getExportRecord(key);
+    assert.ok(record);
+    assert.deepEqual(Object.keys(record).sort(), ['chatTime', 'exportedAt', 'format', 'status']);
+    assert.equal(record.format, 'markdown');
+    assert.equal(record.status, 'ok');
+    assert.equal(record.chatTime, 100, 'source version belongs to Detail, not the delivery clock');
+    assert.ok(Number.isSafeInteger(record.exportedAt));
+    assert.deepEqual(await getIndex(key), before, 'Export cannot promote its file title into L2 Index');
+});
+
+test('Index title authority is independent of ExportRecord and exported text', async t => {
+    const host = v2ExportHost(t);
+    await seedExportConversation('completion-title');
+    const key = exportKey('completion-title');
+    await ingestIndexes(account.id, [{ conversationId: key.conversationId,
+        fields: { title: 'Authoritative imported name', titleSource: 'user', updatedAt: 100 } }]);
+    // A later low-priority source cannot displace the user title.
+    await ingestDetail(account.id, key.conversationId, body('Original answer'),
+        { title: 'Derived candidate', titleSource: 'derived', updatedAt: 100 });
+
+    const result = await runExport(exportRequest([key.conversationId]));
+    assert.equal(result.exported, 1);
+    assert.equal((await getIndex(key))?.title, 'Authoritative imported name');
+    assert.equal((await getIndex(key))?.titleSource, 'user');
+    const text = await host.blobs[0].text();
+    assert.match(text, /Authoritative imported name/);
+    assert.doesNotMatch(text, /Derived candidate/);
+    const record = await getExportRecord(key);
+    assert.ok(record);
+    assert.equal('title' in record, false, 'v2 records do not duplicate Index title facts');
+    assert.equal('messageCount' in record, false, 'message count belongs to Detail, not ExportRecord');
+});
+
+test('a missing Detail is never exported or recorded as successful completion', async t => {
+    const host = v2ExportHost(t);
+    await seedExportIndexOnly('completion-index-only');
+    const key = exportKey('completion-index-only');
+    replaceProvider(t, async () => { /* Source returned without committing Detail. */ });
+
+    const result = await runExport(exportRequest([key.conversationId]));
+    assert.equal(result.exported, 0);
+    assert.deepEqual(result.failed, [key]);
+    assert.equal(host.blobs.length, 0);
+    assert.equal(await readConversation(key), null);
+    assert.equal(await getExportRecord(key), null);
+    assert.equal((await getIndex(key))?.title, 'Unavailable completion-index-only');
+});
+
+test('a Delivery failure must not replace the prior record; successful retry commits afterwards', async t => {
+    let fail = true;
+    const host = v2ExportHost(t, () => { if (fail) throw new Error('Browser download failed'); });
+    await seedExportConversation('completion-retry');
+    const key = exportKey('completion-retry');
+    await putExportRecord(key, old);
+
+    const diagnostics: ExportDiagnostic[] = [];
+    const failed = await runExport(exportRequest([key.conversationId]), { onDiagnostic: event => diagnostics.push(event) });
+    assert.ok(diagnostics.some(event => event.key?.conversationId === key.conversationId
+        && event.code === 'EXPORT_FAILED' && event.message === 'Browser download failed'));
+    assert.equal(failed.exported, 0);
+    assert.deepEqual(failed.failed, [key]);
+    assert.deepEqual(await getExportRecord(key), old);
+    fail = false;
+
+    const success = await runExport(exportRequest([key.conversationId]));
+    assert.equal(success.exported, 1);
+    assert.deepEqual(success.failed, []);
+    const next = await getExportRecord(key);
+    assert.ok(next);
+    assert.equal(next.status, 'ok');
+    assert.equal(next.chatTime, 100);
+    assert.ok(next.exportedAt >= old.exportedAt);
+    assert.ok(host.clicks() >= 2);
+});
+
+test('ExportRecord write failure is reported only after delivery and leaves the previous value', async t => {
+    const host = v2ExportHost(t);
+    await seedExportConversation('completion-write-failure');
+    const key = exportKey('completion-write-failure');
+    await putExportRecord(key, old);
+    host.failStorage('exportRecords');
+
+    const failed = await runExport(exportRequest([key.conversationId]));
+    assert.equal(failed.exported, 0);
+    assert.deepEqual(failed.failed, [key]);
+    assert.equal(host.blobs.length, 1, 'the file is already delivered before record persistence');
+    assert.deepEqual(await getExportRecord(key), old);
+
+    host.failStorage();
+    const recovered = await runExport(exportRequest([key.conversationId]));
+    assert.equal(recovered.exported, 1);
+    assert.equal((await getExportRecord(key))?.chatTime, 100);
+});
+
+test('Export completion never creates a catalog row from a standalone ExportRecord', async t => {
+    v2ExportHost(t);
+    const key = exportKey('uncatalogued-record');
+    await putExportRecord(key, old);
+    assert.equal(await getIndex(key), null, 'export history is not evidence of an L2 conversation');
+    assert.equal(await readConversation(key), null);
+    assert.deepEqual(await getExportRecord(key), old);
+});
+
+test('batch completion stores records per key and Skip consumes only delivered versions', async t => {
+    const host = v2ExportHost(t);
+    const previousZip = __getZipConstructor();
+    __setZipConstructor(require('../lib/jszip.min.js'));
+    t.after(() => __setZipConstructor(previousZip));
+    await seedExportConversation('completion-batch-1');
+    await seedExportConversation('completion-batch-2');
+    const ids = ['completion-batch-1', 'completion-batch-2'];
+    const first = await runExport(exportRequest(ids));
+    assert.equal(first.exported, 2);
+    assert.deepEqual(first.failed, []);
+    assert.equal(host.blobs.length, 1, 'the batch has one final browser artifact');
+    for (const id of ids) {
+        const record = await getExportRecord(exportKey(id));
+        assert.equal(record?.status, 'ok');
+        assert.equal(record?.chatTime, 100);
+    }
+
+    const skipped = await runExport(exportRequest(ids, { skipUnchanged: true }));
+    assert.equal(skipped.skipped, 2);
+    assert.equal(skipped.exported, 0);
+    assert.equal(host.blobs.length, 1, 'skipped exports cannot trigger another delivery');
+});
+
+
+test('partial fallback diagnostics explain freshness and source failure without changing delivery', async t => {
+    const host = v2ExportHost(t);
+    await seedExportIndexOnly('diagnostic-partial');
+    const key = exportKey('diagnostic-partial');
+    await ingestDetail(account.id, key.conversationId, {
+        ...body('Cached answer'), quality: { status: 'partial' },
+    }, { updatedAt: 200 });
+    const diagnostics: ExportDiagnostic[] = [];
+    const result = await runExport(exportRequest([key.conversationId]), {
+        onDiagnostic: event => diagnostics.push(event),
     });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
+    assert.equal(result.exported, 1);
+    assert.equal(result.partial, 1);
+    assert.equal(host.blobs.length, 1);
+    assert.ok(diagnostics.some(event => event.key?.conversationId === key.conversationId
+        && event.code === 'SOURCE_REFRESH_FAILED' && event.message.length > 0));
+    assert.deepEqual(diagnostics.find(event => event.code === 'DETAIL_NOT_COMPLETE')?.details,
+        { quality: 'partial', messageCount: 1, savedAt: 100, indexUpdatedAt: 200,
+            lastMessageId: null, lastMessageRole: 'assistant' });
+    assert.deepEqual(diagnostics.find(event => event.code === 'DETAIL_STALE')?.details,
+        { savedAt: 100, updatedAt: 200, lagMs: 100 });
+    assert.deepEqual(diagnostics.find(event => event.code === 'DETAIL_REFRESH_RESULT')?.details, {
+        refreshFailed: true, requestedExplicitly: false, needsSourceReaders: false,
+        before: { savedAt: 100, indexUpdatedAt: 200, quality: 'partial', messageCount: 1 },
+        after: { savedAt: 100, indexUpdatedAt: 200, quality: 'partial', messageCount: 1 },
+    });
+    assert.equal((await getExportRecord(key))?.otherContentMissing, true);
+    const retry = await runExport(exportRequest([key.conversationId]), {
+        onDiagnostic: () => { throw new Error('Diagnostic observer failed'); },
+    });
+    assert.equal(retry.exported, 1, 'diagnostic observer cannot break delivery');
+    assert.equal(retry.partial, 1);
+});
 
-    try {
-        let callbackCalled = false;
-        // Batch pipeline call shape from sessionRecovery: only passes record and onItemExported
-        const res = await StorageService.finalizeConversationExport(
-            'u0',
-            'c_batch_1',
-            {
-                title: '量子纠缠推演报告',
-                format: 'markdown',
-                exportedAt: new Date(2000).toISOString(),
-                status: 'ok',
-                messageCount: 5,
-                chatTime: 2000
-            },
-            {
-                onItemExported: (id: string, record: any) => {
-                    assert.strictEqual(id, 'batch_1');
-                    assert.strictEqual(record.title, '量子纠缠推演报告');
-                    callbackCalled = true;
-                }
-            }
-        );
+test('confirmed source-empty conversations are skipped without delivery, replacing local bodies or success records', async t => {
+    const host = v2ExportHost(t);
+    await seedExportConversation('confirmed-empty', 100);
+    const key = exportKey('confirmed-empty');
+    const before = await readConversation(key);
+    const originalFetch = GeminiProvider.prototype.fetchConversationDetail;
+    GeminiProvider.prototype.fetchConversationDetail = async () => { throw new ConfirmedSourceEmptyError(); };
+    t.after(() => { GeminiProvider.prototype.fetchConversationDetail = originalFetch; });
+    const diagnostics: ExportDiagnostic[] = [];
+    const result = await runExport(exportRequest([key.conversationId]), { refreshDetail: true,
+        onDiagnostic: event => diagnostics.push(event) });
+    assert.equal(result.skipped, 1);
+    assert.equal(result.partial, 0);
+    assert.deepEqual(result.failed, []);
+    assert.equal(host.blobs.length, 0);
+    assert.equal(await getExportRecord(key), null);
+    assert.deepEqual(await readConversation(key), before);
+    assert.ok(diagnostics.some(d => d.code === 'SOURCE_CONVERSATION_EMPTY'));
+    assert.ok(!diagnostics.some(d => d.code === 'SOURCE_REFRESH_FAILED'));
+});
 
-        assert.strictEqual(res.ok, true);
-        assert.strictEqual(callbackCalled, true);
+test('unchanged exports with only attachment 404s skip before refreshing or acquiring resources', async t => {
+    const host = v2ExportHost(t);
+    await seedExportConversation('expired-only', 100);
+    const key = exportKey('expired-only');
+    const record: ExportRecord = { exportedAt: 200, chatTime: 100, format: 'markdown', status: 'partial',
+        attachmentIssues: [{ resourceId: 'expired', name: 'Expired image', code: 'RESOURCE_SOURCE_EXPIRED', httpStatus: 404 }] };
+    await putExportRecord(key, record);
+    const originalFetch = GeminiProvider.prototype.fetchConversationDetail;
+    GeminiProvider.prototype.fetchConversationDetail = async () => { assert.fail('404-only unchanged exports must not refresh'); };
+    t.after(() => { GeminiProvider.prototype.fetchConversationDetail = originalFetch; });
+    const result = await runExport({ ...exportRequest([key.conversationId]), skipUnchanged: true });
+    assert.equal(result.skipped, 1);
+    assert.equal(result.exported, 0);
+    assert.equal(host.blobs.length, 0);
+    assert.deepEqual(await getExportRecord(key), record);
+});
 
-        // Verify exportedIds SSoT
-        const expMap = await StorageService.getExportedIds('u0');
-        assert.ok(expMap['batch_1']);
-        assert.strictEqual(expMap['batch_1'].title, '量子纠缠推演报告');
 
-        // Verify gemini_conversations promotion: promoted to real title, source is 'legacy' (not fake api-detail/export)
-        const convs = await StorageService.getConversations('u0');
-        assert.strictEqual(convs.length, 1);
-        assert.strictEqual(convs[0].title, '量子纠缠推演报告');
-        assert.strictEqual(convs[0].titleSource, 'legacy');
-        assert.notStrictEqual(convs[0].titleSource, 'api-detail', 'Must not synthesize fake api-detail provenance');
-        assert.notStrictEqual(convs[0].titleSource, 'export', 'Must not synthesize unindexed export tier');
-        assert.strictEqual(convs[0].messageCount, 5);
-    } finally {
-        (global as any).chrome = origChrome;
+test('batch delivery failure carries the same diagnostic to every affected item', async t => {
+    v2ExportHost(t, () => { throw new Error('Browser download failed'); });
+    const previousZip = __getZipConstructor();
+    __setZipConstructor(require('../lib/jszip.min.js'));
+    t.after(() => __setZipConstructor(previousZip));
+    const ids = ['batch-failed-one', 'batch-failed-two'];
+    for (const id of ids) await seedExportConversation(id);
+    const updates: ExportItemUpdate[] = [];
+    const result = await runExport(exportRequest(ids), { onItemUpdate: update => updates.push(update) });
+    assert.deepEqual(result.failed, ids.map(exportKey));
+    const failures = updates.filter(update => update.status === 'failed');
+    assert.equal(failures.length, 2);
+    for (const update of failures) {
+        assert.equal(update.diagnostic.issue?.code, 'FILE_WRITE_FAILED');
+        assert.equal(update.diagnostic.message, 'Browser download failed');
+        assert.equal(await getExportRecord(update.key), null);
     }
 });
 
-// 2. Unknown candidate does NOT overwrite authoritative RPC title
-test('2. Unknown candidate does NOT overwrite authoritative RPC title', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            {
-                id: 'c_rpc_chat',
-                title: '线上RPC权威标题',
-                titleSource: 'rpc',
-                titles: { rpc: '线上RPC权威标题' },
-                messageCount: 3
-            }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        await StorageService.finalizeConversationExport(
-            'u0',
-            'c_rpc_chat',
-            {
-                title: '某种未提供来源的候选标题',
-                format: 'markdown',
-                exportedAt: new Date().toISOString(),
-                status: 'ok'
-            }
-        );
-
-        const convs = await StorageService.getConversations('u0');
-        assert.strictEqual(convs[0].title, '线上RPC权威标题', '权威RPC标题绝不能被无来源候选标题覆盖');
-        assert.strictEqual(convs[0].titleSource, 'rpc');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 3. Unknown candidate does NOT overwrite API-detail or Takeout existing real titles
-test('3. Unknown candidate does NOT overwrite API-detail or Takeout existing real titles', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            {
-                id: 'c_api_chat',
-                title: 'API详细端权威标题',
-                titleSource: 'api-detail',
-                titles: { 'api-detail': 'API详细端权威标题' },
-                messageCount: 2
-            },
-            {
-                id: 'c_takeout_chat',
-                title: 'Takeout历史真实标题',
-                titleSource: 'takeout',
-                titles: { takeout: 'Takeout历史真实标题' },
-                messageCount: 4
-            }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        // Attempt overwrite on API-detail
-        await StorageService.finalizeConversationExport('u0', 'c_api_chat', {
-            title: '无来源导出标题A',
-            status: 'ok'
+for (const sourceTurn of ['unfinished', 'interrupted', 'handoff', 'awaiting_reply', 'tool_pending', 'unknown'] as const) {
+    test(`${sourceTurn} source reply delivers all available text without marking missing body`, async t => {
+        const host = v2ExportHost(t);
+        const id = 'source-turn-' + sourceTurn;
+        await seedExportConversation(id);
+        const key = exportKey(id);
+        const snapshot = { ...body('Earlier complete reply\n\n本批完成：Migration / Released 1.7\n\n已'),
+            quality: { status: 'complete' as const, sourceTurn } };
+        await ingestDetail(account.id, id, snapshot, { updatedAt: 200 });
+        let refreshes = 0;
+        t.mock.method(GeminiProvider.prototype, 'fetchConversationDetail', async () => {
+            refreshes++; await ingestDetail(account.id, id, snapshot, { updatedAt: 200 });
         });
-        // Attempt overwrite on Takeout
-        await StorageService.finalizeConversationExport('u0', 'c_takeout_chat', {
-            title: '无来源导出标题B',
-            status: 'ok'
+        const diagnostics: ExportDiagnostic[] = [];
+        const result = await runExport(exportRequest([id]), { onDiagnostic: event => diagnostics.push(event) });
+        assert.equal(result.exported, 1);
+        assert.equal(result.partial, 0);
+        assert.deepEqual(result.failed, []);
+        assert.equal(host.blobs.length, 1);
+        const markdown = await host.blobs[0].text();
+        assert.match(markdown, /Earlier complete reply/);
+        assert.match(markdown, /本批完成：Migration \/ Released 1.7/);
+        assert.match(markdown, /已/);
+        const record = await getExportRecord(key);
+        assert.equal(record?.status, 'ok');
+        assert.equal(record?.sourceTurn, sourceTurn);
+        assert.equal(record?.otherContentMissing, undefined);
+        assert.ok(diagnostics.some(d => d.code === 'SOURCE_TURN_' + sourceTurn.toUpperCase() && d.severity === 'info'));
+        assert.ok(!diagnostics.some(d => d.code === 'DETAIL_NOT_COMPLETE'));
+        // Timestamp disagreement is retained as freshness evidence, never fabricated body loss.
+        assert.ok(diagnostics.some(d => d.code === 'DETAIL_STALE'));
+        assert.equal(refreshes, 1);
+        await runExport(exportRequest([id], { skipUnchanged: true }));
+        assert.equal(refreshes, 2, 'unfinished/uncertain or stale source snapshots are refreshed on the next export');
+    });
+}
+
+test('Work handoff card is physically delivered as readable Markdown with a successful export record', async t => {
+    const host = v2ExportHost(t);
+    const id = 'visible-work-handoff';
+    await seedExportConversation(id);
+    const raw = { id, title: 'Handoff', current_node: 'handoff', update_time: 0.1, mapping: {
+        root: { id: 'root', children: ['question'] },
+        question: { id: 'question', parent: 'root', children: ['handoff'], message: {
+            id: 'message-question', author: { role: 'user' }, recipient: 'all',
+            content: { content_type: 'text', parts: ['Review the repository'] } } },
+        handoff: { id: 'handoff', parent: 'question', children: [], message: {
+            id: 'message-handoff', author: { role: 'assistant' }, recipient: 'local.handoff',
+            status: 'finished_successfully', end_turn: false,
+            content: { content_type: 'code', language: 'json', text: JSON.stringify({
+                reason: 'Work can inspect the repository and prepare the requested changes.',
+                prompt: 'INTERNAL-WORK-PROMPT' }) } } },
+    } };
+    const snapshot = parseChatGPTConversation({ conversation: decodeChatGPTDetail(raw, id), assetsByNode: new Map() }).conversation.detail;
+    await ingestDetail(account.id, id, snapshot, { updatedAt: 100 });
+    t.mock.method(GeminiProvider.prototype, 'fetchConversationDetail', async () => {
+        await ingestDetail(account.id, id, snapshot, { updatedAt: 100 });
+    });
+    const result = await runExport(exportRequest([id]));
+    assert.equal(result.exported, 1);
+    assert.equal(result.partial, 0);
+    assert.deepEqual(result.failed, []);
+    const markdown = await host.blobs[0].text();
+    assert.match(markdown, /Review the repository/);
+    assert.match(markdown, /Continue in ChatGPT Work/);
+    assert.match(markdown, /Work can inspect the repository/);
+    assert.doesNotMatch(markdown, /INTERNAL-WORK-PROMPT|"reason"/);
+    const record = await getExportRecord(exportKey(id));
+    assert.equal(record?.status, 'ok');
+    assert.equal(record?.sourceTurn, 'handoff');
+    assert.equal(record?.otherContentMissing, undefined);
+});
+
+for (const sourceTurn of ['finished', 'awaiting_reply', 'tool_pending', 'unknown'] as const) {
+    test(`${sourceTurn} never turns actual incomplete body coverage into a successful full export`, async t => {
+        const host = v2ExportHost(t);
+        const id = 'incomplete-source-' + sourceTurn;
+        await seedExportIndexOnly(id);
+        const snapshot = { ...body('Available part only'), quality: { status: 'partial' as const, sourceTurn } };
+        await ingestDetail(account.id, id, snapshot, { updatedAt: 200 });
+        t.mock.method(GeminiProvider.prototype, 'fetchConversationDetail', async () => {
+            await ingestDetail(account.id, id, snapshot, { updatedAt: 200 });
         });
-
-        const convs = await StorageService.getConversations('u0');
-        const apiChat = convs.find((c: any) => normId(c.id) === 'api_chat');
-        const takeoutChat = convs.find((c: any) => normId(c.id) === 'takeout_chat');
-
-        assert.strictEqual(apiChat.title, 'API详细端权威标题', 'api-detail 绝不能被无来源候选标题覆盖');
-        assert.strictEqual(apiChat.titleSource, 'api-detail');
-
-        assert.strictEqual(takeoutChat.title, 'Takeout历史真实标题', 'takeout 真实标题绝不能被无来源候选标题覆盖');
-        assert.strictEqual(takeoutChat.titleSource, 'takeout');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 4. Live titleSource = default: promotes generic title without synthesizing fake api-detail
-test('4. Live titleSource = default: promotes generic title without synthesizing fake api-detail', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_live_chat', title: '未命名对话', titleSource: 'default', messageCount: 1 }
-        ]
+        const diagnostics: ExportDiagnostic[] = [];
+        const result = await runExport(exportRequest([id]), { onDiagnostic: event => diagnostics.push(event) });
+        assert.equal(result.exported, 1);
+        assert.equal(result.partial, 1);
+        assert.deepEqual(result.failed, []);
+        assert.match(await host.blobs[0].text(), /Available part only/);
+        const record = await getExportRecord(exportKey(id));
+        assert.equal(record?.status, 'partial');
+        assert.equal(record?.otherContentMissing, true);
+        assert.ok(diagnostics.some(d => d.code === 'DETAIL_NOT_COMPLETE' && d.severity === 'warning'));
     });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        const liveChatObj = {
-            id: 'c_live_chat',
-            title: '未命名对话',
-            titleSource: 'default',
-            messages: [{ role: 'user', content: 'hello' }, { role: 'model', content: 'world' }]
-        };
-
-        await completeConversationExport(
-            StorageService,
-            'u0',
-            {
-                conversation: liveChatObj,
-                conversationId: 'c_live_chat',
-                format: 'markdown',
-                exportedAt: Date.now(),
-                titleCandidate: '流式量子分析报告',
-                titleProvenance: liveChatObj.titleSource // 'default'
-            }
-        );
-
-        const convs = await StorageService.getConversations('u0');
-        assert.strictEqual(convs[0].title, '流式量子分析报告', '未命名对话应成功晋级为流式提取的真实标题');
-        assert.strictEqual(convs[0].titleSource, 'legacy', '无可靠来源时应归为 legacy，不得伪造 api-detail');
-        assert.notStrictEqual(convs[0].titleSource, 'api-detail');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 5. Known provenance continues source-tier arbitration
-test('5. Known provenance continues source-tier arbitration (rpc > takeout, titles map merged)', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            {
-                id: 'c_tier_test',
-                title: 'Takeout旧标题',
-                titleSource: 'takeout',
-                titles: { takeout: 'Takeout旧标题' }
-            }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        // Upgrade with RPC source
-        await StorageService.finalizeConversationExport(
-            'u0',
-            'c_tier_test',
-            {
-                title: 'RPC线上权威新标题',
-                format: 'markdown',
-                status: 'ok'
-            },
-            {
-                conversationUpdate: {
-                    title: 'RPC线上权威新标题',
-                    titleSource: 'rpc',
-                    titles: { rpc: 'RPC线上权威新标题' }
-                }
-            }
-        );
-
-        let convs = await StorageService.getConversations('u0');
-        assert.strictEqual(convs[0].title, 'RPC线上权威新标题', 'RPC 必须晋级覆盖 Takeout');
-        assert.strictEqual(convs[0].titleSource, 'rpc');
-        assert.strictEqual(convs[0].titles.takeout, 'Takeout旧标题');
-        assert.strictEqual(convs[0].titles.rpc, 'RPC线上权威新标题');
-
-        // Subsequent weaker takeout update must NOT downgrade RPC
-        await StorageService.finalizeConversationExport(
-            'u0',
-            'c_tier_test',
-            {
-                title: '另一个Takeout更旧标题',
-                format: 'markdown',
-                status: 'ok'
-            },
-            {
-                conversationUpdate: {
-                    title: '另一个Takeout更旧标题',
-                    titleSource: 'takeout',
-                    titles: { takeout: '另一个Takeout更旧标题' }
-                }
-            }
-        );
-
-        convs = await StorageService.getConversations('u0');
-        assert.strictEqual(convs[0].title, 'RPC线上权威新标题', '弱势 Takeout 绝不能降级已有的 RPC');
-        assert.strictEqual(convs[0].titleSource, 'rpc');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 6. Partial export: status = partial and hasFailedAssets = true on asset failure
-test('6. Partial export: status = partial and hasFailedAssets = true matches across batch and live', () => {
-    // Shared completion logic test
-    const okCompletion = buildExportCompletion({
-        conversationId: 'c_test_ok',
-        conversation: { messages: [1, 2] },
-        titleCandidate: 'Normal Chat',
-        failedAssets: []
-    });
-    assert.strictEqual(okCompletion.exportRecord.status, 'ok');
-    assert.strictEqual(okCompletion.exportRecord.hasFailedAssets, false);
-
-    const partialCompletion = buildExportCompletion({
-        conversationId: 'c_test_partial',
-        conversation: { messages: [1, 2] },
-        titleCandidate: 'Partial Chat',
-        failedAssets: [{ file: 'img.png', error: 'fetch failed' }]
-    });
-    assert.strictEqual(partialCompletion.exportRecord.status, 'partial');
-    assert.strictEqual(partialCompletion.exportRecord.hasFailedAssets, true);
-
-    const emptyCompletion = buildExportCompletion({
-        conversationId: 'c_test_empty',
-        conversation: { messages: [] },
-        titleCandidate: 'Empty Chat',
-        failedAssets: []
-    });
-    assert.strictEqual(emptyCompletion.exportRecord.status, 'empty');
-});
-
-// 7. Callback: invoked after persistence, error in callback does not abort, not invoked on failure
-test('7. Callback semantics: invoked after persistence, error does not abort, not invoked on failure', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({ gemini_conversations: [] });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        let callbackCount = 0;
-        // Case A: callback throws, finalize still succeeds
-        const resA = await StorageService.finalizeConversationExport(
-            'u0',
-            'c_cb_success',
-            { title: 'Callback Test', status: 'ok' },
-            {
-                onItemExported: () => {
-                    callbackCount++;
-                    throw new Error('Callback intentionally threw error');
-                }
-            }
-        );
-        assert.strictEqual(resA.ok, true, 'Callback throwing must not abort finalizeConversationExport');
-        assert.strictEqual(callbackCount, 1);
-
-        // Case B: saveExportRecord failure, callback must NOT be invoked
-        let failureCallbackCalled = false;
-        const brokenAdapter = {
-            saveExportRecord: async () => { throw new Error('Disk IO failure'); },
-            finalizeConversationExport: undefined
-        };
-
-        await assert.rejects(async () => {
-            await completeConversationExport(
-                brokenAdapter,
-                'u0',
-                { conversationId: 'c_fail', titleCandidate: 'Fail Chat' },
-                {
-                    onItemExported: () => { failureCallbackCalled = true; }
-                }
-            );
-        }, /Disk IO failure/);
-
-        assert.strictEqual(failureCallbackCalled, false, 'Callback must NOT be invoked if record persistence fails');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 8. Parity A: Batch / Live canonical record parity given same facts
-test('8. Parity A: Batch / Live canonical record parity given identical input facts', () => {
-    const chatFacts = {
-        id: 'c_parity_123',
-        title: '量子引力理论探究',
-        titleSource: 'rpc',
-        titles: { rpc: '量子引力理论探究' },
-        messages: [{ role: 'user', content: 'q1' }, { role: 'model', content: 'a1' }],
-        updatedAt: 1727777777000,
-        truncated: false
-    };
-    const exportedAt = 1727788888000;
-
-    // Live path simulation
-    const liveCompletion = buildExportCompletion({
-        conversation: chatFacts,
-        conversationId: chatFacts.id,
-        format: 'markdown',
-        exportedAt,
-        titleCandidate: chatFacts.title,
-        titleProvenance: chatFacts.titleSource,
-        titles: chatFacts.titles
-    });
-
-    // Batch path simulation (with explicit messageCount and chatTime from list snapshot)
-    const batchCompletion = buildExportCompletion({
-        conversation: chatFacts,
-        conversationId: normId(chatFacts.id),
-        format: 'markdown',
-        exportedAt,
-        titleCandidate: chatFacts.title,
-        titleProvenance: chatFacts.titleSource,
-        titles: chatFacts.titles,
-        messageCount: 2,
-        chatTime: computeAuthoritativeTimestamp(chatFacts)
-    });
-
-    // Assert parity across all canonical fields
-    assert.strictEqual(batchCompletion.targetId, liveCompletion.targetId);
-    assert.strictEqual(batchCompletion.exportRecord.title, liveCompletion.exportRecord.title);
-    assert.strictEqual(batchCompletion.exportRecord.messageCount, liveCompletion.exportRecord.messageCount);
-    assert.strictEqual(batchCompletion.exportRecord.chatTime, liveCompletion.exportRecord.chatTime);
-    assert.strictEqual(batchCompletion.exportRecord.format, liveCompletion.exportRecord.format);
-    assert.strictEqual(batchCompletion.exportRecord.status, liveCompletion.exportRecord.status);
-    assert.strictEqual(batchCompletion.exportRecord.hasFailedAssets, liveCompletion.exportRecord.hasFailedAssets);
-    assert.strictEqual(batchCompletion.exportRecord.isTruncated, liveCompletion.exportRecord.isTruncated);
-    assert.strictEqual(batchCompletion.exportRecord.exportedAt, liveCompletion.exportRecord.exportedAt);
-    assert.deepStrictEqual(batchCompletion.exportRecord, liveCompletion.exportRecord);
-    assert.deepStrictEqual(batchCompletion.conversationUpdate, liveCompletion.conversationUpdate);
-});
-
-// 9. Parity B: Batch production path via sessionRecovery uses shared builder
-test('9. Parity B: Batch production-shape execution through sessionRecovery uses shared builder output', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_batch_pipe', title: '未命名对话', titleSource: 'default', messageCount: 1 }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        const chat = {
-            id: 'c_batch_pipe',
-            title: '高维拓扑流形研究报告',
-            titleSource: 'rpc',
-            titles: { rpc: '高维拓扑流形研究报告' },
-            messages: [{ role: 'user', content: 'hello' }, { role: 'model', content: 'world' }],
-            updatedAt: 1727777000000
-        };
-
-        const completion = buildExportCompletion({
-            conversation: chat,
-            conversationId: 'batch_pipe',
-            format: 'markdown',
-            exportedAt: '2026-10-01T12:00:00.000Z',
-            titleCandidate: chat.title,
-            titleProvenance: chat.titleSource,
-            titles: chat.titles,
-            messageCount: 2,
-            chatTime: chat.updatedAt
-        });
-
-        const chatRecordsMap = new Map<string, any>([
-            ['batch_pipe', {
-                ...completion.exportRecord,
-                exportRecord: completion.exportRecord,
-                conversationUpdate: completion.conversationUpdate,
-                targetId: completion.targetId
-            }]
-        ]);
-
-        const finalizedChatsSet = new Set<string>();
-        const chatFailedAssetsSet = new Set<string>();
-        let itemExportedCalled = false;
-
-        const finalized = await finalizeChatExport('c_batch_pipe', {
-            finalizedChatsSet,
-            chatRecordsMap,
-            chatFailedAssetsSet,
-            Storage: StorageService,
-            storageAdapter: StorageService,
-            slot: 'u0',
-            onItemExported: (id: string, rec: any) => {
-                itemExportedCalled = true;
-                assert.strictEqual(normId(id), 'batch_pipe');
-                assert.strictEqual(rec.title, '高维拓扑流形研究报告');
-            }
-        });
-
-        assert.strictEqual(finalized, true);
-        assert.strictEqual(itemExportedCalled, true);
-        assert.ok(finalizedChatsSet.has('batch_pipe'));
-
-        // Verify exportedIds SSoT matches canonical completion record
-        const exportedMap = await StorageService.getExportedIds('u0');
-        assert.ok(exportedMap['batch_pipe']);
-        assert.strictEqual(exportedMap['batch_pipe'].title, '高维拓扑流形研究报告');
-        assert.strictEqual(exportedMap['batch_pipe'].messageCount, 2);
-        assert.strictEqual(exportedMap['batch_pipe'].status, 'ok');
-
-        // Verify gemini_conversations was updated with authoritative metadata
-        const convs = await StorageService.getConversations('u0');
-        assert.strictEqual(convs[0].title, '高维拓扑流形研究报告');
-        assert.strictEqual(convs[0].titleSource, 'rpc');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 10. Parity C: Partial export with asset failure matches across batch and live
-test('10. Parity C: Partial export with asset failure matches across batch and live', () => {
-    const chat = { id: 'c_part', messages: [1, 2], title: 'Partial Parity Chat' };
-
-    // Live path: asset failure passed into builder
-    const livePartial = buildExportCompletion({
-        conversationId: 'c_part',
-        conversation: chat,
-        titleCandidate: 'Partial Parity Chat',
-        failedAssets: [{ file: 'failed.png', error: '404' }]
-    });
-
-    // Batch path: initially built with ok status, then patched via applyAssetFailureToExportRecord
-    const batchInitial = buildExportCompletion({
-        conversationId: 'c_part',
-        conversation: chat,
-        titleCandidate: 'Partial Parity Chat'
-    });
-    assert.strictEqual(batchInitial.exportRecord.status, 'ok');
-    assert.strictEqual(batchInitial.exportRecord.hasFailedAssets, false);
-
-    applyAssetFailureToExportRecord(batchInitial.exportRecord);
-
-    assert.strictEqual(batchInitial.exportRecord.status, 'partial');
-    assert.strictEqual(batchInitial.exportRecord.hasFailedAssets, true);
-    assert.strictEqual(livePartial.exportRecord.status, batchInitial.exportRecord.status);
-    assert.strictEqual(livePartial.exportRecord.hasFailedAssets, batchInitial.exportRecord.hasFailedAssets);
-});
-
-// 11. Parity D: Empty conversation matches across batch and live
-test('11. Parity D: Empty conversation matches across batch and live', () => {
-    const emptyChat = { id: 'c_empty', messages: [], title: 'Empty Chat' };
-
-    const liveEmpty = buildExportCompletion({
-        conversationId: 'c_empty',
-        conversation: emptyChat,
-        titleCandidate: 'Empty Chat'
-    });
-
-    const batchEmpty = buildExportCompletion({
-        conversationId: 'c_empty',
-        conversation: emptyChat,
-        titleCandidate: 'Empty Chat',
-        messageCount: 0
-    });
-
-    assert.strictEqual(liveEmpty.exportRecord.status, 'empty');
-    assert.strictEqual(batchEmpty.exportRecord.status, 'empty');
-    assert.strictEqual(liveEmpty.exportRecord.messageCount, 0);
-    assert.strictEqual(batchEmpty.exportRecord.messageCount, 0);
-});
-
-// 12. Parity E: Failed override priority prevents asset failure downgrade
-test('12. Parity E: Failed override priority prevents asset failure downgrade', () => {
-    // 1. In resolveExportRecordStatus directly
-    const failedWithAssets = resolveExportRecordStatus({
-        statusOverride: 'failed',
-        failedAssetsCount: 3,
-        messageCount: 5
-    });
-    assert.strictEqual(failedWithAssets.status, 'failed', 'Hard failure must not be downgraded to partial by failed assets');
-    assert.strictEqual(failedWithAssets.hasFailedAssets, true);
-
-    const failedNoAssets = resolveExportRecordStatus({
-        statusOverride: 'failed',
-        failedAssetsCount: 0,
-        messageCount: 5
-    });
-    assert.strictEqual(failedNoAssets.status, 'failed');
-    assert.strictEqual(failedNoAssets.hasFailedAssets, false);
-
-    // 2. Via applyAssetFailureToExportRecord
-    const record = { status: 'failed', hasFailedAssets: false };
-    applyAssetFailureToExportRecord(record);
-    assert.strictEqual(record.status, 'failed', 'applyAssetFailureToExportRecord must preserve failed status');
-    assert.strictEqual(record.hasFailedAssets, true);
-});
-
-// 13. Parity F: Adapter contract rejection when persistence methods are missing
-test('13. Parity F: Adapter contract rejects when adapter lacks persistence methods', async () => {
-    const invalidAdapter = {
-        someOtherMethod: () => {}
-    };
-
-    await assert.rejects(async () => {
-        await completeConversationExport(
-            invalidAdapter,
-            'u0',
-            { conversationId: 'c_invalid_adapter', titleCandidate: 'Invalid Adapter Chat' }
-        );
-    }, /storageAdapter must implement finalizeConversationExport or saveExportRecord/);
-});
-
-// 14. Parity G: Concurrency and callback guarantees in sessionRecovery
-test('14. Parity G: Concurrency claim and callback guarantees in sessionRecovery', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({ gemini_conversations: [] });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        const finalizedChatsSet = new Set<string>();
-        const chatRecordsMap = new Map<string, any>([
-            ['conc_test', {
-                title: 'Concurrency Test',
-                status: 'ok',
-                messageCount: 1,
-                exportedAt: new Date().toISOString()
-            }]
-        ]);
-
-        let callbackCalls = 0;
-        const context = {
-            finalizedChatsSet,
-            chatRecordsMap,
-            Storage: StorageService,
-            storageAdapter: StorageService,
-            slot: 'u0',
-            onItemExported: () => {
-                callbackCalls++;
-            }
-        };
-
-        // First call succeeds
-        const res1 = await finalizeChatExport('c_conc_test', context);
-        assert.strictEqual(res1, true);
-        assert.strictEqual(callbackCalls, 1);
-        assert.ok(finalizedChatsSet.has('conc_test'));
-
-        // Second duplicate call is deduped and returns false without invoking callback
-        const res2 = await finalizeChatExport('c_conc_test', context);
-        assert.strictEqual(res2, false);
-        assert.strictEqual(callbackCalls, 1, 'Callback must not be invoked on duplicate finalize');
-
-        // Claim release on persistence failure
-        const brokenSet = new Set<string>();
-        const brokenContext = {
-            finalizedChatsSet: brokenSet,
-            chatRecordsMap: new Map<string, any>([['broken_id', { title: 'Broken', status: 'ok' }]]),
-            storageAdapter: {
-                saveExportRecord: async () => { throw new Error('Persist error'); }
-            },
-            slot: 'u0'
-        };
-
-        await assert.rejects(async () => {
-            await finalizeChatExport('broken_id', brokenContext);
-        }, /Persist error/);
-
-        assert.strictEqual(brokenSet.has('broken_id'), false, 'Claim must be released on persistence failure');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 15. Targeted Provenance A: default chat source falls back to RPC list source
-test('15. Targeted Provenance A: default chat source falls back to RPC list source', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_prov_rpc', title: '未命名对话', titleSource: 'default', messageCount: 1 }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        const chat: any = {
-            id: 'c_prov_rpc',
-            title: 'Real RPC Title',
-            titleSource: 'default'
-        };
-        const listC = {
-            id: 'c_prov_rpc',
-            titleSource: 'rpc',
-            titles: {
-                rpc: 'Real RPC Title'
-            }
-        };
-
-        const titleProvenance = resolveReliableTitleSource(chat.titleSource, listC.titleSource);
-        assert.strictEqual(titleProvenance, 'rpc');
-
-        const completion = buildExportCompletion({
-            conversation: chat,
-            conversationId: 'c_prov_rpc',
-            titleCandidate: chat.title,
-            titleProvenance,
-            titles: { ...(listC?.titles || {}), ...(chat.titles || {}) }
-        });
-
-        assert.strictEqual(completion.exportRecord.title, 'Real RPC Title');
-        assert.strictEqual(completion.conversationUpdate.titleSource, 'rpc');
-
-        await StorageService.finalizeConversationExport(
-            'u0',
-            completion.targetId,
-            completion.exportRecord,
-            { conversationUpdate: completion.conversationUpdate }
-        );
-
-        const convs = mockStorage.gemini_conversations;
-        const saved = convs.find((c: any) => normId(c.id) === 'prov_rpc');
-        assert.ok(saved);
-        assert.strictEqual(saved.title, 'Real RPC Title');
-        assert.strictEqual(saved.titleSource, 'rpc');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 16. Targeted Provenance B: default chat source falls back to api-detail
-test('16. Targeted Provenance B: default chat source falls back to api-detail', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_prov_api', title: '未命名对话', titleSource: 'default', messageCount: 1 }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        const chat: any = {
-            id: 'c_prov_api',
-            title: 'Real API Detail Title',
-            titleSource: 'default'
-        };
-        const listC = {
-            id: 'c_prov_api',
-            titleSource: 'api-detail',
-            titles: {
-                'api-detail': 'Real API Detail Title'
-            }
-        };
-
-        const titleProvenance = resolveReliableTitleSource(chat.titleSource, listC.titleSource);
-        assert.strictEqual(titleProvenance, 'api-detail');
-
-        const completion = buildExportCompletion({
-            conversation: chat,
-            conversationId: 'c_prov_api',
-            titleCandidate: chat.title,
-            titleProvenance,
-            titles: { ...(listC?.titles || {}), ...(chat.titles || {}) }
-        });
-
-        assert.strictEqual(completion.exportRecord.title, 'Real API Detail Title');
-        assert.strictEqual(completion.conversationUpdate.titleSource, 'api-detail');
-
-        await StorageService.finalizeConversationExport(
-            'u0',
-            completion.targetId,
-            completion.exportRecord,
-            { conversationUpdate: completion.conversationUpdate }
-        );
-
-        const convs = mockStorage.gemini_conversations;
-        const saved = convs.find((c: any) => normId(c.id) === 'prov_api');
-        assert.ok(saved);
-        assert.strictEqual(saved.title, 'Real API Detail Title');
-        assert.strictEqual(saved.titleSource, 'api-detail');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 17. Targeted Provenance C: default chat source falls back to takeout
-test('17. Targeted Provenance C: default chat source falls back to takeout', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_prov_takeout', title: '未命名对话', titleSource: 'default', messageCount: 1 }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        const chat: any = {
-            id: 'c_prov_takeout',
-            title: 'Real Takeout Title',
-            titleSource: 'default'
-        };
-        const listC = {
-            id: 'c_prov_takeout',
-            titleSource: 'takeout',
-            titles: {
-                takeout: 'Real Takeout Title'
-            }
-        };
-
-        const titleProvenance = resolveReliableTitleSource(chat.titleSource, listC.titleSource);
-        assert.strictEqual(titleProvenance, 'takeout');
-
-        const completion = buildExportCompletion({
-            conversation: chat,
-            conversationId: 'c_prov_takeout',
-            titleCandidate: chat.title,
-            titleProvenance,
-            titles: { ...(listC?.titles || {}), ...(chat.titles || {}) }
-        });
-
-        assert.strictEqual(completion.exportRecord.title, 'Real Takeout Title');
-        assert.strictEqual(completion.conversationUpdate.titleSource, 'takeout');
-
-        await StorageService.finalizeConversationExport(
-            'u0',
-            completion.targetId,
-            completion.exportRecord,
-            { conversationUpdate: completion.conversationUpdate }
-        );
-
-        const convs = mockStorage.gemini_conversations;
-        const saved = convs.find((c: any) => normId(c.id) === 'prov_takeout');
-        assert.ok(saved);
-        assert.strictEqual(saved.title, 'Real Takeout Title');
-        assert.strictEqual(saved.titleSource, 'takeout');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 18. Targeted Provenance D: unreliable sources do not fabricate provenance
-test('18. Targeted Provenance D: unreliable sources do not fabricate provenance', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_prov_unreliable', title: '未命名对话', titleSource: 'default', messageCount: 1 }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        const chat: any = {
-            id: 'c_prov_unreliable',
-            title: 'Unprovenanced Real Title',
-            titleSource: 'default'
-        };
-        const listC = {
-            id: 'c_prov_unreliable',
-            titleSource: 'legacy',
-            titles: {
-                legacy: 'Unprovenanced Real Title'
-            }
-        };
-
-        const titleProvenance = resolveReliableTitleSource(chat.titleSource, listC.titleSource);
-        assert.strictEqual(titleProvenance, undefined, 'Neither default nor legacy can be treated as reliable provenance');
-
-        const completion = buildExportCompletion({
-            conversation: chat,
-            conversationId: 'c_prov_unreliable',
-            titleCandidate: chat.title,
-            titleProvenance,
-            titles: { ...(listC?.titles || {}), ...(chat.titles || {}) }
-        });
-
-        assert.strictEqual(completion.exportRecord.title, 'Unprovenanced Real Title');
-        assert.strictEqual(completion.conversationUpdate.titleSource, undefined, 'Must not fabricate rpc/api-detail provenance');
-
-        await StorageService.finalizeConversationExport(
-            'u0',
-            completion.targetId,
-            completion.exportRecord,
-            { conversationUpdate: completion.conversationUpdate }
-        );
-
-        const convs = mockStorage.gemini_conversations;
-        const saved = convs.find((c: any) => normId(c.id) === 'prov_unreliable');
-        assert.ok(saved);
-        assert.strictEqual(saved.title, 'Unprovenanced Real Title');
-        // Promoted to legacy via candidate rule, never fabricating rpc or api-detail
-        assert.strictEqual(saved.titleSource, 'legacy');
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// 19. Adapter Contract E: adapter with only finalizeConversationExport
-test('19. Adapter Contract E: adapter with only finalizeConversationExport is accepted by sessionRecovery', async () => {
-    let finalizeCalls = 0;
-    let finalizeArgs: any = null;
-    let callbackCalls = 0;
-
-    const mockAdapter = {
-        finalizeConversationExport: async (slot: string, id: string, rec: any, options: any) => {
-            finalizeCalls++;
-            finalizeArgs = { slot, id, rec, options };
-            if (options?.onItemExported) {
-                options.onItemExported(id, rec);
-            }
-        }
-    };
-
-    const finalizedChatsSet = new Set<string>();
-    const chatRecordsMap = new Map<string, any>([
-        ['c_fin_only', {
-            exportRecord: {
-                title: 'Finalize Only Chat',
-                status: 'ok',
-                messageCount: 3,
-                exportedAt: new Date().toISOString()
-            },
-            conversationUpdate: {
-                title: 'Finalize Only Chat',
-                titleSource: 'rpc',
-                messageCount: 3
-            },
-            targetId: 'fin_only'
-        }]
-    ]);
-
-    const context = {
-        finalizedChatsSet,
-        chatRecordsMap,
-        storageAdapter: mockAdapter,
-        slot: 'u1',
-        onItemExported: (id: string, rec: any) => {
-            callbackCalls++;
-        }
-    };
-
-    const res = await finalizeChatExport('c_fin_only', context);
-    assert.strictEqual(res, true);
-    assert.strictEqual(finalizeCalls, 1);
-    assert.strictEqual(callbackCalls, 1);
-    assert.strictEqual(finalizeArgs.id, 'c_fin_only');
-    assert.strictEqual(finalizeArgs.slot, 'u1');
-    assert.strictEqual(finalizeArgs.options.conversationUpdate.titleSource, 'rpc');
-    assert.ok(finalizedChatsSet.has('fin_only'));
-});
-
-// 20. Adapter Contract F: adapter with neither finalizeConversationExport nor saveExportRecord is rejected
-test('20. Adapter Contract F: adapter with neither finalizeConversationExport nor saveExportRecord is rejected', async () => {
-    const brokenAdapter = {
-        someOtherMethod: () => {}
-    };
-
-    const context = {
-        chatRecordsMap: new Map<string, any>([
-            ['c_broken', { title: 'Broken Chat', status: 'ok' }]
-        ]),
-        storageAdapter: brokenAdapter,
-        slot: 'u0'
-    };
-
-    await assert.rejects(async () => {
-        await finalizeChatExport('c_broken', context);
-    }, /adapter must implement finalizeConversationExport or saveExportRecord/);
-});
-
-// ============================================================================
-// ADVERSARIAL PROVENANCE BOUNDARY TEST MATRIX (Scenarios A through J)
-// ============================================================================
-
-// Matrix A: Unknown titles-only input has zero influence
-test('21. Adversarial Matrix A: unknown titles-only input has zero influence', () => {
-    const existing: any = {
-        id: 'c_adv_a',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-    const incoming: any = {
-        titles: {
-            'random-source': 'Dirty Title'
-        }
-    };
-
-    applyExportTitleWriteback(existing, incoming);
-    assert.strictEqual(existing.title, '未命名对话');
-    assert.strictEqual(existing.titleSource, 'default');
-    assert.strictEqual(existing.titles['random-source'], undefined);
-    assert.strictEqual(existing.titles.legacy, undefined);
-    assertCanonicalTitleProvenance(existing);
-});
-
-// Matrix B: export titles-only input has zero influence
-test('22. Adversarial Matrix B: export titles-only input has zero influence', () => {
-    const existing: any = {
-        id: 'c_adv_b',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-    const incoming: any = {
-        titles: {
-            export: 'Export Title'
-        }
-    };
-
-    applyExportTitleWriteback(existing, incoming);
-    assert.strictEqual(existing.title, '未命名对话');
-    assert.strictEqual(existing.titleSource, 'default');
-    assert.strictEqual(existing.titles.export, undefined);
-    assert.strictEqual(existing.titles.legacy, undefined);
-    assertCanonicalTitleProvenance(existing);
-});
-
-// Matrix C: Unknown titleSource + explicit incoming.title promotes as legacy
-test('23. Adversarial Matrix C: unknown titleSource + explicit incoming.title promotes as legacy', async () => {
-    const existing: any = {
-        id: 'c_adv_c',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-    const incoming: any = {
-        title: 'Real Title',
-        titleSource: 'random-source'
-    };
-
-    applyExportTitleWriteback(existing, incoming);
-    assert.strictEqual(existing.title, 'Real Title');
-    assert.strictEqual(existing.titleSource, 'legacy');
-    assert.strictEqual(existing.titles.legacy, 'Real Title');
-    assert.strictEqual(existing.titles['random-source'], undefined);
-    assertCanonicalTitleProvenance(existing);
-
-    // Also verify persistence in Chrome storage
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: [
-            { id: 'c_adv_c', title: '未命名对话', titleSource: 'default', messageCount: 1 }
-        ]
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        await StorageService.finalizeConversationExport(
-            'u0',
-            'c_adv_c',
-            { title: 'Real Title', status: 'ok', exportedAt: new Date().toISOString() },
-            {
-                conversationUpdate: {
-                    title: 'Real Title',
-                    titleSource: 'random-source'
-                }
-            }
-        );
-
-        const saved = mockStorage.gemini_conversations.find((c: any) => normId(c.id) === normId('c_adv_c'));
-        assert.ok(saved);
-        assert.strictEqual(saved.title, 'Real Title');
-        assert.strictEqual(saved.titleSource, 'legacy');
-        assert.strictEqual(saved.titles?.['random-source'], undefined);
-        assertCanonicalTitleProvenance(saved);
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// Matrix D: Unknown slot + reliable slot
-test('24. Adversarial Matrix D: unknown slot is dropped while reliable slot arbitrates', async () => {
-    const existing: any = {
-        id: 'c_adv_d',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-    const incoming: any = {
-        titles: {
-            'random-source': 'Dirty',
-            rpc: 'RPC Title'
-        }
-    };
-
-    applyExportTitleWriteback(existing, incoming);
-    assert.strictEqual(existing.title, 'RPC Title');
-    assert.strictEqual(existing.titleSource, 'rpc');
-    assert.strictEqual(existing.titles.rpc, 'RPC Title');
-    assert.strictEqual(existing.titles['random-source'], undefined);
-    assertCanonicalTitleProvenance(existing);
-});
-
-// Matrix E: Reliable source + conflicting explicit title
-test('25. Adversarial Matrix E: reliable source + explicit title preserves canonical arbitration', () => {
-    const existing: any = {
-        id: 'c_adv_e',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-    const incoming: any = {
-        title: 'RPC Title',
-        titleSource: 'rpc',
-        titles: {
-            rpc: 'RPC Title'
-        }
-    };
-
-    applyExportTitleWriteback(existing, incoming);
-    assert.strictEqual(existing.title, 'RPC Title');
-    assert.strictEqual(existing.titleSource, 'rpc');
-    assert.strictEqual(existing.titles.rpc, 'RPC Title');
-    assertCanonicalTitleProvenance(existing);
-});
-
-// Matrix F: Existing real authoritative title not influenced by unknown input
-test('26. Adversarial Matrix F: existing real authoritative title not influenced by unknown input', () => {
-    const existing: any = {
-        id: 'c_adv_f',
-        title: 'RPC Title',
-        titleSource: 'rpc',
-        titles: {
-            rpc: 'RPC Title'
-        }
-    };
-    const incoming: any = {
-        title: 'Unknown Candidate',
-        titleSource: 'random-source',
-        titles: {
-            'random-source': 'Dirty'
-        }
-    };
-
-    applyExportTitleWriteback(existing, incoming);
-    assert.strictEqual(existing.title, 'RPC Title');
-    assert.strictEqual(existing.titleSource, 'rpc');
-    assert.strictEqual(existing.titles.rpc, 'RPC Title');
-    assert.strictEqual(existing.titles['random-source'], undefined);
-    assert.strictEqual(existing.titles.legacy, undefined);
-    assertCanonicalTitleProvenance(existing);
-});
-
-// Matrix G: Existing generic + plain unprovenanced title promotes as legacy
-test('27. Adversarial Matrix G: existing generic + plain unprovenanced title promotes as legacy', () => {
-    const existing: any = {
-        id: 'c_adv_g',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-    const incoming: any = {
-        title: 'Real Unprovenanced Title'
-    };
-
-    applyExportTitleWriteback(existing, incoming);
-    assert.strictEqual(existing.title, 'Real Unprovenanced Title');
-    assert.strictEqual(existing.titleSource, 'legacy');
-    assert.strictEqual(existing.titles.legacy, 'Real Unprovenanced Title');
-    assertCanonicalTitleProvenance(existing);
-});
-
-// Matrix H: setTitleBySource dirty-source direct call is strictly non-polluting
-test('28. Adversarial Matrix H: setTitleBySource dirty-source direct call is strictly non-polluting', () => {
-    // 1. Generic chat
-    const chat: any = {
-        id: 'c_adv_h',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-    const res = setTitleBySource(chat, 'random-source', 'Dirty');
-    assert.strictEqual(chat.titles['random-source'], undefined);
-    assert.strictEqual(chat.titleSource, 'default');
-    assert.strictEqual(chat.title, '未命名对话');
-    assert.strictEqual(res.source, 'default');
-    assertCanonicalTitleProvenance(chat);
-
-    // 2. Real authoritative chat
-    const chat2: any = {
-        id: 'c_adv_h2',
-        title: 'Authoritative RPC',
-        titleSource: 'rpc',
-        titles: { rpc: 'Authoritative RPC' }
-    };
-    const res2 = setTitleBySource(chat2, 'random-source', 'Dirty');
-    assert.strictEqual(chat2.titles['random-source'], undefined);
-    assert.strictEqual(chat2.titleSource, 'rpc');
-    assert.strictEqual(chat2.title, 'Authoritative RPC');
-    assert.strictEqual(res2.source, 'rpc');
-    assertCanonicalTitleProvenance(chat2);
-});
-
-// Matrix I: Fresh conversation registration with dirty metadata purges dirty source
-test('29. Adversarial Matrix I: fresh conversation registration purges dirty metadata and ensures canonical consistency', async () => {
-    const { mockStorage, chrome } = createMockChromeStorage({
-        gemini_conversations: []
-    });
-    const origChrome = (global as any).chrome;
-    (global as any).chrome = chrome;
-
-    try {
-        await StorageService.finalizeConversationExport(
-            'u0',
-            'fresh_dirty',
-            { title: 'Real', status: 'ok', exportedAt: new Date().toISOString() },
-            {
-                conversationUpdate: {
-                    title: 'Real',
-                    titleSource: 'random-source',
-                    titles: {
-                        'random-source': 'Dirty',
-                        rpc: 'RPC'
-                    }
-                }
-            }
-        );
-
-        const saved = mockStorage.gemini_conversations.find((c: any) => normId(c.id) === 'fresh_dirty');
-        assert.ok(saved, 'fresh conversation must be registered');
-        assert.strictEqual(saved.titles['random-source'], undefined, 'dirty slot must not exist');
-        assert.strictEqual(saved.titles.rpc, 'RPC', 'reliable rpc must be preserved in titles');
-        assert.strictEqual(saved.title, 'RPC', 'canonical title must arbitrate to rpc');
-        assert.strictEqual(saved.titleSource, 'rpc', 'canonical titleSource must arbitrate to rpc');
-        assertCanonicalTitleProvenance(saved);
-    } finally {
-        (global as any).chrome = origChrome;
-    }
-});
-
-// Matrix J: BatchWorker merge dirty map
-test('30. Adversarial Matrix J: BatchWorker merge dirty map filters non-canonical source slots', async () => {
-    const chat: any = {
-        id: 'c_adv_j',
-        title: 'RPC Title',
-        messages: [{ role: 'user', content: 'hello' }],
-        titles: {
-            'random-source': 'Dirty',
-            rpc: 'RPC Title'
-        }
-    };
-    const listConversation: any = {
-        id: 'c_adv_j',
-        title: '未命名对话',
-        titleSource: 'default',
-        titles: {}
-    };
-
-    await resolveChat(chat, { id: 'c_adv_j' }, listConversation);
-
-    assert.strictEqual(listConversation.titles['random-source'], undefined, 'random-source must be excluded');
-    assert.strictEqual(listConversation.titles.rpc, 'RPC Title', 'rpc slot must be preserved');
-    assert.strictEqual(listConversation.title, 'RPC Title', 'resolved title must be RPC Title');
-    assert.strictEqual(listConversation.titleSource, 'rpc', 'resolved titleSource must be rpc');
-    assertCanonicalTitleProvenance(listConversation);
-});
-
-
+}

@@ -1,23 +1,32 @@
+import { useIndexStorage } from './helpers/indexStorage.js';
+import { putAccount } from '../src/l3a/storageService.js';
+useIndexStorage({ seedAccounts: false });
+import { ConversationViewState } from '../src/ui/options/state/conversationsStore.js';
+import { mount, A, B } from './helpers/uiPortHarness.js';
+import { chromium } from 'playwright';
+import { withRegistry } from './helpers/registryMock.js';
+import { bindTabAccounts } from './helpers/tabAccounts.js';
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
+test.beforeEach(async () => {
+    for (const [suffix, subject] of [['1', '10000000001'], ['2', '10000000002'], ['3', '10000000003']])
+        await putAccount({ id: '10000000-0000-4000-8000-00000000000' + suffix, providerId: 'gemini', providerAccountId: subject });
+});
 
-const { __setModuleOverride, __getModuleOverride } = require('../src/core/utils/moduleOverrides.js');
 
 const {
     extractEmailFromText,
     extractNameFromLabel,
     sniffUserProfileFromDom
-} = require('../src/content/accountSniffer.js');
+} = require('../src/l1/parsers/gemini/dom/accountSniffer.js');
 
-const { resolveCred } = require('../src/core/api/client/credentialManager.js');
-const TabService = require('../src/core/utils/tabService.js').default || require('../src/core/utils/tabService.js');
-const ConversationsStore = require('../src/ui/state/conversationsStore.js');
-const AccountView = require('../src/ui/views/accountView.js').default || require('../src/ui/views/accountView.js');
+const { resolveCred } = require('../src/l1/client/gemini/api/credentialManager.js');
+const TabService = require('../src/runtime/capabilities/tabService.js');
+const ConversationsStore = require('../src/ui/options/state/conversationsStore.js');
 
-// ---------------------------------------------------------------------------
+
 // 1. Account Sniffer Tests
-// ---------------------------------------------------------------------------
 test('accountSniffer - extractEmailFromText', () => {
     assert.strictEqual(extractEmailFromText('test.user+tag@gmail.com'), 'test.user+tag@gmail.com');
     assert.strictEqual(extractEmailFromText('Google Account: Alice (ALICE@GMAIL.COM)'), 'alice@gmail.com');
@@ -63,7 +72,7 @@ test('accountSniffer - sniffUserProfileFromDom DOM and global context', () => {
     assert.ok(profile1);
     assert.strictEqual(profile1?.email, 'alice@example.com');
     assert.strictEqual(profile1?.name, 'Alice Wonderland');
-    assert.strictEqual(profile1?.accountId, 'alice@example.com');
+    assert.strictEqual(profile1?.email, 'alice@example.com');
 
     // B: DOM element with data-email attribute
     const mockDoc2 = {
@@ -81,15 +90,15 @@ test('accountSniffer - sniffUserProfileFromDom DOM and global context', () => {
     const profile2 = sniffUserProfileFromDom(mockDoc2);
     assert.ok(profile2);
     assert.strictEqual(profile2?.email, 'bob@corp.com');
-    assert.strictEqual(profile2?.name, 'bob');
-    assert.strictEqual(profile2?.accountId, 'bob@corp.com');
+    assert.strictEqual(profile2?.name, undefined);
+    assert.strictEqual(profile2?.email, 'bob@corp.com');
 
     // C: Gaia ID from window._WIZ_global_data
     const mockDoc3 = {
         querySelectorAll: () => [],
         defaultView: {
             _WIZ_global_data: {
-                oTI7oc: '10987654321'
+                qDCSke: '10987654321'
             }
         }
     } as any;
@@ -97,7 +106,6 @@ test('accountSniffer - sniffUserProfileFromDom DOM and global context', () => {
     const profile3 = sniffUserProfileFromDom(mockDoc3);
     assert.ok(profile3);
     assert.strictEqual(profile3?.gaiaId, '10987654321');
-    assert.strictEqual(profile3?.accountId, '10987654321');
     assert.strictEqual(profile3?.email, undefined);
 
     // D: Empty doc returns null
@@ -108,9 +116,7 @@ test('accountSniffer - sniffUserProfileFromDom DOM and global context', () => {
     assert.strictEqual(sniffUserProfileFromDom(mockDoc4), null);
 });
 
-// ---------------------------------------------------------------------------
 // 2. Credential Isolation Tests
-// ---------------------------------------------------------------------------
 test('credentialManager - resolveCred prevents cross-account token theft', async () => {
     const origChrome = (global as any).chrome;
     try {
@@ -150,10 +156,8 @@ test('credentialManager - resolveCred prevents cross-account token theft', async
     }
 });
 
-// ---------------------------------------------------------------------------
 // 3. Strict Tab Routing Tests
-// ---------------------------------------------------------------------------
-test('tabService - getGeminiTab and sendToGeminiTab enforce strict slot matching', async () => {
+test('tabService - resolveAccountTab and sendToGeminiTab enforce strict slot matching', async () => {
     const origChrome = (global as any).chrome;
     try {
         const mockTabs = [
@@ -171,104 +175,65 @@ test('tabService - getGeminiTab and sendToGeminiTab enforce strict slot matching
             runtime: {}
         };
 
-        // getGeminiTab('u0') returns tab 101
-        const tabU0 = await TabService.getGeminiTab('u0');
+        Object.assign(chrome, withRegistry(chrome));
+        bindTabAccounts({101: '10000000-0000-4000-8000-000000000001', 102: '10000000-0000-4000-8000-000000000002'});
+        // resolveAccountTab('10000000-0000-4000-8000-000000000001') returns tab 101
+        const tabU0 = await TabService.resolveAccountTab('10000000-0000-4000-8000-000000000001');
         assert.strictEqual(tabU0?.id, 101);
 
-        // getGeminiTab('u1') returns tab 102
-        const tabU1 = await TabService.getGeminiTab('u1');
+        // resolveAccountTab('10000000-0000-4000-8000-000000000002') returns tab 102
+        const tabU1 = await TabService.resolveAccountTab('10000000-0000-4000-8000-000000000002');
         assert.strictEqual(tabU1?.id, 102);
 
-        // getGeminiTab('u2') returns null because no tab matches u2
-        const tabU2 = await TabService.getGeminiTab('u2');
-        assert.strictEqual(tabU2, null, 'Must return null when requested slot tab is absent');
+        // resolveAccountTab rejects when no tab matches this account
+        await assert.rejects(TabService.resolveAccountTab('10000000-0000-4000-8000-000000000003'), /No open Provider Tab matches this Account/);
 
-        // sendToGeminiTab('u1') sends message to tab 102
-        const resU1 = await TabService.sendToGeminiTab({ action: 'ping' }, 'u1');
+        // sendToGeminiTab('10000000-0000-4000-8000-000000000002') sends message to tab 102
+        const resU1 = await TabService.sendToGeminiTab({ action: 'ping' }, '10000000-0000-4000-8000-000000000002');
         assert.strictEqual(resU1.tabId, 102);
 
-        // sendToGeminiTab('u2') throws error instead of silently targeting u0 or u1
+        // sendToGeminiTab('10000000-0000-4000-8000-000000000003') throws error instead of silently targeting u0 or u1
         await assert.rejects(
             async () => {
-                await TabService.sendToGeminiTab({ action: 'ping' }, 'u2');
+                await TabService.sendToGeminiTab({ action: 'ping' }, '10000000-0000-4000-8000-000000000003');
             },
-            /未找到多账号 slot u2 对应的 Gemini 标签页/
+            /matches this Account/
         );
     } finally {
         (global as any).chrome = origChrome;
     }
 });
 
-// ---------------------------------------------------------------------------
 // 4. Conversations Store Empty Slot Isolation Tests
-// ---------------------------------------------------------------------------
-test('conversationsStore - loadStore does not hijack empty slot', async () => {
-    const origChrome = (global as any).chrome;
-    try {
-        const mockStorage = {
-            getAccountSlots: async () => ({
-                u0: { name: 'Main Account', count: 10 },
-                u1: { name: 'Empty Account', count: 0 }
-            }),
-            getConversations: async (slot: string) => {
-                if (slot === 'u0') return [{ id: 'c1', title: 'Chat 1' }];
-                return [];
-            },
-            getExportedIds: async () => ({})
-        };
-
-        const origStorage = __getModuleOverride('StorageService');
-        __setModuleOverride('StorageService', mockStorage);
-
-        // When explicitly loading slot 'u1', even if incoming is empty, it MUST stay on 'u1'!
-        const result = await ConversationsStore.loadStore('u1');
-        assert.strictEqual(result.slot, 'u1', 'Should stay on u1 even if u1 has 0 conversations');
-        assert.strictEqual(result.conversations.length, 0);
-        assert.strictEqual(ConversationsStore.getCurrentSlot(), 'u1');
-    } finally {
-        __setModuleOverride('StorageService', undefined as any);
-        (global as any).chrome = origChrome;
-    }
+test('conversationsStore - refresh does not hijack a selected empty account', async () => {
+    const accounts = [{ id: A, providerId: 'gemini', providerAccountId: 'main' }, { id: B, providerId: 'gemini', providerAccountId: 'empty' }];
+    const state = new ConversationViewState({ listAccounts: async () => accounts,
+        listIndexes: async id => id === A ? [{ key: { accountId: A, conversationId: 'c1' }, title: 'Chat 1' }] : [],
+        listExportRecords: async () => ({}) });
+    state.selectAccount(B); await state.refresh();
+    assert.equal(state.accountId, B); assert.deepEqual(state.indexes, []);
 });
 
-// ---------------------------------------------------------------------------
-// 5. Account View Display Name & Email Tests
-// ---------------------------------------------------------------------------
-test('accountView - renders user email and name accurately in dropdown', () => {
-    const mockSelect: any = {
-        id: 'accountSlotSelect',
-        style: {},
-        innerHTML: '',
-        children: [] as any[],
-        appendChild(el: any) { this.children.push(el); }
-    };
-
-    const origDoc = (global as any).document;
+test('Options renders account display names or email fallbacks and preserves the selected UUID', async () => {
+    const browser = await chromium.launch({ chromiumSandbox: true, headless: true });
     try {
-        (global as any).document = {
-            getElementById: (id: string) => id === 'accountSlotSelect' ? mockSelect : null,
-            createElement: (tag: string) => ({
-                tagName: tag.toUpperCase(),
-                value: '',
-                selected: false,
-                textContent: ''
-            })
-        };
-
-        AccountView.render({
-            u0: { name: '张三', email: 'zhangsan@gmail.com', count: 5 },
-            u1: { email: 'lisi@gmail.com', count: 0 }
-        }, 'u1');
-
-        assert.strictEqual(mockSelect.children.length, 2);
-        assert.strictEqual(mockSelect.children[0].value, 'u0');
-        assert.strictEqual(mockSelect.children[0].textContent, '张三 (zhangsan@gmail.com) (5)');
-        assert.strictEqual(mockSelect.children[1].value, 'u1');
-        assert.strictEqual(mockSelect.children[1].textContent, 'lisi@gmail.com [u1] (0)');
-        assert.strictEqual(mockSelect.children[1].selected, true);
-    } finally {
-        (global as any).document = origDoc;
-    }
+        const page = await browser.newPage();
+        await mount(page, 'options', { accounts: [
+            { id: A, providerId: 'gemini', providerAccountId: 'one', displayName: '张三', email: 'zhangsan@gmail.com' },
+            { id: B, providerId: 'gemini', providerAccountId: 'two', email: 'lisi@gmail.com' },
+        ] });
+        await page.locator('#list .item').waitFor();
+        assert.deepEqual(await page.locator('#accountIdSelect option').allTextContents(), ['Gemini · 张三', 'Gemini · lisi@gmail.com']);
+        assert.deepEqual(await page.locator('#accountIdSelect option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value)), [A, B]);
+        assert.equal(await page.locator('#accountIdSelect').isVisible(), true);
+        await page.locator('#accountIdSelect').selectOption(B);
+        // The source selector labels every option with its provider.
+        await page.waitForFunction(() => document.querySelector('#list .item')?.textContent?.includes('B chat'));
+        assert.equal(await page.locator('#accountIdSelect option:checked').textContent(), 'Gemini · lisi@gmail.com');
+        assert.equal(await page.locator('#accountIdSelect').getAttribute('title'), 'lisi@gmail.com');
+        assert.equal(await page.locator('#accountName').textContent(), '');
+        assert.equal(await page.locator('#accountIdSelect').inputValue(), B);
+    } finally { await browser.close(); }
 });
 
 test('credentialManager - concurrent resolveCred calls serialize safely without race condition', async () => {
@@ -328,5 +293,25 @@ test('credentialManager - concurrent resolveCred calls serialize safely without 
         assert.strictEqual(maxActiveOps, 1, 'Concurrent resolveCred calls must be serialized (maxActiveOps === 1)');
     } finally {
         (global as any).chrome = origChrome;
+    }
+});
+
+test('accountSniffer - current Gemini Wiz tuple wins over another account DOM label', () => {
+    const doc = {
+        querySelectorAll: () => [{ getAttribute: (key: string) => key === 'aria-label' ? 'Google Account: Other (other@example.com)' : null }],
+        defaultView: { WIZ_global_data: { qDCSke: '109876543210987654321', oPEP7c: 'ACTIVE@EXAMPLE.COM' } }
+    } as unknown as Document;
+    const profile = sniffUserProfileFromDom(doc);
+    assert.equal(profile?.gaiaId, '109876543210987654321');
+    assert.equal(profile?.email, 'active@example.com');
+    assert.equal(profile?.name, undefined);
+    assert.equal(profile?.email, 'active@example.com');
+    assert.equal('accountId' in (profile || {}), false);
+});
+
+test('accountSniffer - obsolete or malformed Wiz fields do not become provider account IDs', () => {
+    for (const wiz of [{ oTI7oc: '10987654321' }, { qDCSke: 'not-a-gaia-id' }, { qDCSke: 10987654321 }]) {
+        const doc = { querySelectorAll: () => [], defaultView: { WIZ_global_data: wiz } } as unknown as Document;
+        assert.equal(sniffUserProfileFromDom(doc), null);
     }
 });

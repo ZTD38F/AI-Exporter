@@ -1,4 +1,5 @@
 # scripts/framework/cases/lifecycle.py
+import json
 import time
 from typing import Tuple, Optional, Dict, Any
 
@@ -6,6 +7,7 @@ from scripts.framework.cases.base import FeatureTestCase, TestContext
 from scripts.framework.features import FeatureDomain
 from scripts.framework.actions import CDPActions
 from scripts.framework.assertions import CDPAssertions
+from scripts.framework.cases.sync import read_sync_state, verify_activity_sync, select_source_account
 
 try:
     from scripts.cdp_client import CDPConnection
@@ -38,11 +40,16 @@ class ContinuedChatPromotionCase(FeatureTestCase):
         try:
             cdp_opt_prep = ctx.connect_options()
             try:
-                CDPActions.setup_live_save(cdp_opt_prep, enabled=False)
+                if not CDPActions.setup_live_save(cdp_opt_prep, enabled=False):
+                    return False, "无法关闭实时落盘以验证已更新状态", None
+                state = read_sync_state(cdp_opt_prep)
+                ctx.shared_data['pre_promotion_sync_baseline'] = {
+                    'state': state, 'scan': ctx.shared_data.get('deep_scan_evidence')
+                    or ctx.shared_data.get('pre_chat_sync_baseline', {}).get('scan')}
             finally:
                 cdp_opt_prep.close()
         except Exception as e:
-            print(f"      ⚠️ 临时关闭实时落盘提示: {e}")
+            return False, f"临时关闭实时落盘失败: {e}", None
 
         cdp_g2 = ctx.connect_gemini()
         try:
@@ -53,6 +60,8 @@ class ContinuedChatPromotionCase(FeatureTestCase):
             print(f"      ▶️ 追加提问: '{add_turn[:36]}...'")
             turn_res = session.send_turn(add_turn, max_wait=120)
             if turn_res.success:
+                ctx.record_turn(ctx.chat_records[0], turn_res)
+                ctx.freeze_turn_evidence(driver, ctx.chat_records[0])
                 ctx.chat_records[0]["turns"].append(add_turn)
                 return True, "老会话追加提问成功完成并触发 STREAM_COMPLETE", None
             return False, f"追加提问失败: {turn_res.error}", None
@@ -65,8 +74,8 @@ class UpdatedBadgeDisplayCase(FeatureTestCase):
         super().__init__(
             feature_id="feat_updated_badge_display",
             domain=FeatureDomain.LIFECYCLE,
-            name="「已更新」徽章与智能勾选",
-            description="已导出过的会话检测到新提问后，渲染琥珀色「已更新」徽章并被默认自动勾选",
+            name="来源更新时间与导出记录",
+            description="追加提问后验证来源更新时间晚于已有导出记录；v2 保持显式选择",
             critical=True,
             prerequisites=["feat_continued_chat_promotion"]
         )
@@ -90,6 +99,8 @@ class UpdatedBadgeDisplayCase(FeatureTestCase):
             badge_ok, badge_msg, _ = CDPAssertions.assert_badge_status(cdp_opt, s1_id, "updated")
 
             if order_ok and badge_ok:
+                baseline = ctx.shared_data.get('pre_promotion_sync_baseline') or {}
+                verify_activity_sync(ctx, baseline, [s1_id], 'promoted_chat_incremental_sync')
                 return True, f"真实置顶与徽章双重断言通过: {order_msg}; {badge_msg}", None
             return False, f"真实断言未通过: Order={order_msg} | Badge={badge_msg}", None
         finally:
@@ -101,8 +112,8 @@ class EphemeralChatPruningCase(FeatureTestCase):
         super().__init__(
             feature_id="feat_ephemeral_chat_pruning",
             domain=FeatureDomain.LIFECYCLE,
-            name="瞬态会话网页端删除实时剥离",
-            description="在网页端侧边栏删除会话，Options 列表与 Storage 在无需刷新情况下平滑剥离该项",
+            name="确证网页删除与同 Key 原子清理",
+            description="确证网页删除后，清理同 Key Index/Detail/ExportRecord，保留其他对话",
             critical=True,
             prerequisites=[]
         )
@@ -111,6 +122,8 @@ class EphemeralChatPruningCase(FeatureTestCase):
         cdp_gem_live = ctx.connect_gemini()
         cdp_opt = ctx.connect_options()
         try:
+            if not CDPActions.setup_live_save(cdp_opt, enabled=True):
+                return False, '无法启用瞬态会话的真实保存', None
             driver = ctx.get_gemini_driver(cdp_gem_live)
             session = driver.new_chat(timeout=20.0)
 
@@ -125,10 +138,26 @@ class EphemeralChatPruningCase(FeatureTestCase):
                 return False, "未能获取瞬态会话 ID", None
 
             ctx.tracker.track(eph_chat_id)
+            select_source_account(cdp_opt, cdp_gem_live)
+            before = read_sync_state(cdp_opt)
+            key = {'accountId': before['accountId'], 'conversationId': eph_chat_id.removeprefix('c_')}
+            retained_ids = [row['key']['conversationId'] for row in before['rows']
+                            if row['key'] != key]
+            deadline = time.monotonic() + 40
+            prior = None
+            while time.monotonic() < deadline:
+                prior = cdp_opt.eval(f"globalThis.__tier2V2.storedConversation({json.dumps(key)})", await_promise=True)
+                if (prior and (prior.get('index') or {}).get('key') == key
+                        and (prior.get('detail') or {}).get('key') == key
+                        and prior.get('exportRecord')):
+                    break
+                time.sleep(0.2)
+            else:
+                return False, "删除前未确认同 Key Index、Detail 与 ExportRecord，不能做空值验收", prior
             cdp_gem_live.eval("""(() => {
                 window.__tier2DeleteEvents = [];
                 window.addEventListener('message', event => {
-                    if (event.data?.type === 'GEMINI_CONVERSATION_DELETED')
+                    if (event.source === window && event.origin === location.origin && event.data?.type === 'GEMINI_CONVERSATION_DELETED')
                         window.__tier2DeleteEvents.push(event.data.payload);
                 });
             })()""")
@@ -138,11 +167,15 @@ class EphemeralChatPruningCase(FeatureTestCase):
                 return False, f"网页端原生删除触发失败 (会话 ID: {eph_chat_id})", None
             ctx.tracker.mark_deleted(eph_chat_id)
 
-            pruned_ok, pruned_msg, _ = CDPAssertions.assert_dom_pruned(cdp_opt, eph_chat_id, timeout=10.0)
+            pruned_ok, pruned_msg, _ = CDPAssertions.assert_confirmed_deleted(cdp_opt, key, retained_ids, timeout=10.0)
             events = cdp_gem_live.eval("window.__tier2DeleteEvents || []")
-            if pruned_ok:
-                return True, "瞬态会话已实时剥离 DOM 与本地 Storage", {"delete_events": events}
-            return False, f"DOM剥离校验失败: {pruned_msg}; 删除事件={events}", {"delete_events": events}
+            verified = any(event.get('id') == key['conversationId']
+                           and event.get('requestAccountObservation', {}).get('providerAccountId') == before['account']['providerAccountId']
+                           and event.get('requestAccountObservation', {}).get('providerId') == 'gemini'
+                           and event.get('requestBody') and event.get('responseText') for event in events or [])
+            if pruned_ok and verified:
+                return True, "确证远端删除后，同 Key 本地事实已原子清理", {"delete_events": events}
+            return False, f"确证删除清理校验失败: {pruned_msg}; 捕获到确认事件={verified}", {"delete_events": events}
         finally:
             cdp_gem_live.close()
             cdp_opt.close()

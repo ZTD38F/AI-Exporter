@@ -1,0 +1,20 @@
+{
+  "suites": [
+    "tests/document-file-badge.test.ts",
+    "tests/fs_writer_disk.test.ts",
+    "tests/l4-html-v2-unit.test.ts",
+    "tests/l4-delivery.test.ts",
+    "tests/l4-internal-contract.test.ts",
+    "tests/l4-json-v2-unit.test.ts",
+    "tests/l4-packaging.test.ts",
+    "tests/l4-resource-path.test.ts",
+    "tests/l4-v2-renderer-unit.test.ts",
+    "tests/local-font-provider.test.ts",
+    "tests/pdf-format.test.ts",
+    "tests/pdf-image-resource-matrix.test.ts",
+    "tests/writers.test.ts"
+  ],
+  "typeTests": [
+    "tests/document_renderer_boundary.types.ts"
+  ]
+}

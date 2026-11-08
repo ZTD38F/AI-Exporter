@@ -1,22 +1,9 @@
 {
-  "schemaVersion": 1,
-  "conversation": {
-    "key": {
-      "providerId": "gemini",
-      "accountId": "acct-parity-001",
-      "conversationId": "conv-quote-group-001"
-    },
-    "title": "引用组：嵌套引用与列表",
-    "createdAt": "2026-09-26T12:00:00-07:00",
-    "updatedAt": "2026-09-26T12:04:00-07:00",
+  "document": {
     "messages": [
       {
-        "id": "u1",
-        "role": "user",
-        "createdAt": "2026-09-26T12:00:00-07:00",
         "blocks": [
           {
-            "id": "u1:b0",
             "type": "paragraph",
             "children": [
               {
@@ -25,25 +12,16 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a1",
-        "role": "assistant",
-        "createdAt": "2026-09-26T12:04:00-07:00",
-        "author": {
-          "model": "Gemini 2.5 Pro",
-          "rawRole": "model"
-        },
         "blocks": [
           {
-            "id": "a1:b0",
-            "type": "thought",
-            "disclosure": "providerExposed",
+            "type": "disclosure",
             "kind": "reasoning",
             "blocks": [
               {
-                "id": "a1:b0:t0",
                 "type": "paragraph",
                 "children": [
                   {
@@ -52,10 +30,10 @@
                   }
                 ]
               }
-            ]
+            ],
+            "title": "Thinking Process"
           },
           {
-            "id": "a1:b1",
             "type": "heading",
             "level": 2,
             "children": [
@@ -66,11 +44,9 @@
             ]
           },
           {
-            "id": "a1:b2",
             "type": "quote",
             "blocks": [
               {
-                "id": "a1:b2:q0",
                 "type": "paragraph",
                 "children": [
                   {
@@ -80,11 +56,9 @@
                 ]
               },
               {
-                "id": "a1:b2:q1",
                 "type": "quote",
                 "blocks": [
                   {
-                    "id": "a1:b2:q1:q0",
                     "type": "paragraph",
                     "children": [
                       {
@@ -98,14 +72,12 @@
             ]
           },
           {
-            "id": "a1:b3",
             "type": "list",
             "ordered": false,
             "items": [
               {
                 "blocks": [
                   {
-                    "id": "a1:b3:i0:b0",
                     "type": "paragraph",
                     "children": [
                       {
@@ -119,7 +91,6 @@
               {
                 "blocks": [
                   {
-                    "id": "a1:b3:i1:b0",
                     "type": "paragraph",
                     "children": [
                       {
@@ -133,7 +104,6 @@
               {
                 "blocks": [
                   {
-                    "id": "a1:b3:i2:b0",
                     "type": "paragraph",
                     "children": [
                       {
@@ -156,7 +126,6 @@
             ]
           },
           {
-            "id": "a1:b4",
             "type": "list",
             "ordered": true,
             "start": 1,
@@ -164,7 +133,6 @@
               {
                 "blocks": [
                   {
-                    "id": "a1:b4:i0:b0",
                     "type": "paragraph",
                     "children": [
                       {
@@ -178,7 +146,6 @@
               {
                 "blocks": [
                   {
-                    "id": "a1:b4:i1:b0",
                     "type": "paragraph",
                     "children": [
                       {
@@ -192,7 +159,6 @@
               {
                 "blocks": [
                   {
-                    "id": "a1:b4:i2:b0",
                     "type": "paragraph",
                     "children": [
                       {
@@ -206,11 +172,9 @@
             ]
           },
           {
-            "id": "a1:b5",
             "type": "thematicBreak"
           },
           {
-            "id": "a1:b6",
             "type": "paragraph",
             "children": [
               {
@@ -232,10 +196,16 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       }
-    ]
+    ],
+    "metadata": {
+      "id": "quote-group",
+      "provider": "gemini",
+      "updatedAt": 1790380800000
+    },
+    "title": "引用组：嵌套引用与列表"
   },
-  "assets": [],
-  "citations": []
+  "resourceIds": []
 }

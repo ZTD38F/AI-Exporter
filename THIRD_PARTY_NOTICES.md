@@ -73,7 +73,7 @@ THE SOFTWARE.
 
 - **Components**:
   - `@myriaddreamin/typst.ts` v0.7.0 — JS glue bundled into `dist/ui/sandbox/typst-compile.js`
-  - `@myriaddreamin/typst-ts-web-compiler` v0.7.0 — WebAssembly compiler binary, vendored byte-identical from npm at `src/ui/sandbox/vendor/typst_ts_web_compiler_bg.wasm` (sha256 `1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd`; provenance recorded in `src/ui/sandbox/vendor/README.md`)
+  - `@myriaddreamin/typst-ts-web-compiler` v0.7.0 — WebAssembly compiler binary, vendored byte-identical from npm at `src/l4/format/pdf/sandbox/vendor/typst_ts_web_compiler_bg.wasm` (sha256 `1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd`; provenance recorded in `src/l4/format/pdf/sandbox/vendor/README.md`)
   - `@myriaddreamin/typst-ts-renderer` v0.7.0 — declared npm dependency; its code/WASM is **not** included in the shipped extension
 - **Upstream**: <https://github.com/Myriad-Dreamin/typst.ts> (packages the Typst compiler, <https://typst.app>, also Apache-2.0)
 - **Copyright**: Copyright 2023-2025 Myriad-Dreamin
@@ -289,10 +289,10 @@ THE SOFTWARE.
 
 ### 4. NewCMMath-Regular.otf (math fallback font for the PDF sandbox)
 
-- **Component**: `NewCMMath-Regular.otf` (1.2 MiB) at `src/ui/sandbox/fonts/`
+- **Component**: `NewCMMath-Regular.otf` (1.2 MiB) at `src/l4/format/pdf/sandbox/fonts/`
 - **Source**: the `newcomputermodern` package on CTAN (`fonts/newcomputermodern/otf/`), downloaded 2026-09-26
-- **License**: GUST Font License v1.0 (2009-06-22) — the work is distributed under the LaTeX Project Public License (LPPL) v1.3c or later, plus a rename request for derived works. The full license text ships with the font at `src/ui/sandbox/fonts/GUST-FONT-LICENSE.txt`.
-- **Modification**: renamed from upstream `NewComputerModernMath` to `NewCMMath` (name IDs 1/4/16 + CFF TopDict FullName/FamilyName) via fontTools so Typst matches the pinned `font-math` stack in `src/core/export/typst/templates/theme.typ`. No glyphs were altered; the OpenType MATH table is intact. The rename satisfies clause 1 of the GUST Font License. Provenance recorded in `src/ui/sandbox/fonts/README.md`.
+- **License**: GUST Font License v1.0 (2009-06-22) — the work is distributed under the LaTeX Project Public License (LPPL) v1.3c or later, plus a rename request for derived works. The full license text ships with the font at `src/l4/format/pdf/sandbox/fonts/GUST-FONT-LICENSE.txt`.
+- **Modification**: renamed from upstream `NewComputerModernMath` to `NewCMMath` (name IDs 1/4/16 + CFF TopDict FullName/FamilyName) via fontTools so Typst matches the pinned `font-math` stack in `src/l4/format/typst/templates/theme.typ`. No glyphs were altered; the OpenType MATH table is intact. The rename satisfies clause 1 of the GUST Font License. Provenance recorded in `src/l4/format/pdf/sandbox/fonts/README.md`.
 
 #### GUST Font License Text (shipped verbatim with the font):
 
@@ -336,10 +336,120 @@ THE SOFTWARE.
 - **Source**: <https://github.com/mitex-rs/mitex>
 - **License**: `Apache-2.0` (Apache License, Version 2.0)
 - **Provenance**:
-  - WASM & JS glue (`src/core/export/typst/mitex/vendor/`): vendored from third-party npm build `mitex-wasm@0.2.5` (`https://registry.npmjs.org/mitex-wasm/-/mitex-wasm-0.2.5.tgz`). `mitex_wasm_bg.wasm` SHA256: `7907415f9e7bbc8447dd2ac1d9a4b7bbc3f4f42b96f855d41883dc39f904c0cf`.
-  - Typst scope (`src/core/export/typst/templates/mitex-scope.typ`): consolidated from `@preview/mitex:0.2.5` (`specs/prelude.typ` and `specs/latex/standard.typ`) with `#let mitex-scope = scope` appended and no LaTeX command mapping modifications.
-  - Full provenance and policy recorded in `src/core/export/typst/mitex/vendor/README.md`.
+  - WASM & JS glue (`src/l4/format/typst/mitex/vendor/`): vendored from third-party npm build `mitex-wasm@0.2.5` (`https://registry.npmjs.org/mitex-wasm/-/mitex-wasm-0.2.5.tgz`). `mitex_wasm_bg.wasm` SHA256: `7907415f9e7bbc8447dd2ac1d9a4b7bbc3f4f42b96f855d41883dc39f904c0cf`.
+  - Typst scope (`src/l4/format/typst/templates/mitex-scope.typ`): consolidated from `@preview/mitex:0.2.5` (`specs/prelude.typ` and `specs/latex/standard.typ`) with `#let mitex-scope = scope` appended and no LaTeX command mapping modifications.
+  - Full provenance and policy recorded in `src/l4/format/typst/mitex/vendor/README.md`.
 - **License Text**: Licensed under the Apache License, Version 2.0. The full license text is reproduced in Section 3 above.
 
+### 6. Noto Sans CJK SC Regular
+
+- **Copyright** (embedded in the font): © 2014-2021 Adobe (http://www.adobe.com/).
+- **Source**: <https://github.com/notofonts/noto-cjk/tree/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans>
+- **License**: SIL Open Font License 1.1; full license and copyright notices shipped as `src/l4/format/pdf/sandbox/fonts/OFL-NotoSansCJK.txt`.
+- **Modification**: None. Offline PDF text fallback; provenance and SHA256 recorded in the fonts README.
+
+### 7. Noto Sans Mono
+
+- **Copyright**: Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- **Source**: <https://github.com/google/fonts/tree/45e3d5269e4a17d823f6d84470bc084dc5ae46f6/ofl/notosansmono>
+- **License**: SIL Open Font License 1.1; full license and copyright shipped as `src/l4/format/pdf/sandbox/fonts/OFL-NotoSansMono.txt`.
+- **Modification**: File renamed only; offline PDF code fallback. SHA256 recorded in the fonts README.
 
 
+
+### 8. docx.js (local Word export)
+
+- **Component**: `docx` v9.14.0, bundled into the extension's local export UI.
+- **Source**: <https://github.com/dolanmiu/docx>
+- **License**: MIT; copyright (c) 2016 Dolan.
+- **License text**: The standard MIT permission/warranty terms are reproduced above in Section 1. Upstream license: <https://github.com/dolanmiu/docx/blob/9.14.0/LICENSE>.
+- **Bundled dependencies**: `hash.js` (MIT), `jszip` (MIT/GPLv3 dual license; MIT option), `nanoid` (MIT), and their MIT-licensed transitive dependencies. Exact versions are locked in `package-lock.json`. JSZip and Pako license notices also appear above.
+
+---
+
+### Loominary Grok parser and source normalization
+
+- Source: https://github.com/Laumss/loominary
+- Revision: `5ae077b5bc010d80289a851621514397cf95422b`
+- Adapted files: `src/grok.js`, `src/utils/fileParser/grokParser.js`, and helper subsets.
+- Local files and modifications: `src/l1/parsers/grok/vendor/loominary/UPSTREAM.md`.
+
+```text
+MIT License
+
+Copyright (c) 2025 Yalums
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### PDF Unicode mapping repair
+
+- **pdf-lib 1.17.1**: Copyright (c) 2019 Andrew Dillon; MIT License. The complete license is shipped in `src/l4/format/pdf/typst/LICENSE-pdf-lib.txt`. Used to decode and rewrite ToUnicode dictionaries while preserving the page drawing and source ActualText.
+- **DejaVu Sans Mono**: unmodified font from matplotlib commit `39b27ddaafe636f06776a2044b5df05d07648dc4`; Bitstream Vera / DejaVu license. Font provenance and hashes are in `src/l4/format/pdf/sandbox/fonts/README.md`, and the complete original license is shipped as `LICENSE-DejaVu.txt` in that directory.
+
+
+### @xmldom/xmldom
+
+- **Component**: @xmldom/xmldom v0.9.12
+- **Homepage**: <https://github.com/xmldom/xmldom>
+- **License**: MIT
+- **Use**: Parse locally generated KaTeX MathML for native Word equation export.
+
+```text
+Copyright 2019 - present Christopher J. Brody and other contributors, as listed in: https://github.com/xmldom/xmldom/graphs/contributors
+Copyright 2012 - 2017 @jindw <jindw@xidea.org> and other contributors, as listed in: https://github.com/jindw/xmldom/graphs/contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+```
+
+
+### React, React DOM and Scheduler
+
+- **Upstream**: <https://github.com/facebook/react>
+- **License**: MIT
+- **Use**: Locally bundled Options conversation-list rendering. Exact versions are locked in `package-lock.json`.
+
+```text
+MIT License
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

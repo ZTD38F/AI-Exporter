@@ -9,7 +9,7 @@ const {gfm} = require(path.join(main,'node_modules/micromark-extension-gfm'));
 const {gfmFromMarkdown} = require(path.join(main,'node_modules/mdast-util-gfm'));
 const {math} = require(path.join(main,'node_modules/micromark-extension-math'));
 const {mathFromMarkdown} = require(path.join(main,'node_modules/mdast-util-math'));
-const {parseMarkdownToBlocks} = require(path.join(main,'src/core/export/canonical/markdown/parseMarkdown.ts'));
+const {parseMarkdownToBlocks} = require(path.join(main,'src/l1/parsers/shared/markdown/parseMarkdown.ts'));
 function compact(node) {
   if (Array.isArray(node)) return node.map(compact);
   if (!node || typeof node !== 'object') return node;
@@ -29,7 +29,7 @@ for (const caseName of fs.readdirSync(artifactRoot).filter(x=>x.startsWith('case
   const source=fs.readFileSync(file,'utf8');
   const mdast=fromMarkdown(source,{extensions:[gfm(),math()],mdastExtensions:[gfmFromMarkdown(),mathFromMarkdown()]});
   let next=0;
-  const canonical=parseMarkdownToBlocks(source,'probe',{nextBlockId:()=>`probe-${++next}`,diagnostics:[]});
+  const canonical=parseMarkdownToBlocks(source,'probe',{diagnostics:[]});
   fs.writeFileSync(path.join(dir,'current-parser.json'),JSON.stringify({mdast:compact(mdast),canonical:compact(canonical)},null,2));
   console.log(caseName, JSON.stringify(compact(mdast)).slice(0,350));
 }

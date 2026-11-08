@@ -1,0 +1,10 @@
+{
+  "provenance": {
+    "kind": "live_native_rpc",
+    "conversationId": "c_65b44a7da211d8ab",
+    "capturedAt": "2026-10-16T03:16:18Z",
+    "scope": "minimal math fragment, copied from independent structured/raw Markdown fields"
+  },
+  "structured": "\\min_{x \\in \\mathbb{R}^n} f(x) = \\frac{1}{2} \\Vert{}Ax - b\\Vert{}_2^2",
+  "markdown": "\\min_{x \\in \\mathbb{R}^n} f(x) = \\frac{1}{2} \\|Ax - b\\|_2^2"
+}

@@ -1,228 +1,111 @@
-import { test, expect } from './fixtures';
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { openOptions, seedConversations, accountId } from './uiFixture';
+import { listGen as geminiListGen } from '../fixtures/providers/gemini.js';
+import { detailGen as geminiDetailGen } from '../fixtures/providers/geminiDetail.js';
+import { requestGen as geminiListRequestGen } from '../fixtures/providers/geminiListRequest.js';
+import { requestGen as geminiDetailRequestGen } from '../fixtures/providers/geminiDetailRequest.js';
 
-test.describe('E2E: Multi-Tier Non-Destructive Title Storage & Priority Arbitration', () => {
-  test('should arbitrate titles strictly by source tier and never allow low tier to corrupt high tier', async ({ context, extensionId }) => {
-    // 1. Open options workbench and seed with Takeout imported chat
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await optionsPage.waitForLoadState('domcontentloaded');
+/** Cross-module v2 title authority: L1 source -> L2 Index -> L3a -> real Options UI. */
+test.beforeEach(async ({ context }) => { await seedRegistryAccounts(context); });
 
-    await optionsPage.evaluate(async () => {
-      const initialConvs = [
-        {
-          id: 'arbitration_chat_999',
-          title: 'Takeout Prompt 原始提问',
-          titleSource: 'takeout',
-          titles: { takeout: 'Takeout Prompt 原始提问' },
-          timestamp: 1670000000000
-        }
-      ];
-      await chrome.storage.local.set({
-        gemini_conversations: initialConvs,
-        exportedIds: {},
-        has_completed_tour: true,
-        last_seen_feature_version: '999.0.0'
-      });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-
-    const targetItem = optionsPage.locator('[data-chat-id="arbitration_chat_999"]');
-    await expect(targetItem).toContainText('Takeout Prompt 原始提问');
-
-    // 2. Open page in intermediate loading state with <title>Google Gemini</title>
-    const geminiPage = await context.newPage();
-    await geminiPage.route('https://gemini.google.com/app/**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html; charset=utf-8',
-        body: `<!DOCTYPE html>
-        <html>
-        <head>
-          <title>Google Gemini</title>
-        </head>
-        <body>
-          <div class="loading-state">Loading conversation...</div>
-        </body>
-        </html>`
-      });
-    });
-
-    await geminiPage.goto('https://gemini.google.com/app/arbitration_chat_999');
-    await geminiPage.waitForLoadState('domcontentloaded');
-    await expect(geminiPage.locator('#geminiExportBadge')).toBeVisible();
-
-    // Verify workbench title did NOT become "Google Gemini" and remained Takeout prompt
-    await optionsPage.bringToFront();
-    await optionsPage.evaluate(async () => {
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-    await expect(targetItem).toContainText('Takeout Prompt 原始提问');
-    await expect(targetItem).not.toContainText('Google Gemini');
-
-    // 3. Simulate DOM header rendered (Tier: dom)
-    await geminiPage.bringToFront();
-    await geminiPage.evaluate(() => {
-      const h1 = document.createElement('h1');
-      h1.setAttribute('data-test-id', 'conversation-title');
-      h1.textContent = '页面显式渲染的DOM标题';
-      document.body.appendChild(h1);
-    });
-
-    // Trigger a REAL DOM-tier sync via the test hook (__geminiExporterSyncOnce
-    // is mounted by the MAIN-world content script; previously this step was a
-    // silent no-op). Poll storage until the DOM title lands, proving the step
-    // actually executed before the authoritative RPC arrives.
-    await geminiPage.evaluate(async () => {
-      await (window as any).__geminiExporterSyncOnce();
-    });
-    await expect.poll(async () => {
-      const data = await optionsPage.evaluate(async () => {
-        return await chrome.storage.local.get(['gemini_conversations']);
-      }) as Record<string, any>;
-      const c = (data.gemini_conversations || []).find((x: any) => x.id === 'arbitration_chat_999');
-      return c && c.titles ? c.titles.dom : undefined;
-    }, { timeout: 10000 }).toBe('页面显式渲染的DOM标题');
-
-    // 4. Simulate authoritative RPC arriving (Tier: rpc)
-    await geminiPage.evaluate(async () => {
-      window.postMessage({
-        type: 'GEMINI_NETWORK_BATCHEXECUTE',
-        payload: {
-          text: `)]}'\n\n[["wrb.fr","hNvQHb",${JSON.stringify(JSON.stringify([
-            [["c_arbitration_chat_999", "turn_1", [null, null, ["提问内容"]]]],
-            "tC_token_abc",
-            "官方服务端RPC最终权威标题"
-          ]))}]]`,
-          slot: 'u0'
-        }
-      }, location.origin);
-    });
-
-    // 5. Verify final resolved state in storage and options page
-    let chat: any = null;
-    await expect.poll(async () => {
-      const storageData = await optionsPage.evaluate(async () => {
-        return await chrome.storage.local.get(['gemini_conversations']);
-      }) as Record<string, any>;
-      chat = (storageData.gemini_conversations || []).find((c: any) => c.id === 'arbitration_chat_999');
-      return chat?.titles?.rpc;
-    }, { timeout: 10000 }).toBe('官方服务端RPC最终权威标题');
-
-    expect(chat).toBeTruthy();
-    expect(chat.titles.takeout).toBe('Takeout Prompt 原始提问');
-    expect(chat.titles.rpc).toBe('官方服务端RPC最终权威标题');
-    expect(chat.title).toBe('官方服务端RPC最终权威标题');
-    expect(chat.titleSource).toBe('rpc');
-
-    await optionsPage.bringToFront();
-    await optionsPage.evaluate(async () => {
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-  });
-
-  test('should propagate sniffed firstUser prompt as sniff titleSource and update titles.sniff during export', async ({ context, extensionId }) => {
-    // 1. Open mock Gemini page in background with credentials
-    const geminiPage = await context.newPage();
-    await geminiPage.route('https://gemini.google.com/**', async (route) => {
-      await route.fulfill({
-        status: 200,
+async function sourcePage(context: import('@playwright/test').BrowserContext) {
+    const source = await context.newPage();
+    await source.route('https://gemini.google.com/**', route => route.fulfill({
         contentType: 'text/html',
-        body: `<!DOCTYPE html>
-        <html>
-        <head>
-          <script>
-            window._WIZ_global_data = {
-              SNlM0e: 'mock_at_token_sniff',
-              cfb2h: 'boq_assistant-bard-web-server_20260802.09_p1'
-            };
-          </script>
-        </head>
-        <body>Gemini Mock Session Active</body>
-        </html>`
-      });
-    });
-
-    const turns = [
-      [
-        ["c_sniff_test_chat_888"],
-        "turn_id_1",
-        [["如何构建高性能分布式缓存系统？"]],
-        [
-          [
-            ["rc_cand_1", ["构建高性能分布式缓存需要注意以下几点..."]]
-          ]
-        ]
-      ]
-    ];
-    const mockDetailInner = JSON.stringify([
-      turns,
-      "tC_next_token",
-      "" // Empty RPC title to trigger firstUser sniff fallback
-    ]);
-    const mockRpcResponse = `)]}'\n\n[["wrb.fr","hNvQHb",${JSON.stringify(mockDetailInner)}]]`;
-
-    await geminiPage.route('**/batchexecute*', async (route) => {
-      await route.fulfill({
-        status: 200,
+        body: '<!doctype html><title>Google Gemini</title><script>window.WIZ_global_data={qDCSke:"10000000001",SNlM0e:"test",cfb2h:"test"}</script><main>Source</main>',
+    }));
+    await source.goto('https://gemini.google.com/app');
+    await expect(source.locator('#geminiExportBadge')).toBeVisible();
+    return source;
+}
+async function index(options: import('@playwright/test').Page, id: string) {
+    return options.evaluate(async ({ id, accountId }) =>
+        Reflect.get(globalThis, 'uiFixture').getIndex({ accountId, conversationId: id }), { id, accountId });
+}
+async function refresh(options: import('@playwright/test').Page) {
+    await options.evaluate(() => window.dispatchEvent(new Event('focus')));
+}
+async function providerList(source: import('@playwright/test').Page, key: Parameters<typeof geminiListGen>[0]) {
+    await source.route('**/batchexecute*', route => route.fulfill({
         contentType: 'application/json',
-        body: mockRpcResponse
-      });
-    });
+        body: geminiListGen(key),
+    }));
+    await source.evaluate(async body => fetch('/_/BardChatUi/data/batchexecute', {
+        method: 'POST', body: new URLSearchParams(body),
+    }), geminiListRequestGen('G_E2E_TITLE_ARBITRATION_LIST_REQUEST_01'));
+}
 
-    await geminiPage.goto('https://gemini.google.com/app');
-    await geminiPage.waitForLoadState('domcontentloaded');
+test('v2 title precedence is user > provider > derived across actual passive RPC and L2 admissions', async ({ context, extensionId }) => {
+    const id = 'arbitration_chat_999';
+    const options = await openOptions(context, extensionId);
+    await seedConversations(options, [
+        { id, title: 'Takeout Prompt 原始提问', titleSource: 'derived', updatedAt: 1670000000000 },
+    ]);
+    const source = await sourcePage(context);
+    await expect(options.locator('[data-chat-id="' + id + '"]')).toContainText('Takeout Prompt 原始提问');
 
-    // 2. Open options workbench and seed with untitled conversation
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await optionsPage.waitForLoadState('domcontentloaded');
+    // Loading tab/title is not an Index admission; a verified source response is.
+    expect((await index(options, id))?.titleSource).toBe('derived');
+    await providerList(source, 'G_DYNAMIC_TITLE_ARBITRATION_01');
+    await expect.poll(async () => (await index(options, id))?.title).toBe('官方服务端RPC最终权威标题');
+    expect((await index(options, id))?.titleSource).toBe('provider');
+    await refresh(options);
+    await expect(options.locator('[data-chat-id="' + id + '"]')).toContainText('官方服务端RPC最终权威标题');
 
-    await optionsPage.evaluate(async () => {
-      const initialConvs = [
-        {
-          id: 'sniff_test_chat_888',
-          title: '未命名对话',
-          titleSource: 'default',
-          titles: {},
-          timestamp: 1670000000000
-        }
-      ];
-      await chrome.storage.local.set({
-        gemini_conversations: initialConvs,
-        exportedIds: {},
-        has_completed_tour: true,
-        last_seen_feature_version: '999.0.0'
-      });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
+    // A second provider fact of equal authority is the most recently admitted.
+    await options.evaluate(async ({ accountId, id }) => Reflect.get(globalThis, 'uiFixture').ingestIndexes(accountId, [{
+        conversationId: id, fields: { title: 'RPC 新标题', titleSource: 'provider', updatedAt: 1700000100000 },
+    }]), { accountId, id });
+    await expect.poll(async () => (await index(options, id))?.title).toBe('RPC 新标题');
 
-    const targetItem = optionsPage.locator('[data-chat-id="sniff_test_chat_888"]');
-    await expect(targetItem).toContainText('未命名对话');
+    // User-chosen title is the highest authority; later RPC and derived evidence
+    // cannot overwrite it, even when the provider reports a later activity time.
+    await options.evaluate(async ({ accountId, id }) => Reflect.get(globalThis, 'uiFixture').ingestIndexes(accountId, [{
+        conversationId: id, fields: { title: '用户手动标题', titleSource: 'user' },
+    }]), { accountId, id });
+    await providerList(source, 'G_DYNAMIC_TITLE_ARBITRATION_02');
+    // The MAIN fetch has returned, but the isolated Sniffer -> Background L2
+    // admission is asynchronous. The user title cannot signal the commit: it
+    // intentionally remains unchanged by this lower-priority provider fact.
+    await expect.poll(async () => (await index(options, id))?.updatedAt).toBe(1700000200000);
+    await options.evaluate(async ({ accountId, id }) => Reflect.get(globalThis, 'uiFixture').ingestIndexes(accountId, [{
+        conversationId: id, fields: { title: '过时的离线标题', titleSource: 'derived' },
+    }]), { accountId, id });
+    const stored = await index(options, id);
+    expect(stored?.title).toBe('用户手动标题');
+    expect(stored?.titleSource).toBe('user');
+    expect(stored?.updatedAt).toBe(1700000200000);
+    expect(stored).not.toHaveProperty('titles');
+    expect(stored).not.toHaveProperty('hasTakeoutImport');
+    await refresh(options);
+    await expect(options.locator('[data-chat-id="' + id + '"]')).toContainText('用户手动标题');
+    await expect(options.locator('[data-chat-id="' + id + '"]')).not.toContainText('RPC 更晚的标题');
+});
 
-    // 3. Select all items and trigger export
-    await optionsPage.click('#btnSelectAll');
-    const exportBtn = optionsPage.locator('#btnExport');
-    await exportBtn.click();
+test('a native Gemini detail with no titled metadata derives a v2 Index title from its first authored user question', async ({ context, extensionId }) => {
+    const options = await openOptions(context, extensionId);
+    const source = await sourcePage(context);
+    const id = 'sniff_test_chat_888';
+    const answer = '构建高性能分布式缓存需要注意这些要点';
+    await source.route('**/batchexecute*', route => route.fulfill({
+        contentType: 'application/json',
+        body: geminiDetailGen('G_DYNAMIC_TITLE_ARBITRATION_DETAIL_01'),
+    }));
+    // Native request parameters are the v2 characterized hNvQHb request contract.
+    // The shipped MAIN hook and isolated MessageBridge parse/commit the real body.
+    await source.evaluate(async body => fetch('/_/BardChatUi/data/batchexecute', {
+        method: 'POST', body: new URLSearchParams(body),
+    }), geminiDetailRequestGen('G_E2E_TITLE_ARBITRATION_DETAIL_REQUEST_01'));
+    await expect.poll(async () => (await index(options, id))?.title ?? '').toContain('如何构建高性能分布式缓存');
+    const stored = await index(options, id);
+    expect(stored?.titleSource).toBe('derived');
+    expect(stored).not.toHaveProperty('titles');
 
-    // 4. Verify title updated in workbench and storage with titleSource = 'sniff' and titles.sniff set
-    await expect(targetItem).toContainText('如何构建高性能分布式缓存系统');
-
-    const storageData = await optionsPage.evaluate(async () => {
-      return await chrome.storage.local.get(['gemini_conversations']);
-    }) as Record<string, any>;
-    const chat = (storageData.gemini_conversations || []).find((c: any) => c.id === 'sniff_test_chat_888');
-
-    expect(chat).toBeTruthy();
-    expect(chat.title).toBe('如何构建高性能分布式缓存系统');
-    expect(chat.titleSource).toBe('sniff');
-    expect(chat.titles.sniff).toBe('如何构建高性能分布式缓存系统');
-  });
+    const domain = await options.evaluate(async ({ accountId, id }) =>
+        Reflect.get(globalThis, 'uiFixture').readConversation({ accountId, conversationId: id }), { accountId, id });
+    expect(domain?.detail.messages.length).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(domain?.detail.messages)).toContain(answer);
+    await refresh(options);
+    await expect(options.locator('[data-chat-id="' + id + '"]')).toContainText('如何构建高性能分布式缓存');
+    await expect(options.locator('.tour-popover')).toHaveCount(0);
 });

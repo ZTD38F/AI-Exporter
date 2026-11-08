@@ -1,8 +1,6 @@
 # Parity Corpus（HTML/PDF 文本对比语料）
 
-Phase F §17：HTML canonical renderer（#552）与 Phase D 真编译器都落地后，
-`tests/pdf-parity-corpus.test.ts` 的 skip 测试将逐 fixture 做 HTML-vs-PDF
-归一化文本对比。这些 fixture 就是对比的输入语料。
+固定语料只保存共享 Document AST 和独立资源 ID。测试直接比较 HTML 与 PDF transport 的归一化可见文本，并验证 JSON 往返、消息顺序、资源引用和缺失资源诊断。加载时将完整 JSON 作为新鲜字面量交给项目编译器，严格按当前 `DocumentAst` 定义验证所有层级；多余字段（如已废弃的 `anchor`）、缺失字段和错误类型均会失败。
 
 ## Fixture 一览
 
@@ -20,10 +18,6 @@ Phase F §17：HTML canonical renderer（#552）与 Phase D 真编译器都落�
 - 前 5 个为手工编写的 JSON（内容型 fixture，手工写更易读）。
 - `long-conversation-121.json` 由 `generate_long_conversation.py` 生成（seed 固定，可复现）：
   `python3 generate_long_conversation.py --messages 121 --out long-conversation-121.json`
-- 改动任一 fixture 后，`tests/pdf-parity-corpus.test.ts` 的两个激活测试会校验：
-  canonical runtime validator 零 error/warning + 版本化 JSON Schema 合规。
+- 改动 fixture 后运行 `tests/pdf-parity-corpus.test.ts`，验证结构闭合、消息顺序和双向文本保真。
 
-## 启用 skip 的 HTML-vs-PDF 对比
-
-前置条件（测试文件内有同样注释）：#552 合入 + Phase D 真编译器落地。
-启用方式：把 `test.skip(...)` 改回 `test(...)` 并填入真实的 render/compile 调用。
+本次迁移从旧 composer 一次性冻结共享 Document AST，后端测试不再保留 Canonical 数据或运行时转换器。

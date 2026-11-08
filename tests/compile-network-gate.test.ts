@@ -21,7 +21,6 @@ const {
     NetworkGateBlockedError,
 } = require('./helpers/compileNetworkGate.js');
 
-// ------------------------------------------------------------------ fixtures
 
 /** 干净的桩编译器: 纯计算, 不触碰任何网络 API。 */
 async function StubPdfCompiler(payload: any): Promise<Uint8Array> {
@@ -47,7 +46,6 @@ class FakeXMLHttpRequest {
     send(): void { /* no-op */ }
 }
 
-// ------------------------------------------------------------------ self-tests
 
 test('gate passes a clean StubPdfCompiler with zero violations', async () => {
     const payload = { schemaVersion: 1, messages: [] };
@@ -80,8 +78,8 @@ test('gate catches a compiler that phones home via fetch (assertion fails as exp
 
 test('gate intercepts XMLHttpRequest when present', async () => {
     const g = globalThis as any;
-    const origXHR = g.XMLHttpRequest;
-    g.XMLHttpRequest = FakeXMLHttpRequest;
+    const origXHR = Object.getOwnPropertyDescriptor(g, 'XMLHttpRequest');
+    Object.defineProperty(g, 'XMLHttpRequest', { value: FakeXMLHttpRequest, configurable: true, writable: true });
     try {
         const gated = await withNetworkGate(() => {
             const xhr = new XMLHttpRequest();
@@ -101,36 +99,70 @@ test('gate intercepts XMLHttpRequest when present', async () => {
         // 门禁恢复的是我们安装的 FakeXHR, 不是门禁替身。
         assert.strictEqual(g.XMLHttpRequest, FakeXMLHttpRequest);
     } finally {
-        if (typeof origXHR === 'undefined') delete g.XMLHttpRequest;
-        else g.XMLHttpRequest = origXHR;
+        if (origXHR) Object.defineProperty(g, 'XMLHttpRequest', origXHR);
+        else delete g.XMLHttpRequest;
     }
 });
 
-test('data: and blob: URLs are not counted as external requests', async () => {
+test('data: and blob: URLs are recorded but not counted as external requests', async () => {
     const gated = await withNetworkGate(async () => {
-        try {
-            await fetch('data:font/woff2;base64,AAAA');
-        } catch { /* swallowed */ }
+        for (const url of ['data:font/woff2;base64,AAAA', 'blob:https://example.test/font-123']) {
+            try { await fetch(url); } catch { /* compiler may swallow offline-blocking error */ }
+        }
         return 42;
     });
-    assert.strictEqual(gated.violations.length, 1, 'attempt is still recorded for debugging');
-    assert.strictEqual(gated.externalRequestCount, 0, 'data: URL must not count as external');
-    assertZeroExternalRequests(gated, 'data-url-compiler');
+    assert.deepStrictEqual(gated.violations.map((v: { url: string }) => v.url),
+        ['data:font/woff2;base64,AAAA', 'blob:https://example.test/font-123']);
+    assert.strictEqual(gated.externalRequestCount, 0, 'data: and blob: URLs must not count as external');
+    assertZeroExternalRequests(gated, 'local-url-compiler');
     assert.strictEqual(gated.result, 42);
 });
 
-test('gate restores globalThis.fetch exactly after the run', async () => {
-    const before = globalThis.fetch;
+test('gate intercepts WebSocket and records attempted telemetry even when blocked', async () => {
+    const g = globalThis as any;
+    const original = Object.getOwnPropertyDescriptor(g, 'WebSocket');
+    class ExistingWebSocket {}
+    Object.defineProperty(g, 'WebSocket', { value: ExistingWebSocket, writable: true, configurable: true });
+    try {
+        const gated = await withNetworkGate(() => {
+            assert.throws(
+                () => new g.WebSocket('wss://telemetry.example.test/compile'),
+                (error: any) => error instanceof NetworkGateBlockedError,
+                'blocked WebSocket must fail without creating a real connection'
+            );
+            return 'done';
+        });
+        assert.strictEqual(gated.result, 'done');
+        assert.strictEqual(gated.externalRequestCount, 1);
+        assert.deepStrictEqual(gated.violations.map((v: any) => ({ kind: v.kind, url: v.url })),
+            [{ kind: 'websocket', url: 'wss://telemetry.example.test/compile' }]);
+        assert.throws(() => assertZeroExternalRequests(gated, 'websocket-compiler'));
+        assert.strictEqual(g.WebSocket, ExistingWebSocket, 'original WebSocket implementation must be restored');
+    } finally {
+        if (original) Object.defineProperty(g, 'WebSocket', original);
+        else delete g.WebSocket;
+    }
+});
+
+test('gate restores network API values after a successful run', async () => {
+    const g = globalThis as any;
+    const before = { fetch: g.fetch, XMLHttpRequest: g.XMLHttpRequest, WebSocket: g.WebSocket };
     await withNetworkGate(() => StubPdfCompiler({}));
-    assert.strictEqual(globalThis.fetch, before, 'fetch must be restored to the original');
+    assert.strictEqual(g.fetch, before.fetch);
+    assert.strictEqual(g.XMLHttpRequest, before.XMLHttpRequest);
+    assert.strictEqual(g.WebSocket, before.WebSocket);
 });
 
 test('business exceptions from the compiler propagate untouched', async () => {
+    const g = globalThis as any;
+    const before = { fetch: g.fetch, XMLHttpRequest: g.XMLHttpRequest, WebSocket: g.WebSocket };
     const boom = new Error('compile failed: bad payload');
     await assert.rejects(
         withNetworkGate(() => { throw boom; }),
         (err: any) => err === boom,
         'gate must not swallow compiler errors',
     );
-    assert.strictEqual(typeof globalThis.fetch, 'function', 'globals restored even on throw');
+    assert.strictEqual(g.fetch, before.fetch, 'fetch must be restored after a compiler exception');
+    assert.strictEqual(g.XMLHttpRequest, before.XMLHttpRequest);
+    assert.strictEqual(g.WebSocket, before.WebSocket);
 });

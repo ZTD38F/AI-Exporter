@@ -1,0 +1,554 @@
+{
+  "tree": {
+    "responseNodes": [
+      {
+        "responseId": "3213cf70-2715-43a8-aaa9-f9e25eaf0aa6",
+        "sender": "human",
+        "parentResponseId": "1692c9f8-757a-5aba-a598-4d0c4c979390"
+      },
+      {
+        "responseId": "56bcb003-2085-46d1-80a5-acc8965e54d7",
+        "sender": "assistant",
+        "parentResponseId": "3213cf70-2715-43a8-aaa9-f9e25eaf0aa6"
+      },
+      {
+        "responseId": "19da434b-17bc-4f0c-848c-b86e951a8928",
+        "sender": "human",
+        "parentResponseId": "56bcb003-2085-46d1-80a5-acc8965e54d7"
+      },
+      {
+        "responseId": "89c37fe2-0365-41ce-b952-364a28dd16d5",
+        "sender": "assistant",
+        "parentResponseId": "19da434b-17bc-4f0c-848c-b86e951a8928"
+      },
+      {
+        "responseId": "6ce9e736-4f22-4115-92ee-bd3513aeafc5",
+        "sender": "human",
+        "parentResponseId": "89c37fe2-0365-41ce-b952-364a28dd16d5"
+      },
+      {
+        "responseId": "a47c212c-fba8-43cb-bf20-569ceec3bfca",
+        "sender": "assistant",
+        "parentResponseId": "6ce9e736-4f22-4115-92ee-bd3513aeafc5"
+      }
+    ],
+    "inflightResponses": []
+  },
+  "bodies": {
+    "responses": [
+      {
+        "responseId": "3213cf70-2715-43a8-aaa9-f9e25eaf0aa6",
+        "message": "Exporter integration test: reply with a Markdown table comparing CSV and JSON, a short Python code block, and the formula $E=mc^2$. Keep it brief.",
+        "sender": "human",
+        "createTime": "2026-10-25T05:10:36.552Z",
+        "parentResponseId": "1692c9f8-757a-5aba-a598-4d0c4c979390",
+        "manual": false,
+        "partial": false,
+        "shared": false,
+        "query": "",
+        "queryType": "",
+        "webSearchResults": [],
+        "xpostIds": [],
+        "xposts": [],
+        "generatedImageUrls": [],
+        "imageAttachments": [],
+        "fileAttachments": [],
+        "cardAttachmentsJson": [],
+        "fileUris": [],
+        "fileAttachmentsMetadata": [],
+        "isControl": false,
+        "steps": [],
+        "imageEditUris": [],
+        "mediaTypes": [],
+        "webpageUrls": [],
+        "metadata": {},
+        "citedWebSearchResults": [],
+        "toolResponses": [],
+        "model": "",
+        "ragResults": [],
+        "citedRagResults": [],
+        "searchProductResults": [],
+        "connectorSearchResults": [],
+        "collectionSearchResults": [],
+        "streamErrors": [],
+        "citedXposts": [],
+        "citedConnectorSearchResults": [],
+        "citedCollectionSearchResults": [],
+        "inputChunks": [],
+        "outputChunks": [],
+        "fileAttachmentAssetMetadata": [],
+        "fileIds": []
+      },
+      {
+        "responseId": "56bcb003-2085-46d1-80a5-acc8965e54d7",
+        "message": "| Feature       | CSV                          | JSON                          |\n|---------------|------------------------------|-------------------------------|\n| Structure     | Flat, tabular                | Hierarchical, nested          |\n| Readability   | Simple for spreadsheets      | Better for complex data       |\n| Data types    | Mostly strings               | Native types (numbers, bools) |\n| Use case      | Spreadsheets, simple export  | APIs, nested objects          |\n\n```python\nimport csv, json\nprint(\"CSV vs JSON\")\n```\n\n\\( E = mc^2 \\)",
+        "sender": "assistant",
+        "createTime": "2026-10-25T05:10:36.567Z",
+        "parentResponseId": "3213cf70-2715-43a8-aaa9-f9e25eaf0aa6",
+        "manual": false,
+        "partial": false,
+        "shared": false,
+        "query": "",
+        "queryType": "",
+        "webSearchResults": [],
+        "xpostIds": [],
+        "xposts": [],
+        "generatedImageUrls": [],
+        "imageAttachments": [],
+        "fileAttachments": [],
+        "cardAttachmentsJson": [],
+        "fileUris": [],
+        "fileAttachmentsMetadata": [],
+        "isControl": false,
+        "steps": [
+          {
+            "text": [
+              "Thinking about your request"
+            ],
+            "tags": [
+              "header"
+            ],
+            "webSearchResults": [],
+            "xpostIds": [],
+            "xposts": [],
+            "toolUsageResults": [],
+            "ragResults": [],
+            "connectorSearchResults": [],
+            "collectionSearchResults": [],
+            "toolUsageCards": []
+          },
+          {
+            "text": [
+              "Generating the requested comparison table and code"
+            ],
+            "tags": [
+              "header"
+            ],
+            "webSearchResults": [],
+            "xpostIds": [],
+            "xposts": [],
+            "toolUsageResults": [],
+            "ragResults": [],
+            "connectorSearchResults": [],
+            "collectionSearchResults": [],
+            "toolUsageCards": []
+          }
+        ],
+        "imageEditUris": [],
+        "mediaTypes": [],
+        "webpageUrls": [],
+        "metadata": {
+          "request_metadata": {
+            "effort": "auto",
+            "model": "fast",
+            "source": "Web"
+          },
+          "ui_layout": {
+            "effort": null,
+            "reasoning_ui_layout": "UNIFIED",
+            "rollout_ids": [],
+            "steer_model_id": null,
+            "will_think_long": false
+          }
+        },
+        "uiLayout": {
+          "reasoningUiLayout": "UNIFIED",
+          "willThinkLong": false,
+          "rolloutIds": []
+        },
+        "thinkingStartTime": "2026-10-25T05:10:31.601Z",
+        "thinkingEndTime": "2026-10-25T05:10:33.992Z",
+        "citedWebSearchResults": [],
+        "toolResponses": [],
+        "model": "grok-3",
+        "requestMetadata": {
+          "model": "fast",
+          "effort": "AUTO"
+        },
+        "ragResults": [],
+        "citedRagResults": [],
+        "searchProductResults": [],
+        "connectorSearchResults": [],
+        "collectionSearchResults": [],
+        "streamErrors": [],
+        "citedXposts": [],
+        "citedConnectorSearchResults": [],
+        "citedCollectionSearchResults": [],
+        "inputChunks": [],
+        "outputChunks": [],
+        "fileAttachmentAssetMetadata": [],
+        "fileIds": []
+      },
+      {
+        "responseId": "19da434b-17bc-4f0c-848c-b86e951a8928",
+        "message": "One more integration test: reply with just the word verified.",
+        "sender": "human",
+        "createTime": "2026-10-25T05:15:48.194Z",
+        "parentResponseId": "56bcb003-2085-46d1-80a5-acc8965e54d7",
+        "manual": false,
+        "partial": false,
+        "shared": false,
+        "query": "",
+        "queryType": "",
+        "webSearchResults": [],
+        "xpostIds": [],
+        "xposts": [],
+        "generatedImageUrls": [],
+        "imageAttachments": [],
+        "fileAttachments": [],
+        "cardAttachmentsJson": [],
+        "fileUris": [],
+        "fileAttachmentsMetadata": [],
+        "isControl": false,
+        "steps": [],
+        "imageEditUris": [],
+        "mediaTypes": [],
+        "webpageUrls": [],
+        "metadata": {},
+        "citedWebSearchResults": [],
+        "toolResponses": [],
+        "model": "",
+        "ragResults": [],
+        "citedRagResults": [],
+        "searchProductResults": [],
+        "connectorSearchResults": [],
+        "collectionSearchResults": [],
+        "streamErrors": [],
+        "citedXposts": [],
+        "citedConnectorSearchResults": [],
+        "citedCollectionSearchResults": [],
+        "inputChunks": [],
+        "outputChunks": [],
+        "fileAttachmentAssetMetadata": [],
+        "fileIds": []
+      },
+      {
+        "responseId": "89c37fe2-0365-41ce-b952-364a28dd16d5",
+        "message": "verified",
+        "sender": "assistant",
+        "createTime": "2026-10-25T05:15:48.206Z",
+        "parentResponseId": "19da434b-17bc-4f0c-848c-b86e951a8928",
+        "manual": false,
+        "partial": false,
+        "shared": false,
+        "query": "",
+        "queryType": "",
+        "webSearchResults": [],
+        "xpostIds": [],
+        "xposts": [],
+        "generatedImageUrls": [],
+        "imageAttachments": [],
+        "fileAttachments": [],
+        "cardAttachmentsJson": [],
+        "fileUris": [],
+        "fileAttachmentsMetadata": [],
+        "isControl": false,
+        "steps": [
+          {
+            "text": [
+              "Thinking about your request"
+            ],
+            "tags": [
+              "header"
+            ],
+            "webSearchResults": [],
+            "xpostIds": [],
+            "xposts": [],
+            "toolUsageResults": [],
+            "ragResults": [],
+            "connectorSearchResults": [],
+            "collectionSearchResults": [],
+            "toolUsageCards": []
+          },
+          {
+            "text": [
+              "Replying with the word verified"
+            ],
+            "tags": [
+              "header"
+            ],
+            "webSearchResults": [],
+            "xpostIds": [],
+            "xposts": [],
+            "toolUsageResults": [],
+            "ragResults": [],
+            "connectorSearchResults": [],
+            "collectionSearchResults": [],
+            "toolUsageCards": []
+          }
+        ],
+        "imageEditUris": [],
+        "mediaTypes": [],
+        "webpageUrls": [],
+        "metadata": {
+          "request_metadata": {
+            "effort": "auto",
+            "model": "fast",
+            "source": "Web"
+          },
+          "ui_layout": {
+            "effort": null,
+            "reasoning_ui_layout": "UNIFIED",
+            "rollout_ids": [],
+            "steer_model_id": null,
+            "will_think_long": false
+          }
+        },
+        "uiLayout": {
+          "reasoningUiLayout": "UNIFIED",
+          "willThinkLong": false,
+          "rolloutIds": []
+        },
+        "thinkingStartTime": "2026-10-25T05:15:46.177Z",
+        "thinkingEndTime": "2026-10-25T05:15:48.194Z",
+        "citedWebSearchResults": [],
+        "toolResponses": [],
+        "model": "grok-3",
+        "requestMetadata": {
+          "model": "fast",
+          "effort": "AUTO"
+        },
+        "ragResults": [],
+        "citedRagResults": [],
+        "searchProductResults": [],
+        "connectorSearchResults": [],
+        "collectionSearchResults": [],
+        "streamErrors": [],
+        "citedXposts": [],
+        "citedConnectorSearchResults": [],
+        "citedCollectionSearchResults": [],
+        "inputChunks": [],
+        "outputChunks": [],
+        "fileAttachmentAssetMetadata": [],
+        "fileIds": []
+      },
+      {
+        "responseId": "6ce9e736-4f22-4115-92ee-bd3513aeafc5",
+        "message": "Image export integration test: generate one simple image of an orange origami fox on a plain blue background.",
+        "sender": "human",
+        "createTime": "2026-10-25T05:25:20.757Z",
+        "parentResponseId": "89c37fe2-0365-41ce-b952-364a28dd16d5",
+        "manual": false,
+        "partial": false,
+        "shared": false,
+        "query": "",
+        "queryType": "",
+        "webSearchResults": [],
+        "xpostIds": [],
+        "xposts": [],
+        "generatedImageUrls": [],
+        "imageAttachments": [],
+        "fileAttachments": [],
+        "cardAttachmentsJson": [],
+        "fileUris": [],
+        "fileAttachmentsMetadata": [],
+        "isControl": false,
+        "steps": [],
+        "imageEditUris": [],
+        "mediaTypes": [],
+        "webpageUrls": [],
+        "metadata": {},
+        "citedWebSearchResults": [],
+        "toolResponses": [],
+        "model": "",
+        "ragResults": [],
+        "citedRagResults": [],
+        "searchProductResults": [],
+        "connectorSearchResults": [],
+        "collectionSearchResults": [],
+        "streamErrors": [],
+        "citedXposts": [],
+        "citedConnectorSearchResults": [],
+        "citedCollectionSearchResults": [],
+        "inputChunks": [],
+        "outputChunks": [],
+        "fileAttachmentAssetMetadata": [],
+        "fileIds": []
+      },
+      {
+        "responseId": "a47c212c-fba8-43cb-bf20-569ceec3bfca",
+        "message": "<grok:render card_id=\"Lvxou\" card_type=\"generated_image_card\" type=\"render_generated_image\"></grok:render>",
+        "sender": "assistant",
+        "createTime": "2026-10-25T05:25:20.775Z",
+        "parentResponseId": "6ce9e736-4f22-4115-92ee-bd3513aeafc5",
+        "manual": false,
+        "partial": false,
+        "shared": false,
+        "query": "",
+        "queryType": "",
+        "webSearchResults": [],
+        "xpostIds": [],
+        "xposts": [],
+        "generatedImageUrls": [],
+        "imageAttachments": [],
+        "fileAttachments": [
+          "54972d37-dcfb-4570-b92c-e4885dcaf8c7"
+        ],
+        "cardAttachmentsJson": [
+          "{\"id\":\"Lvxou\",\"type\":\"render_generated_image\",\"cardType\":\"generated_image_card\",\"prompt\":\"Simple orange origami fox centered on a plain solid blue background, clean geometric paper-fold style, minimal, no other objects or text\",\"image_chunk\":{\"imageUuid\":\"54972d37-dcfb-4570-b92c-e4885dcaf8c7\",\"imageUrl\":\"users/11111111-1111-4111-8111-111111111111/generated/54972d37-dcfb-4570-b92c-e4885dcaf8c7/image.jpg\",\"seq\":1,\"progress\":100,\"moderated\":false,\"mediaId\":\"54972d37-dcfb-4570-b92c-e4885dcaf8c7\",\"imageTitle\":\"Generated Image\",\"imageIndex\":0,\"imageModel\":\"imagine_x_1\",\"rRated\":false,\"resolution\":{\"height\":1176,\"width\":784},\"isRootUserUploaded\":false,\"isRootCelebrity\":false,\"imageReferences\":[],\"mimeType\":\"image/jpeg\"}}"
+        ],
+        "fileUris": [
+          "54972d37-dcfb-4570-b92c-e4885dcaf8c7"
+        ],
+        "fileAttachmentsMetadata": [
+          {
+            "fileMetadataId": "54972d37-dcfb-4570-b92c-e4885dcaf8c7",
+            "fileMimeType": "image/jpeg",
+            "fileName": "image.jpg",
+            "fileUri": "users/11111111-1111-4111-8111-111111111111/generated/54972d37-dcfb-4570-b92c-e4885dcaf8c7/image.jpg",
+            "parsedFileUri": "",
+            "createTime": "2026-10-25T05:25:19.950Z",
+            "fileSource": "SELF_UPLOAD_FILE_SOURCE"
+          }
+        ],
+        "isControl": false,
+        "steps": [
+          {
+            "text": [
+              "Thinking about your request"
+            ],
+            "tags": [
+              "header"
+            ],
+            "webSearchResults": [],
+            "xpostIds": [],
+            "xposts": [],
+            "toolUsageResults": [],
+            "ragResults": [],
+            "connectorSearchResults": [],
+            "collectionSearchResults": [],
+            "toolUsageCards": []
+          },
+          {
+            "text": [
+              "Generating an image of an orange origami fox"
+            ],
+            "tags": [
+              "header"
+            ],
+            "webSearchResults": [],
+            "xpostIds": [],
+            "xposts": [],
+            "toolUsageResults": [],
+            "ragResults": [],
+            "connectorSearchResults": [],
+            "collectionSearchResults": [],
+            "toolUsageCards": []
+          },
+          {
+            "text": [
+              "Rendering the final image component"
+            ],
+            "tags": [
+              "header"
+            ],
+            "webSearchResults": [],
+            "xpostIds": [],
+            "xposts": [],
+            "toolUsageResults": [],
+            "ragResults": [],
+            "connectorSearchResults": [],
+            "collectionSearchResults": [],
+            "toolUsageCards": []
+          }
+        ],
+        "imageEditUris": [],
+        "mediaTypes": [],
+        "webpageUrls": [],
+        "metadata": {
+          "request_metadata": {
+            "effort": "auto",
+            "model": "fast",
+            "source": "Web"
+          },
+          "ui_layout": {
+            "effort": null,
+            "reasoning_ui_layout": "UNIFIED",
+            "rollout_ids": [],
+            "steer_model_id": null,
+            "will_think_long": false
+          }
+        },
+        "uiLayout": {
+          "reasoningUiLayout": "UNIFIED",
+          "willThinkLong": false,
+          "rolloutIds": []
+        },
+        "thinkingStartTime": "2026-10-25T05:25:03.091Z",
+        "thinkingEndTime": "2026-10-25T05:25:20.757Z",
+        "citedWebSearchResults": [],
+        "toolResponses": [],
+        "model": "grok-3",
+        "requestMetadata": {
+          "model": "fast",
+          "effort": "AUTO"
+        },
+        "ragResults": [],
+        "citedRagResults": [],
+        "searchProductResults": [],
+        "connectorSearchResults": [],
+        "collectionSearchResults": [],
+        "streamErrors": [],
+        "citedXposts": [],
+        "citedConnectorSearchResults": [],
+        "citedCollectionSearchResults": [],
+        "inputChunks": [],
+        "outputChunks": [],
+        "fileAttachmentAssetMetadata": [
+          {
+            "assetId": "54972d37-dcfb-4570-b92c-e4885dcaf8c7",
+            "mimeType": "image/jpeg",
+            "name": "image.jpg",
+            "sizeBytes": 129761,
+            "createTime": "2026-10-25T05:25:19.950Z",
+            "lastUseTime": "2026-10-25T05:25:19.950Z",
+            "summary": "",
+            "previewImageKey": "",
+            "key": "users/11111111-1111-4111-8111-111111111111/generated/54972d37-dcfb-4570-b92c-e4885dcaf8c7/image.jpg",
+            "auxKeys": {
+              "original-image": "users/11111111-1111-4111-8111-111111111111/generated/54972d37-dcfb-4570-b92c-e4885dcaf8c7/original_image.jpg",
+              "thumbhash": "2XQBPQwcl3CXF8c4enxlZhd3cHEH"
+            },
+            "isDeleted": false,
+            "fileSource": "IMAGINE_GENERATED_FILE_SOURCE",
+            "currentConversationId": "5f02c1ee-026a-46ed-9774-549c534d118a",
+            "sourceConversationId": "5f02c1ee-026a-46ed-9774-549c534d118a",
+            "isModelGenerated": true,
+            "updateTime": "2026-10-25T05:25:19.950Z",
+            "isLatest": true,
+            "inlineStatus": "DEFAULT_ARTIFACT_INLINE_STATUS",
+            "isRootAssetCreatedByModel": true,
+            "rootAssetSourceConversationId": "5f02c1ee-026a-46ed-9774-549c534d118a",
+            "sharedWithTeam": false,
+            "sharedWithUserIds": [],
+            "width": 784,
+            "height": 1176,
+            "rRated": false,
+            "thumbhash": "2XQBPQwcl3CXF8c4enxlZhd3cHEH",
+            "ownerUserId": "11111111-1111-4111-8111-111111111111"
+          }
+        ],
+        "fileIds": []
+      }
+    ]
+  },
+  "id": "5f02c1ee-026a-46ed-9774-549c534d118a",
+  "metadata": {
+    "conversation": {
+      "conversationId": "5f02c1ee-026a-46ed-9774-549c534d118a",
+      "title": "Exporter Integration Test Comparison Table",
+      "starred": false,
+      "createTime": "2026-10-25T05:10:31.525Z",
+      "modifyTime": "2026-10-25T05:10:36.756Z",
+      "systemPromptName": "",
+      "temporary": false,
+      "mediaTypes": [],
+      "workspaces": [],
+      "taskResult": {},
+      "latestAssetMetadata": null,
+      "viewerIsOwner": true,
+      "kind": "CONVERSATION_KIND_UNSPECIFIED",
+      "hasUnreadCheckin": false
+    }
+  }
+}

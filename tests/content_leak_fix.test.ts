@@ -1,57 +1,78 @@
-export {};
-// tests/content_leak_fix.test.ts - Verify timer cleanup on repeated injection (Issue A1 fix)
-const test = require('node:test');
-const assert = require('node:assert');
-const path = require('node:path');
+import test from 'node:test';
+import assert from 'node:assert/strict';
 
-test('Issue A1 fix: PageObserver cleans up dangling intervals and watchers on re-initialization', () => {
-    // Setup simulated browser environment
-    (global as any).window = {
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => {}
+test('Runtime SPA observer handles page-world URL changes and releases every timer/listener on re-init', () => {
+    const globals = ['window', 'document', 'history', 'location', 'setInterval', 'clearInterval', 'clearTimeout'];
+    const originals = new Map<string, PropertyDescriptor | undefined>(
+        globals.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const)
+    );
+    const restore = () => {
+        for (const [key, descriptor] of originals) {
+            if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+            else Reflect.deleteProperty(globalThis, key);
+        }
     };
-    (global as any).document = {
-        querySelector: () => null,
-        getElementById: () => null
+    const listeners = new Map<string, Set<Function>>();
+    const count = (type: string) => listeners.get(type)?.size ?? 0;
+    const intervals = new Map<number, Function>();
+    let id = 1;
+    (globalThis as any).setInterval = (callback: Function, interval: number) => {
+        assert.equal(interval, 1000, 'URL watch is lightweight and must not poll Index/Sync');
+        const handle = id++;
+        intervals.set(handle, callback);
+        return handle;
     };
-    (global as any).history = {
-        pushState: () => {},
-        replaceState: () => {}
+    (globalThis as any).clearInterval = (handle: number) => intervals.delete(handle);
+    (globalThis as any).clearTimeout = (handle: number) => intervals.delete(handle);
+    (globalThis as any).window = {
+        addEventListener: (name: string, listener: Function) => {
+            if (!listeners.has(name)) listeners.set(name, new Set());
+            listeners.get(name)!.add(listener);
+        },
+        removeEventListener: (name: string, listener: Function) => listeners.get(name)?.delete(listener),
+        dispatchEvent: (event: Event) => { for (const listener of listeners.get(event.type) || []) listener(event); }
     };
-    (global as any).location = {
-        href: 'https://gemini.google.com/app',
-        pathname: '/app'
-    };
+    (globalThis as any).document = { querySelector: () => null };
+    (globalThis as any).history = { pushState: () => {}, replaceState: () => {} };
+    (globalThis as any).location = { href: 'https://gemini.google.com/app/a', pathname: '/app/a' };
 
-    const PageObserver = require(path.join(__dirname, '../src/content/pageObserver.js'));
-    assert.ok(PageObserver, 'PageObserver must be exported');
-    assert.strictEqual(typeof PageObserver.init, 'function', 'PageObserver.init must be function');
-    assert.strictEqual(typeof PageObserver.cleanup, 'function', 'PageObserver.cleanup must be function');
+    let observer: { hookHistoryEvents: (listener: () => void) => void; cleanup: () => void } | null = null;
+    try {
+        delete require.cache[require.resolve('../src/runtime/content/pageObserver.js')];
+        observer = require('../src/runtime/content/pageObserver.js');
+        const events: string[] = [];
+        observer!.hookHistoryEvents(() => events.push('old'));
+        assert.equal(intervals.size, 1);
+        assert.equal(count('popstate'), 1);
+        assert.equal(count('gemini:locationchange'), 1);
+        (globalThis as any).location.href = 'https://gemini.google.com/app/b';
+        const firstPulse = intervals.values().next().value;
+        assert.ok(firstPulse);
+        firstPulse();
+        assert.deepEqual(events, ['old']);
 
-    // First init
-    let syncCount = 0;
-    PageObserver.init({ onSync: () => syncCount++ });
+        const first = intervals.keys().next().value;
+        assert.notEqual(first, undefined);
+        const pushState = (globalThis as any).history.pushState;
+        observer!.hookHistoryEvents(() => events.push('new'));
+        assert.equal(intervals.has(first!), false);
+        assert.equal(intervals.size, 1);
+        assert.strictEqual((globalThis as any).history.pushState, pushState, 'same-document history must only be wrapped once');
+        assert.equal(count('popstate'), 1);
+        assert.equal(count('gemini:locationchange'), 1);
 
-    const firstUrlWatcher = (global as any).window.__gemExporterUrlWatcher;
-    const firstSyncInterval = (global as any).window.__gemExporterSyncInterval;
-
-    // urlWatcher 1s polling removed in Phase D.3; only syncInterval should be assigned
-    assert.ok(!firstUrlWatcher, '__gemExporterUrlWatcher should not be assigned after 1s polling removal');
-    assert.ok(firstSyncInterval, '__gemExporterSyncInterval should be assigned');
-
-    // Second init (simulating re-injection)
-    PageObserver.init({ onSync: () => syncCount++ });
-
-    const secondUrlWatcher = (global as any).window.__gemExporterUrlWatcher;
-    const secondSyncInterval = (global as any).window.__gemExporterSyncInterval;
-
-    assert.ok(!secondUrlWatcher, 'urlWatcher should remain unassigned after re-init');
-    assert.ok(secondSyncInterval, 'New __gemExporterSyncInterval should be assigned');
-    assert.notStrictEqual(secondSyncInterval, firstSyncInterval, 'Previous sync interval should have been replaced and cleared');
-
-    // Explicit cleanup
-    PageObserver.cleanup();
-    assert.ok(!(global as any).window.__gemExporterUrlWatcher, 'Watcher handle should remain null after cleanup');
-    assert.strictEqual((global as any).window.__gemExporterSyncInterval, null, 'Interval handle should be nulled out after cleanup');
+        (globalThis as any).location.href = 'https://gemini.google.com/app/c';
+        (globalThis as any).history.pushState({}, '', '/app/c');
+        assert.deepEqual(events, ['old', 'new'], 'only latest callback runs');
+        observer!.cleanup();
+        assert.equal(intervals.size, 0);
+        assert.equal(count('popstate'), 0);
+        assert.equal(count('gemini:locationchange'), 0);
+        (globalThis as any).location.href = 'https://gemini.google.com/app/d';
+        (globalThis as any).window.dispatchEvent(new Event('popstate'));
+        assert.deepEqual(events, ['old', 'new']);
+    } finally {
+        try { observer?.cleanup(); }
+        finally { restore(); }
+    }
 });

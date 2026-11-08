@@ -1,149 +1,189 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { ConversationViewState } from '../src/ui/options/state/conversationsStore.js';
+import { normId } from '../src/shared/utils/pathUtils.js';
+import { conversationKey } from '../src/l2/conversationKey.js';
+import type { DomainConversationIndex } from '../src/l2/conversationIndex.js';
+import type { ExportRecord } from '../src/application/export/types.js';
+import { makeConversationIndex } from './helpers/conversationIndexFixture.js';
 
-const ConversationsStore = require('../src/ui/state/conversationsStore.js');
+const A = '10000000-0000-4000-8000-000000000001';
+const B = '10000000-0000-4000-8000-000000000002';
+const accounts = [A, B].map(id => ({ id, providerId: 'gemini', providerAccountId: id }));
+const row = (id: string, accountId = A, updatedAt = 10): DomainConversationIndex => makeConversationIndex({ key: conversationKey(accountId, id), title: id, updatedAt });
+function view(rows = [row('one')], records: Record<string, ExportRecord> = {}) {
+    return new ConversationViewState({ listAccounts: async () => accounts,
+        listIndexes: async id => rows.filter(row => row.key.accountId === id), listExportRecords: async () => records });
+}
+function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 
-test('conversationsStore - normId', () => {
-    assert.strictEqual(ConversationsStore.normId('c_12345678'), '12345678');
-    assert.strictEqual(ConversationsStore.normId('12345678'), '12345678');
-    assert.strictEqual(ConversationsStore.normId(''), '');
-    assert.strictEqual(ConversationsStore.normId(null), '');
+test('conversationsStore - canonical keys retain source identity; UI does not normalize provider IDs', () => {
+    assert.equal(normId('c_12345678'), '12345678'); assert.equal(normId('12345678'), '12345678');
+    assert.equal(normId(''), ''); assert.equal(normId(null), '');
+    const state = view(); state.indexes = [row('c_12345678'), row('12345678')];
+    state.selectVisible();
+    assert.deepEqual(state.keys(), [conversationKey(A, 'c_12345678'), conversationKey(A, '12345678')]);
+    assert.throws(() => conversationKey(A, ' '), /Invalid conversation key/);
+});
+test('conversationsStore - in-memory view state is per instance and account changes clear selection', async () => {
+    const first = view(), second = view(); await first.refresh();
+    first.selectVisible(); assert.equal(first.selected.size, 1); assert.equal(second.selected.size, 0);
+    first.selectAccount(B); assert.equal(first.accountId, B); assert.deepEqual(first.indexes, []);
+    assert.deepEqual(first.records, {}); assert.equal(first.selected.size, 0);
+});
+test('conversationsStore - export records use exact current Conversation IDs', async () => {
+    const record: ExportRecord = { format: 'markdown', exportedAt: 5000, status: 'ok' };
+    const state = view([row('123'), row('c_123')], { '123': record }); await state.refresh();
+    state.filter = 'has_record'; assert.deepEqual(state.visible().map(r => r.key.conversationId), ['123']);
+    state.filter = 'no_record'; assert.deepEqual(state.visible().map(r => r.key.conversationId), ['c_123']);
+});
+test('conversationsStore - refresh publishes changed titles and identities without a signature cache', async () => {
+    let rows = [row('a')]; const state = new ConversationViewState({ listAccounts: async () => accounts,
+        listIndexes: async () => rows, listExportRecords: async () => ({}) });
+    await state.refresh(); assert.deepEqual(state.indexes, rows);
+    rows = [{ ...row('b'), title: 'Real title' }]; await state.refresh();
+    assert.deepEqual(state.indexes, rows); assert.equal(state.visible()[0].title, 'Real title');
+});
+test('conversationsStore retains canonical Index facts without introducing legacy flags', async () => {
+    const rows = [{ ...row('imported'), title: 'Renamed online', titleSource: 'provider' as const }];
+    const state = view(rows); await state.refresh();
+    assert.deepEqual(state.indexes, rows); assert.equal(Object.hasOwn(state.indexes[0], 'hasTakeoutImport'), false);
+});
+test('conversationsStore consumes canonical indexes without rewriting them', async () => {
+    const rows = [row('abc123')], state = view(rows); const snapshot = structuredClone(rows);
+    await state.refresh(); state.search = 'abc'; state.visible();
+    assert.deepEqual(rows, snapshot); assert.strictEqual(state.indexes[0], rows[0]);
+});
+test('conversationsStore refresh observes activity changes without a title or identity change', async () => {
+    let rows = [row('first', A, 10), row('second', A, 20)];
+    const state = new ConversationViewState({ listAccounts: async () => accounts, listIndexes: async () => rows, listExportRecords: async () => ({}) });
+    await state.refresh(); assert.equal(state.visible()[0].key.conversationId, 'second');
+    rows = [{ ...rows[0], updatedAt: 30 }, rows[1]]; await state.refresh();
+    assert.equal(state.visible()[0].key.conversationId, 'first');
+});
+for (const switchAccount of [false, true]) test(`a delayed account load cannot replace a newer ${switchAccount ? 'account selection' : 'snapshot'}`, async () => {
+    const held = deferred<DomainConversationIndex[]>(), started = deferred<void>(); let reads = 0;
+    const state = new ConversationViewState({ listAccounts: async () => accounts, listExportRecords: async () => ({}),
+        listIndexes: async id => { if (reads++ === 0) { started.resolve(); return held.promise; } return [row('newer', id)]; } });
+    state.selectAccount(A); const old = state.refresh(); await started.promise;
+    const next = switchAccount ? B : A; state.selectAccount(next); await state.refresh();
+    held.resolve([row('older')]); await old;
+    assert.equal(state.accountId, next); assert.deepEqual(state.indexes.map(r => r.key), [conversationKey(next, 'newer')]);
+});
+test('completion of an old account refresh cannot remove the same conversation from visible account B', async () => {
+    const held = deferred<DomainConversationIndex[]>(), started = deferred<void>();
+    const state = new ConversationViewState({ listAccounts: async () => accounts, listExportRecords: async () => ({}),
+        listIndexes: async id => { if (id === A) { started.resolve(); return held.promise; } return [row('shared', B)]; } });
+    state.selectAccount(A); const pending = state.refresh(); await started.promise;
+    state.selectAccount(B); await state.refresh(); state.selected.add('shared'); held.resolve([]); await pending;
+    assert.deepEqual(state.keys(), [conversationKey(B, 'shared')]);
 });
 
-test('conversationsStore - in-memory get and set', () => {
-    const list: any[] = [{ id: '1', title: 'Chat 1' }, { id: '2', title: 'Chat 2' }];
-    ConversationsStore.setConversations(list);
-    assert.deepStrictEqual(ConversationsStore.getConversations(), list);
-
-    const expMap = { '1': { exportedAt: 1000 } };
-    ConversationsStore.setExportedIds(expMap);
-    assert.deepStrictEqual(ConversationsStore.getExportedIds(), expMap);
-
-    ConversationsStore.setCurrentSlot('u1');
-    assert.strictEqual(ConversationsStore.getCurrentSlot(), 'u1');
+test('refresh suppresses unchanged and stale paints while detecting title, activity and export changes', async () => {
+    let rows = [row('one')];
+    let records: Record<string, ExportRecord> = {};
+    const state = new ConversationViewState({listAccounts: async () => accounts,
+        listIndexes: async () => structuredClone(rows), listExportRecords: async () => structuredClone(records)});
+    assert.equal(await state.refresh(), true);
+    state.selected.add('one');
+    assert.equal(await state.refresh(), false);
+    rows = [{...rows[0], title:'New title'}];
+    assert.equal(await state.refresh(), true);
+    rows = [{...rows[0], updatedAt:20}];
+    assert.equal(await state.refresh(), true);
+    records = {one:{status:'ok',format:'markdown',exportedAt:30,chatTime:20}};
+    assert.equal(await state.refresh(), true);
+    assert.equal(await state.refresh(), false);
+    assert.deepEqual([...state.selected], ['one']);
 });
 
-test('conversationsStore - getExportedRecord normalization', () => {
-    ConversationsStore.setExportedIds({
-        'c_123': { exportedAt: 5000 },
-        '456': { exportedAt: 6000 }
+test('other-account invalidation refreshes account choices without reading current conversation stores', async () => {
+    let registry = accounts;
+    let rowReads = 0;
+    const state = new ConversationViewState({listAccounts: async () => structuredClone(registry),
+        listIndexes: async () => { rowReads++; return [row('one')]; }, listExportRecords: async () => ({})});
+    await state.refresh();
+    assert.equal(await state.refresh(B), false);
+    assert.equal(rowReads, 1);
+    registry = accounts.map(account => account.id === B ? {...account,displayName:'Renamed account'} : account);
+    assert.equal(await state.refresh(B), true);
+    assert.equal(rowReads, 1);
+    assert.equal(state.accounts[1].displayName, 'Renamed account');
+    registry = [accounts[1]];
+    assert.equal(await state.refresh(B), true);
+    assert.equal(rowReads, 2);
+    assert.equal(state.accountId, B);
+});
+
+test('first-account invalidation loads its rows and stale reads report no repaint', async () => {
+    let registry: typeof accounts = [];
+    const held = deferred<DomainConversationIndex[]>(), started = deferred<void>();
+    let delayed = false;
+    const state = new ConversationViewState({listAccounts: async () => registry,
+        listExportRecords: async () => ({}), listIndexes: async () => {
+            if (delayed) { started.resolve(); return held.promise; }
+            return [row('new')];
+        }});
+    assert.equal(await state.refresh(), false);
+    registry = accounts;
+    assert.equal(await state.refresh(A), true);
+    delayed = true;
+    const old = state.refresh(); await started.promise;
+    delayed = false;
+    assert.equal(await state.refresh(), false);
+    held.resolve([row('stale')]);
+    assert.equal(await old, false);
+    assert.equal(state.indexes[0].title, 'new');
+});
+
+test('an unrelated invalidation cannot discard current-account facts from an overlapping refresh', async () => {
+    const held = deferred<DomainConversationIndex[]>(), started = deferred<void>();
+    let reads = 0;
+    const state = new ConversationViewState({listAccounts: async () => accounts,
+        listExportRecords: async () => ({}), listIndexes: async () => {
+            if (++reads === 2) { started.resolve(); return held.promise; }
+            return [row(reads === 1 ? 'initial' : 'latest')];
+        }});
+    await state.refresh();
+    const pending = state.refresh(A); await started.promise;
+    assert.equal(await state.refresh(B), true);
+    held.resolve([row('stale')]);
+    assert.equal(await pending, false);
+    assert.equal(state.indexes[0].title, 'latest');
+});
+
+test('an invalidation starting during a read still replaces it when the stale read finishes first', async () => {
+    const heldRows = deferred<DomainConversationIndex[]>(), rowsStarted = deferred<void>();
+    const heldAccounts = deferred<typeof accounts>(), accountsStarted = deferred<void>();
+    let accountReads = 0, rowReads = 0;
+    const state = new ConversationViewState({listAccounts: async () => {
+        if (++accountReads === 3) { accountsStarted.resolve(); return heldAccounts.promise; }
+        return accounts;
+    }, listExportRecords: async () => ({}), listIndexes: async () => {
+        if (++rowReads === 2) { rowsStarted.resolve(); return heldRows.promise; }
+        return [row(rowReads === 1 ? 'initial' : 'latest')];
+    }});
+    await state.refresh();
+    const old = state.refresh(A); await rowsStarted.promise;
+    const next = state.refresh(B); await accountsStarted.promise;
+    heldRows.resolve([row('stale')]);
+    assert.equal(await old, false);
+    heldAccounts.resolve(accounts);
+    assert.equal(await next, true);
+    assert.equal(state.indexes[0].title, 'latest');
+});
+
+test('Gemini-only Workbench ignores dormant provider account choices without deleting their records', async () => {
+    const oldAccount = { id: '10000000-0000-4000-8000-000000000004', providerId: 'chatgpt', providerAccountId: 'future' };
+    const source = [oldAccount, accounts[0]];
+    const readIds: string[] = [];
+    const state = new ConversationViewState({
+        listAccounts: async () => source,
+        listIndexes: async id => { readIds.push(id); return id === A ? [row('gemini')] : []; },
+        listExportRecords: async () => ({}),
     });
-
-    assert.ok(ConversationsStore.getExportedRecord('123'));
-    assert.strictEqual(ConversationsStore.getExportedRecord('123').exportedAt, 5000);
-    assert.ok(ConversationsStore.getExportedRecord('c_123'));
-
-    assert.ok(ConversationsStore.getExportedRecord('456'));
-    assert.strictEqual(ConversationsStore.getExportedRecord('456').exportedAt, 6000);
-    assert.ok(ConversationsStore.getExportedRecord('c_456'));
-
-    assert.strictEqual(ConversationsStore.getExportedRecord('non_existent'), null);
-    assert.strictEqual(ConversationsStore.getExportedRecord(null), null);
-});
-
-test('conversationsStore - getSignature', () => {
-    const sigEmpty = ConversationsStore.getSignature([]);
-    assert.strictEqual(sigEmpty, 'empty');
-
-    const sigA = ConversationsStore.getSignature([{ id: 'a', title: 'Title 1' }, { id: 'b', title: 'Title 2' }]);
-    const sigB = ConversationsStore.getSignature([{ id: 'a', title: 'Title 1' }, { id: 'b', title: 'Title 2' }]);
-    assert.strictEqual(sigA, sigB);
-
-    const sigC = ConversationsStore.getSignature([{ id: 'a', title: 'Title 1' }, { id: 'c', title: 'Title 2' }]);
-    assert.ok(sigA !== sigC);
-
-    const sigD = ConversationsStore.getSignature([{ id: 'a', title: 'Real Title' }, { id: 'b', title: 'Title 2' }]);
-    assert.ok(sigA !== sigD);
-});
-
-test('conversationsStore - hasTakeoutData detection', () => {
-    ConversationsStore.setConversations([
-        { id: '1', title: 'Normal Chat 1' },
-        { id: '2', title: 'Normal Chat 2' }
-    ] as any);
-    assert.strictEqual(ConversationsStore.hasTakeoutData(), false);
-
-    ConversationsStore.setConversations([
-        { id: '1', title: 'Normal Chat 1' },
-        { id: '2', title: 'Takeout Chat 2', source: 'takeout' }
-    ] as any);
-    assert.strictEqual(ConversationsStore.hasTakeoutData(), true);
-
-    ConversationsStore.setConversations([
-        { id: '3', title: 'Takeout Chat 3', titleSource: 'takeout' }
-    ] as any);
-    assert.strictEqual(ConversationsStore.hasTakeoutData(), true);
-
-    ConversationsStore.setConversations([
-        { id: '4', title: 'Takeout Chat 4', titles: { takeout: 'Takeout Title' } }
-    ] as any);
-    assert.strictEqual(ConversationsStore.hasTakeoutData(), true);
-});
-
-test('conversationsStore - normalizeAndDeduplicate basic and multi-tier merge', () => {
-    const list = [
-        { id: 'c_abc123', title: 'Google Gemini', titleSource: 'dom', timestamp: 1700000000000 },
-        { id: 'abc123', title: '真实量子计算研究', titleSource: 'rpc', timestamp: 1700000005000 },
-        { id: 'def456', title: '未命名对话', titleSource: 'default', timestamp: 1690000000000 }
-    ];
-
-    const { processed, hasDirtyTitles } = ConversationsStore.normalizeAndDeduplicate(list);
-    assert.strictEqual(processed.length, 2);
-    assert.strictEqual(hasDirtyTitles, true);
-
-    const first = processed[0];
-    assert.strictEqual(first.id, 'abc123');
-    assert.strictEqual(first.title, '真实量子计算研究');
-    assert.strictEqual(first.titleSource, 'rpc');
-    assert.strictEqual(first.timestamp, 1700000005000);
-
-    const second = processed[1];
-    assert.strictEqual(second.id, 'def456');
-    assert.strictEqual(second.title, '未命名对话');
-});
-
-test('utils - mergeConversation SSoT title priority and timestamp arbitration', () => {
-    const GeminiUtils = require('../src/core/utils/utils.js');
-    const { mergeConversation, deduplicateConversations } = GeminiUtils;
-
-    // 1. Initial conversation with default/unnamed title
-    const old = {
-        id: 'chat_999',
-        title: '未命名对话',
-        titleSource: 'default',
-        timestamp: 1700000000000,
-        updatedAt: 1700000000000,
-        createdAt: 1700000000000
-    };
-
-    // 2. Incoming with sniffed prompt title
-    const incoming = {
-        id: 'c_chat_999',
-        title: '如何构建高性能分布式缓存系统',
-        titleSource: 'sniff',
-        timestamp: 1700000010000,
-        updatedAt: 1700000010000,
-        createdAt: 1699999990000
-    };
-
-    const res = mergeConversation(old, incoming);
-    assert.strictEqual(res.isChanged, true);
-    assert.strictEqual(res.merged.id, 'chat_999');
-    assert.strictEqual(res.merged.title, '如何构建高性能分布式缓存系统');
-    assert.strictEqual(res.merged.titleSource, 'sniff');
-    assert.strictEqual(res.merged.timestamp, 1700000010000);
-    assert.strictEqual(res.merged.createdAt, 1699999990000);
-    assert.strictEqual(res.merged.titles.sniff, '如何构建高性能分布式缓存系统');
-
-    // 3. DeduplicateConversations filtering bad URLs and sorting
-    const rawList: any[] = [
-        { id: '1', title: 'Earlier Chat', timestamp: 1000 },
-        { id: '2', title: 'Sign In', url: 'https://accounts.google.com/SignOutOptions' },
-        { id: '3', title: 'Later Chat', timestamp: 2000 }
-    ];
-    const dedup = deduplicateConversations(rawList);
-    assert.strictEqual(dedup.processed.length, 2);
-    assert.strictEqual(dedup.processed[0].id, '3');
-    assert.strictEqual(dedup.processed[1].id, '1');
+    await state.refresh();
+    assert.deepEqual(state.accounts.map(account => account.id), [A]);
+    assert.deepEqual(readIds, [A]);
+    assert.deepEqual(source, [oldAccount, accounts[0]], 'stored future-provider accounts remain intact');
 });

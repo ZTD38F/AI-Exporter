@@ -1,3 +1,4 @@
+import { fixtureKey, fixtureAccountFor } from './helpers/domainFixture.js';
 /**
  * tests/mitex-adapter.test.ts
  *
@@ -17,14 +18,14 @@ const crypto = require('node:crypto');
 
 const {
     convertMathWithMitex,
-    convertMathMitex,
     initMitexWasm,
     isMitexReady,
     mitexConvertMath,
     resetMitexForTesting,
-} = require('../src/core/export/typst/mitex/index.js');
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
+} = require('../src/l4/format/typst/mitex/index.js');
+const { composeDomainDocument } = require('../src/l3b/compose/composeDomainDocument.js');
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
 const { RealWasmSandboxHost, repoRoot } = require('./helpers/realWasmSandbox.js');
 
 test('T1.1: MiTeX WASM initializes and reports ready state', async () => {
@@ -55,9 +56,9 @@ test('T1.3: Unknown command fails closed with TYPST_MATH_CONVERT_FAILED and pres
     assert.ok(res.diagnostic.message.includes(raw), 'Diagnostic message should contain preserved raw LaTeX');
 });
 
-test('T1.4: convertMathMitex helper respects notation and display flags', async () => {
-    assert.strictEqual(convertMathMitex('x^2', 'asciimath', false), undefined, 'Non-latex notation should return undefined');
-    const typst = convertMathMitex('\\frac{1}{2}', 'latex', true);
+test('T1.4: convertMathWithMitex respects notation and display flags', async () => {
+    assert.strictEqual(convertMathWithMitex('x^2', 'asciimath', false).typst, undefined, 'Non-latex notation should return undefined');
+    const typst = convertMathWithMitex('\\frac{1}{2}', 'latex', true).typst;
     assert.ok(typeof typst === 'string' && typst.length > 0);
 });
 
@@ -132,49 +133,25 @@ test('T4: Genuine Typst WASM compilation gate for MiTeX-converted formulas', asy
     ];
 
     const blocks = equations.map((latex, idx) => ({
-        id: `math-${idx}`,
         type: 'math',
         notation: 'latex',
         source: latex,
         display: true,
     }));
 
-    const bundle = {
-        schemaVersion: 1,
-        conversation: {
-            key: { providerId: 'gemini', conversationId: 'mitex-compile-test' },
-            title: 'MiTeX WASM Compilation Test',
-            createdAt: '2026-09-28T00:00:00Z',
-            updatedAt: '2026-09-28T00:00:00Z',
-            source: { format: 'gemini-web', rawPayloadAvailable: false },
-            messages: [
-                {
-                    id: 'm1',
-                    role: 'user',
-                    createdAt: '2026-09-28T00:00:00Z',
-                    blocks: [{ id: 'b0', type: 'paragraph', children: [{ id: 't0', type: 'text', text: 'Math test' }] }],
-                },
-                {
-                    id: 'm2',
-                    role: 'model',
-                    createdAt: '2026-09-28T00:00:00Z',
-                    blocks,
-                },
-            ],
-        },
-        assets: [],
-        citations: [],
-    };
+    const domain = { index: { key: fixtureKey(String('mitex-compile-test'), 'gemini'),   titleSource: "derived",   title: 'MiTeX WASM Compilation Test', createdAt: '2026-09-28T00:00:00Z', updatedAt: '2026-09-28T00:00:00Z' }, detail: { key: fixtureKey(String('mitex-compile-test'), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [
+        { id: 'm1', role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text: 'Math test' }] }] },
+        { id: 'm2', role: 'assistant', content: blocks },
+    ] } };
 
-    const { payload } = toTypstPayload(bundle as any, {
-        assetPath: () => undefined,
-        convertMath: (source: string, notation: string, display: boolean) => {
-            return convertMathMitex(source, notation, display);
+    const { payload } = renderTypstFixture(composeDomainDocument(domain, fixtureAccountFor(domain)), {}, {
+        convertMath: (source: string, display: boolean) => {
+            return convertMathWithMitex(source, 'latex', display).typst;
         },
     });
 
     const context = {
-        bundle: null,
+
         assets: { resolve: async () => null },
         locale: 'en',
         signal: new AbortController().signal,
@@ -185,8 +162,8 @@ test('T4: Genuine Typst WASM compilation gate for MiTeX-converted formulas', asy
         const result = await compiler.compile(
             {
                 rendererSchemaVersion: 1,
-                sourceSchemaVersion: 1,
-                bundle: bundle as any,
+
+
                 document: payload,
                 assetPaths: new Map(),
             },
@@ -208,17 +185,16 @@ test('T4: Genuine Typst WASM compilation gate for MiTeX-converted formulas', asy
 
 test('T5.1: MiTeX version and provenance consistency across repository metadata', () => {
     const root = repoRoot();
-    const vendorReadmePath = path.join(root, 'src/core/export/typst/mitex/vendor/README.md');
+    const vendorReadmePath = path.join(root, 'src/l4/format/typst/mitex/vendor/README.md');
     const noticesPath = path.join(root, 'THIRD_PARTY_NOTICES.md');
-    const scopePath = path.join(root, 'src/core/export/typst/templates/mitex-scope.typ');
-    const wasmPath = path.join(root, 'src/core/export/typst/mitex/vendor/mitex_wasm_bg.wasm');
+    const scopePath = path.join(root, 'src/l4/format/typst/templates/mitex-scope.typ');
+    const wasmPath = path.join(root, 'src/l4/format/typst/mitex/vendor/mitex_wasm_bg.wasm');
 
     const readmeContent = fs.readFileSync(vendorReadmePath, 'utf8');
     const noticesContent = fs.readFileSync(noticesPath, 'utf8');
     const scopeContent = fs.readFileSync(scopePath, 'utf8');
     const wasmBytes = fs.readFileSync(wasmPath);
 
-    // 1. Provable WASM SHA256 and byte length match documented metadata
     const actualWasmHash = crypto.createHash('sha256').update(wasmBytes).digest('hex');
     assert.strictEqual(wasmBytes.length, 230735, 'Vendored mitex_wasm_bg.wasm byte size must match');
     assert.ok(readmeContent.includes(actualWasmHash), 'Vendor README must record the exact SHA256 of the vendored WASM');
@@ -243,11 +219,34 @@ test('T5.1: MiTeX version and provenance consistency across repository metadata'
     assert.ok(!/^\s*#import\s+"@preview\//m.test(scopeContent), 'mitex-scope.typ must not contain active @preview/ runtime imports');
 });
 
+test('live centered negation of implication converts without changing other centernot commands', async () => {
+    await initMitexWasm();
+    const { preprocessLatex } = require('../src/shared/utils/latexCompatibility.js');
+    const original = String.raw`a \to b \centernot\implies V(a) < V(b)`;
+    const result = convertMathWithMitex(original);
+    assert.ok(result.typst?.includes('arrow.r.double.not'));
+    assert.strictEqual(result.diagnostic, undefined);
+    for (const source of [String.raw`\\centernot\implies`, String.raw`\centernot\impliesExtra`, String.raw`\centernot\to`]) {
+        assert.strictEqual(preprocessLatex(source), source);
+    }
+});
+
+test('Live ChatGPT row-gap parameters do not become formula content', async () => {
+    await initMitexWasm();
+    const withGap = String.raw`\begin{aligned}P &= a+b\\[4pt]&=c\end{aligned}`;
+    const withoutGap = String.raw`\begin{aligned}P &= a+b\\&=c\end{aligned}`;
+    const result = convertMathWithMitex(withGap);
+    assert.ok(result.typst);
+    assert.strictEqual(result.diagnostic, undefined);
+    assert.strictEqual(result.typst, convertMathWithMitex(withoutGap).typst);
+    const literal = String.raw`\sqrt[4]{x}+[4]`;
+    assert.strictEqual(convertMathWithMitex(literal).typst, mitexConvertMath(literal));
+});
+
 test('T5.2: Failed MiTeX initialization clears cached state and allows subsequent retry', async () => {
     resetMitexForTesting();
     assert.strictEqual(isMitexReady(), false);
 
-    // 1. First init fails with invalid WASM bytes
     const badBytes = new Uint8Array([0, 1, 2, 3]);
     await assert.rejects(
         initMitexWasm(badBytes),
@@ -256,7 +255,6 @@ test('T5.2: Failed MiTeX initialization clears cached state and allows subsequen
     );
     assert.strictEqual(isMitexReady(), false, 'isMitexReady must remain false after failure');
 
-    // 2. Second init retries with valid node loading and succeeds
     await initMitexWasm();
     assert.strictEqual(isMitexReady(), true, 'Subsequent retry must succeed and report ready');
 });
@@ -273,8 +271,7 @@ test('T5.3: Unsupported math notations emit TYPST_MATH_UNSUPPORTED_NOTATION warn
         assert.strictEqual(res.diagnostic.severity, 'warning');
         assert.ok(res.diagnostic.message.includes(notation), 'Diagnostic message must mention the unsupported notation');
 
-        const helperOutput = convertMathMitex(formula, notation);
-        assert.strictEqual(helperOutput, undefined, `convertMathMitex helper must return undefined for '${notation}'`);
+        const helperOutput = convertMathWithMitex(formula, notation).typst;
+        assert.strictEqual(helperOutput, undefined, `converter must return undefined for '${notation}'`);
     }
 });
-

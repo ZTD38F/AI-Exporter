@@ -1,214 +1,107 @@
-import { test, expect } from './fixtures';
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { accountId, openOptions, seedConversations, storedSettings } from './uiFixture';
+test.beforeEach(async({context,extensionId})=>{void extensionId;await seedRegistryAccounts(context);});
+test('batch export delivers both physical bodies and refreshes recent ExportRecords',async({context,extensionId})=>{
+    const page=await openOptions(context,extensionId);await seedConversations(page,[{id:'one'},{id:'two'}]);await page.locator('#btnSelectAll').click();
+    const pending=page.waitForEvent('download');await page.locator('#btnExport').click();const file=await pending;expect(file.suggestedFilename()).toMatch(/\.zip$/);
+    const JSZip=require(path.resolve(__dirname,'../../lib/jszip.min.js'));const zip=await JSZip.loadAsync(await readFile((await file.path())!));const files=Object.keys(zip.files).filter(x=>x.endsWith('.md'));expect(files).toHaveLength(2);
+    const bodies=await Promise.all(files.map(x=>zip.file(x).async('string')));expect(bodies.join('\n')).toContain('Answer one');expect(bodies.join('\n')).toContain('Answer two');
+    await expect(page.locator('#status')).toContainText('Successfully downloaded: 2');await expect(page.locator('#list small')).toHaveText([/Last export/,/Last export/]);
+    const records=await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').listExportRecords(id),accountId);expect(Object.keys(records).sort()).toEqual(['one','two']);expect(records.one.status).toBe('ok');
+});
+test('unchanged exports skip through Application without producing an empty ZIP',async({context,extensionId})=>{
+    const page=await openOptions(context,extensionId);await seedConversations(page,[{id:'unchanged'}],{unchanged:{exportedAt:200,chatTime:100,format:'markdown',status:'ok'}});
+    await page.locator('#btnSelectAll').click();let downloads=0;page.on('download',()=>{downloads++;});await page.locator('#btnExport').click();await expect(page.locator('#status')).toContainText('Skipped: 1');await expect(page.locator('body')).toHaveAttribute('data-busy','false');expect(downloads).toBe(0);
+});
+test('clearing export records preserves bodies and skip preference, then explicit selection can export again',async({context,extensionId})=>{
+    const page=await openOptions(context,extensionId);await seedConversations(page,[{id:'one'}],{one:{exportedAt:200,chatTime:100,format:'markdown',status:'ok'}});
+    await expect(page.locator('#btnClearExported')).toBeHidden();
+    await page.locator('#devToggle').check();
+    await page.locator('#btnMoreActions').click();
+    await expect(page.locator('#btnClearExported')).toBeVisible();
+    const before=await storedSettings(page);await page.locator('#btnClearExported').click();await page.locator('#btnCleanupConfirm').click();await expect(page.locator('#status')).toHaveText('Records cleared');
+    expect(await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').listExportRecords(id),accountId)).toEqual({});expect((await storedSettings(page)).skipExported).toBe(before.skipExported);
+    expect(await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').readConversation({accountId:id,conversationId:'one'}),accountId)).toBeTruthy();
+    await page.locator('#btnSelectAll').click();const pending=page.waitForEvent('download');await page.locator('#btnExport').click();expect(await readFile((await(await pending).path())!,'utf8')).toContain('Answer one');
+});
 
-test.describe('Export Workflow & State Update', () => {
-  test('should trigger batch export, update progress, and mark conversations as exported', async ({ context, extensionId }) => {
-    // 1. Open mock Gemini page in background with valid credentials and network routing
-    const geminiPage = await context.newPage();
-
-    await geminiPage.route('https://gemini.google.com/**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html',
-        body: `<!DOCTYPE html>
-        <html>
-        <head>
-          <script>
-            window._WIZ_global_data = {
-              SNlM0e: 'mock_at_token_123',
-              cfb2h: 'boq_assistant-bard-web-server_20260802.09_p1'
-            };
-          </script>
-        </head>
-        <body>Gemini Mock Session Active</body>
-        </html>`
-      });
+test('large unchanged exports do not rebuild the conversation list for each skipped item', async ({context,extensionId}) => {
+    test.setTimeout(120000);
+    const page = await openOptions(context,extensionId);
+    const rows = Array.from({length:1343},(_,i)=>({id:`skip-${i}`}));
+    await seedConversations(page,rows,Object.fromEntries(rows.map(row=>[row.id,
+        {exportedAt:200,chatTime:100,format:'markdown' as const,status:'ok' as const}])));
+    await page.locator('#btnSelectAll').click();
+    await page.evaluate(() => {
+        const metrics = {listRebuilds:0,storageOpens:0};
+        Reflect.set(window,'skipMetrics',metrics);
+        const list = document.getElementById('list');
+        const replace = Element.prototype.replaceChildren;
+        Element.prototype.replaceChildren = function(...nodes) {
+            if(this === list) metrics.listRebuilds++;
+            return replace.apply(this,nodes);
+        };
+        const open = indexedDB.open;
+        indexedDB.open = function(...args) {
+            metrics.storageOpens++;
+            return open.apply(this,args);
+        };
     });
-
-    const turns = [
-      [
-        ["c_exp_chat_001"],
-        "turn_id_1",
-        [["请概述深度学习神经网络的实践要点。"]],
-        [
-          [
-            ["rc_cand_1", ["深度学习神经网络实践包含数据预处理、模型架构设计、超参数调优与正则化等关键环节。"]]
-          ]
-        ]
-      ]
-    ];
-    const mockDetailInner = JSON.stringify([
-      turns,
-      "tC_sample_token",
-      "深度学习神经网络实践"
-    ]);
-    const mockRpcResponse = `)]}'\n\n[["wrb.fr","hNvQHb",${JSON.stringify(mockDetailInner)}]]`;
-
-    await geminiPage.route('**/batchexecute*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: mockRpcResponse
-      });
-    });
-
-    await geminiPage.goto('https://gemini.google.com/app');
-    await geminiPage.waitForLoadState('domcontentloaded');
-
-    // 2. Open Workbench Options page
-    const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // Seed test conversation
-    await page.evaluate(async () => {
-      const mockConvs = [
-        { id: 'exp_chat_001', title: '深度学习神经网络实践', timestamp: 1700000000000 }
-      ];
-      await chrome.storage.local.set({
-        gemini_conversations: mockConvs,
-        exportedIds: {},
-        has_completed_tour: true,
-        last_seen_feature_version: '999.0.0'
-      });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-
-    // Wait for item to be rendered in DOM
-    const item = page.locator('[data-chat-id="exp_chat_001"]');
-    await expect(item).toBeVisible();
-
-    // 3. Select all items
-    await page.click('#btnSelectAll');
-    await expect(page.locator('#list input[type=checkbox]:checked')).toHaveCount(1);
-
-    // 4. Trigger real Export through clicking #btnExport and wait for download
-    const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
-    await page.click('#btnExport');
-
-    const download = await downloadPromise;
-    expect(download).toBeTruthy();
-
-    // 5. Verify Exported Badge is rendered on the conversation item
-    await expect(item.locator('.badge')).toBeVisible();
-    await expect(item.locator('.badge')).toContainText(/已导出|Exported/);
-
-    // 6. Verify Storage contains valid export record persisted by ExportEngine
-    const storageData = await page.evaluate(async () => {
-      return await chrome.storage.local.get(['exportedIds']);
-    }) as Record<string, any>;
-    expect(storageData.exportedIds['exp_chat_001']).toBeTruthy();
-    expect(storageData.exportedIds['exp_chat_001'].title).toBe('深度学习神经网络实践');
-  });
-
-  test('should fast-skip already exported items without generating empty zip', async ({ context, extensionId }) => {
-    // 1. Open Workbench Options page
-    const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // Seed test conversation and mark it already exported in exportedIds
-    await page.evaluate(async () => {
-      const mockConvs = [
-        { id: 'exp_chat_skip_001', title: '跳过测试会话', timestamp: 1700000000000 }
-      ];
-      await chrome.storage.local.set({
-        gemini_conversations: mockConvs,
-        gemini_export_zip: true,
-        exportedIds: {
-          'exp_chat_skip_001': {
-            exportedAt: 1700000000000,
-            title: '跳过测试会话'
-          }
-        }
-      });
-      if (typeof (window as any).__workbenchLoadStore === 'function') {
-        await (window as any).__workbenchLoadStore(true);
-      }
-    });
-
-    const item = page.locator('[data-chat-id="exp_chat_skip_001"]');
-    await expect(item).toBeVisible();
-
-    // Select the conversation
-    await page.click('#btnSelectAll');
-    await expect(page.locator('#list input[type=checkbox]:checked')).toHaveCount(1);
-
-    // Ensure skipExported is checked
-    const skipCheckbox = page.locator('#skipExported');
-    if (!(await skipCheckbox.isChecked())) {
-      await skipCheckbox.check();
-    }
-
-    // Ensure includeZip is checked
-    const zipCheckbox = page.locator('#includeZip');
-    if (!(await zipCheckbox.isChecked())) {
-      await zipCheckbox.check();
-    }
-
-    // Listen to download event to assert NO download occurs
-    let downloadTriggered = false;
-    page.on('download', () => {
-      downloadTriggered = true;
-    });
-
-    // Click Export
-    await page.click('#btnExport');
-
-    // Verify fast-skip log and notification in progress area
-    await expect(page.locator('#progText')).toContainText(/(跳过|skipped|无需生成 ZIP)/);
-
-    // Verify export button becomes active again quickly (not stuck in disabled state)
-    await expect(page.locator('#btnExport')).toBeEnabled();
-
-    // Assert that no empty zip download was triggered
-    expect(downloadTriggered).toBe(false);
-  });
-
-  test('should clear exported records via #btnClearExported, re-select chats, and not toggle #skipExported', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    await page.evaluate(async () => {
-      const mockConvs = [
-        { id: 'clear_chat_001', title: '已导出会话一', timestamp: 1700000000000 },
-        { id: 'clear_chat_002', title: '已导出会话二', timestamp: 1700000000000 }
-      ];
-      await chrome.storage.local.set({
-        gemini_conversations: mockConvs,
-        exportedIds: {
-          'clear_chat_001': { exportedAt: 1700000005000, title: '已导出会话一' },
-          'clear_chat_002': { exportedAt: 1700000005000, title: '已导出会话二' }
-        },
-        has_completed_tour: true,
-        last_seen_feature_version: '999.0.0'
-      });
-      if (typeof (window as any).__workbenchLoadStore === 'function') {
-        await (window as any).__workbenchLoadStore(true);
-      }
-    });
-
-    await expect(page.locator('#list .badge-exported')).toHaveCount(2);
-    await expect(page.locator('#list input[type=checkbox]:checked')).toHaveCount(0);
-    await expect(page.locator('#skipExported')).toBeChecked();
-
-    // Click #btnClearExported
-    await page.click('#btnClearExported');
-
-    // Exported badges must be cleared, all items auto-checked for re-export, and #skipExported unchanged
-    await expect(page.locator('#list .badge-exported')).toHaveCount(0);
-    await expect(page.locator('#list input[type=checkbox]:checked')).toHaveCount(2);
-    await expect(page.locator('#skipExported')).toBeChecked();
-
-    // Verify storage keys (exportedIds) are cleared
-    const storageAfter = await page.evaluate(async () => {
-      return await chrome.storage.local.get(['exportedIds']);
-    }) as Record<string, any>;
-    expect(Object.keys(storageAfter.exportedIds || {})).toHaveLength(0);
-  });
+    let downloads = 0;
+    page.on('download',()=>{downloads++;});
+    await page.locator('#btnExport').click();
+    await expect(page.locator('#directWriteModal')).toBeVisible();
+    const started = Date.now();
+    await page.locator('#btnModalContinueZip').click();
+    await expect(page.locator('#status')).toContainText('Skipped: 1343',{timeout:90000});
+    await expect(page.locator('body')).toHaveAttribute('data-busy','false');
+    const metrics = await page.evaluate(()=>Reflect.get(window,'skipMetrics'));
+    console.log('Unchanged export performance:',{durationMs:Date.now()-started,...metrics});
+    expect(downloads).toBe(0);
+    // A few task-start/task-end renders are allowed; per-item list replacement is not.
+    expect(metrics.listRebuilds).toBeLessThanOrEqual(6);
+    await expect(page.locator('#list input:checked')).toHaveCount(1343);
 });
 
 
-
+test('export progress keeps one cumulative three-counter message through source and attachment events', async ({context,extensionId}) => {
+    const page = await openOptions(context, extensionId);
+    await seedConversations(page, [{id:'one'}, {id:'two'}]);
+    await page.locator('#devToggle').check();
+    await expect(page.locator('#devToggle')).toBeEnabled();
+    await page.locator('#includeAssets').check();
+    await expect(page.locator('#includeAssets')).toBeEnabled();
+    await page.evaluate(async accountId => {
+        const api = Reflect.get(globalThis, 'uiFixture');
+        for (const id of ['one', 'two']) await api.ingestDetail(accountId, id, {
+            savedAt: 100, quality: {status:'complete'},
+            assets: [{id:'file',kind:'file',name:'report.md',document:{contentMarkdown:`Report ${id}`}}],
+            messages: [{role:'user',content:[{type:'paragraph',children:[{type:'text',text:`Question ${id}`}]}]},
+                {role:'assistant',content:[{type:'file',assetId:'file'}]}],
+        }, {title:id,titleSource:'provider',updatedAt:100});
+        const messages: string[] = [];
+        Reflect.set(window, 'exportProgressMessages', messages);
+        const progress = document.getElementById('progText');
+        if (!progress) throw new Error('Missing export progress element');
+        new MutationObserver(() => {
+            if (progress?.textContent) messages.push(progress.textContent);
+        }).observe(progress, {childList:true,subtree:true,characterData:true});
+    }, accountId);
+    await page.locator('#btnSelectAll').click();
+    const download = page.waitForEvent('download');
+    await page.locator('#btnExport').click();
+    await download;
+    await expect(page.locator('body')).toHaveAttribute('data-busy','false');
+    const messages: string[] = await page.evaluate(() => Reflect.get(window, 'exportProgressMessages'));
+    expect(messages.length).toBeGreaterThan(2);
+    const counts = messages.map(message => {
+        const match = /^Prepared (\d+) conversations · delivered (\d+) documents · downloaded (\d+) attachments$/.exec(message);
+        if (!match) throw new Error(`Unexpected export progress: ${message}`);
+        return match.slice(1).map(Number);
+    });
+    for (let i=1;i<counts.length;i++) for (let metric=0;metric<3;metric++)
+        expect(counts[i][metric]).toBeGreaterThanOrEqual(counts[i-1][metric]);
+    expect(counts.at(-1)).toEqual([2,2,2]);
+});

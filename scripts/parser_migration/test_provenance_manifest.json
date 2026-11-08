@@ -1,40 +1,50 @@
 {
-  "version": "1.3.0",
-  "generatedAt": "2026-09-28",
+  "version": "2.0.0",
+  "generatedAt": "2026-10-17",
   "classificationDefinitions": {
     "P0": "Real Gemini: Strictly requires verified raw payload evidence file and originalHash. ONLY tier that can justify compatibility rules. (Currently 0 pending real session captures).",
     "P1": "Standard Syntax: CommonMark / GFM or standard LaTeX syntax. Verifies integration with standard behavior.",
-    "P2": "Project Semantics: Exporter contracts (Canonical AST, diagnostics, asset mapping, payload serialization). Must pass unchanged.",
+    "P2": "Project Semantics: Domain closure, Document AST, diagnostics, resource preparation and backend serialization. Preserve meaningful behavior contracts across interface migrations.",
     "P3": "Synthetic Robustness: Artificial edge cases constructed for testing. Non-blocking for parser migration.",
     "P4": "Legacy Implementation-Specific: Tied to bespoke quirks/regex of old handwritten parser. To be retired/archived."
   },
   "suites": [
     {
-      "file": "tests/canonical-contract.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/domain-contract.test.ts",
+      "domain": "domain",
       "classification": "P2",
-      "provenanceSource": "Project Canonical AST specification & validation invariants",
+      "provenanceSource": "Closed Domain resource and citation relationships, JSON portability and composer input contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Defines canonical block schemas, validateBundle(), and diagnostics rules.",
-      "testCount": 30,
+      "notes": "Exercises actual Domain and Document AST APIs; obsolete Canonical schema and validator contracts are retired.",
+      "testCount": 17,
       "tests": [
         {
-          "name": "all canonical fixtures validate with zero errors",
+          "name": "Domain closure rejects missing provider identity and duplicate resource identities",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "versioned JSON schema resource is present and parses",
+          "name": "composer rejects empty and duplicate authored message IDs but assigns positions only for display",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "representation independence: no thought block carries view state",
+          "name": "unknown content and message order survive a JSON round trip across all backends",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "validator rejects missing and duplicate message IDs",
+          "name": "HTML and Markdown sanitize hostile link protocols without rejecting visible labels",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "archive preparation rejects traversal and absolute destinations",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "unknown provider bodies have a bounded deterministic fallback, and raw input stays intact",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -84,7 +94,7 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "title tiers mirror the repo TITLE_TIER_RANK ladder",
+          "name": "title tiers mirror the canonical TITLE_AUTHORITY_RANK ladder",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -92,91 +102,16 @@
           "name": "unknown source titles resolve to nothing (unknown stays unknown)",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "unknown block always yields readable fallback, never blank",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "unknown blocks require non-empty sourceType and visible text",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "message order survives archive round-trip identically",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "pseudo-available asset is flagged, never trusted from metadata",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "classifyAssetAvailability downgrades pseudo-available to missing",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "resolveAssetBytes returns real bytes or an explicit missing state",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "missing asset without failureReason is diagnosed",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "malicious link protocols are rejected",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "unsafe storageRef paths are rejected",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "schema version and key violations are errors",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "oversized strings are rejected by the size guard",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "renderer-only keys leaking into canonical data are flagged",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "missing accountId warns (F1 owns the value, F2a must not invent it)",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "conversation title and URL validate their final canonical values",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "final document schema contains only reachable definitions and closed document fields",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
         }
       ]
     },
     {
-      "file": "tests/canonical-feature-matrix.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/document-feature-matrix.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "Canonical AST multi-block feature matrix specification",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Ensures all canonical block variants serialize and validate without schema divergence.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 17,
       "tests": [
         {
@@ -260,35 +195,35 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "matrix: citation snippet and assetId are metadata-only",
+          "name": "matrix: unknown raw citation metadata never reaches the shared AST or a backend",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         }
       ]
     },
     {
-      "file": "tests/canonical-gemini-markup-sanitization.test.ts",
-      "domain": "markdown",
+      "file": "tests/provider-gemini-markup-sanitization.test.ts",
+      "domain": "provider_parser",
       "classification": "P2",
-      "provenanceSource": "Real Gemini web response markup quirks (raw HTML, citation tags, prompt artifacts)",
+      "provenanceSource": "Provider-boundary parsing and CommonMark/GFM/LaTeX syntax preservation before Domain",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Sanitization contract; synthetic inputs with injected HTML tags, no raw Gemini evidence.",
+      "notes": "Tests use captured external provider inputs or explicit synthetic syntax cases, then actual Domain/Document AST composition. Compatibility rules retain separate evidence requirements.",
       "testCount": 1,
       "tests": [
         {
-          "name": "Gemini structured markup is sanitized at normalization boundary and never reaches Canonical AST or HTML",
+          "name": "Gemini structured markup is sanitized at normalization boundary and never reaches Domain content or HTML",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         }
       ]
     },
     {
-      "file": "tests/canonical-generated-image-consistency.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/document-generated-image-consistency.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "Real Gemini Imagen turns with companion asset metadata",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Asset ID and companion consistency contract; mock asset objects, no raw Gemini evidence.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 5,
       "tests": [
         {
@@ -319,12 +254,12 @@
       ]
     },
     {
-      "file": "tests/canonical-html-gaps.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/document-html-features.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "HTML export renderer contracts & HTML entity escaping",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Tests HTML rendering completeness for all canonical node types.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 5,
       "tests": [
         {
@@ -355,12 +290,12 @@
       ]
     },
     {
-      "file": "tests/canonical-html-math-policy.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/document-html-math-policy.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "Project KaTeX HTML math rendering policy",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Tests inline math and display math KaTeX rendering and fallback spans.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 5,
       "tests": [
         {
@@ -384,19 +319,19 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "PR 3: End-to-end integration via normalizeGeminiConversation and renderCanonicalHtml",
+          "name": "PR 3: End-to-end integration via provider parsing, composition and HTML rendering",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         }
       ]
     },
     {
-      "file": "tests/canonical-html-parity.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/document-html-parity.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "CanonicalHtmlRenderer cross-version equivalence checks",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Ensures canonical HTML export output preserves message counts, roles, and structural tags.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 12,
       "tests": [
         {
@@ -462,38 +397,33 @@
       ]
     },
     {
-      "file": "tests/canonical-html-renderer-adapter.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/html-document-orchestration.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "Canonical HTML adapter packaging contracts",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Validates artifact bundle packaging, companion file assets, and abort signals.",
-      "testCount": 3,
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
+      "testCount": 2,
       "tests": [
         {
-          "name": "adapter: artifact shape, companion ids, offline urls",
+          "name": "HTML export returns the delivery contract and uses prepared offline destinations",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "adapter: unresolvable asset lands in omitted, still renders",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "adapter: aborted signal stops the render",
+          "name": "unprepared resources remain visible and carry an explicit backend diagnostic",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         }
       ]
     },
     {
-      "file": "tests/canonical-nested-inline-fidelity.test.ts",
-      "domain": "markdown",
+      "file": "tests/provider-nested-inline-fidelity.test.ts",
+      "domain": "provider_parser",
       "classification": "P2",
-      "provenanceSource": "CommonMark 0.30 / GFM nested inline formatting and project break normalization",
+      "provenanceSource": "Provider-boundary parsing and CommonMark/GFM/LaTeX syntax preservation before Domain",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Fidelity 1, 3, 4, 5 are P1 (CommonMark/GFM spec); Fidelity 2, 7 are P2 (project HTML break normalization). (Fidelity 6 retired in PR 3).",
+      "notes": "Tests use captured external provider inputs or explicit synthetic syntax cases, then actual Domain/Document AST composition. Compatibility rules retain separate evidence requirements.",
       "testCount": 6,
       "tests": [
         {
@@ -534,12 +464,12 @@
       ]
     },
     {
-      "file": "tests/canonical-parser-hardening.test.ts",
-      "domain": "markdown",
+      "file": "tests/provider-parser-hardening.test.ts",
+      "domain": "provider_parser",
       "classification": "P1",
-      "provenanceSource": "CommonMark 0.30 & GFM specification compliance, with project asset/math mapping",
+      "provenanceSource": "Provider-boundary parsing and CommonMark/GFM/LaTeX syntax preservation before Domain",
       "policy": "VERIFY_AGAINST_STANDARD",
-      "notes": "Audited at test level: CommonMark nested emphasis, GFM borderless tables, escaped pipes, and balanced parens are P1; asset/math mapping is P2; parser quirks are P3.",
+      "notes": "Tests use captured external provider inputs or explicit synthetic syntax cases, then actual Domain/Document AST composition. Compatibility rules retain separate evidence requirements.",
       "testCount": 17,
       "tests": [
         {
@@ -603,10 +533,9 @@
           "notes": "Companion asset association contract."
         },
         {
-          "name": "image with no resolvable source is missing and raises a diagnostic",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT",
-          "notes": "Diagnostic pipeline contract."
+          "name": "image with no source remains a semantic asset and the backend reports unavailable resources",
+          "classification": "P1",
+          "policy": "VERIFY_AGAINST_STANDARD"
         },
         {
           "name": "multiple images in one paragraph each get their own asset",
@@ -647,12 +576,12 @@
       ]
     },
     {
-      "file": "tests/canonical-renderer-contract.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/document-renderer-contract.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "Dual-renderer cross contract (CanonicalHtmlRenderer x Typst payload)",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Ensures both HTML and Typst renderers faithfully convey identical canonical node semantics.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 14,
       "tests": [
         {
@@ -716,7 +645,7 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "inline image assets enter the HTML companion resource plan",
+          "name": "inline HTML resource references are collected from the Document AST and use supplied bindings",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -728,48 +657,33 @@
       ]
     },
     {
-      "file": "tests/canonical-schema-conformance.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/domain-json-contract.test.ts",
+      "domain": "domain",
       "classification": "P2",
-      "provenanceSource": "Canonical JSON schema v1 validation contract",
+      "provenanceSource": "Closed Domain resource and citation relationships, JSON portability and composer input contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Validates bundle against formal JSON schema.",
-      "testCount": 5,
+      "notes": "Exercises actual Domain and Document AST APIs; obsolete Canonical schema and validator contracts are retired.",
+      "testCount": 2,
       "tests": [
         {
-          "name": "every canonical fixture satisfies both validateBundle and the JSON Schema",
+          "name": "each Domain fixture is closed and JSON round-trip preserves every backend output",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "GeminiNormalizer output satisfies both contracts (incl. first-class inline images)",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "string title and URL satisfy both contracts",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "object title is rejected by both contracts",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "thought block with initiallyCollapsed is rejected by the JSON Schema",
+          "name": "provider-only state and malformed title data cannot become document context",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         }
       ]
     },
     {
-      "file": "tests/canonical-underscore-delimiter.test.ts",
-      "domain": "markdown",
+      "file": "tests/provider-underscore-delimiter.test.ts",
+      "domain": "provider_parser",
       "classification": "P1",
-      "provenanceSource": "CommonMark 0.30 Specification Section 6.2 (Left- and right-flanking delimiter run rules)",
+      "provenanceSource": "Provider-boundary parsing and CommonMark/GFM/LaTeX syntax preservation before Domain",
       "policy": "VERIFY_AGAINST_STANDARD",
-      "notes": "Verifies CommonMark 0.30 rules: intra-word underscores (foo_bar) stay plain text; valid _italic_ and __strong__ parse to emphasis.",
+      "notes": "Tests use captured external provider inputs or explicit synthetic syntax cases, then actual Domain/Document AST composition. Compatibility rules retain separate evidence requirements.",
       "testCount": 5,
       "tests": [
         {
@@ -805,12 +719,12 @@
       ]
     },
     {
-      "file": "tests/canonical-underscore-html-regression.test.ts",
-      "domain": "markdown",
+      "file": "tests/provider-underscore-html-regression.test.ts",
+      "domain": "provider_parser",
       "classification": "P2",
-      "provenanceSource": "CommonMark 0.30 delimiter flanking rules through Canonical HTML Renderer pipeline",
+      "provenanceSource": "Provider-boundary parsing and CommonMark/GFM/LaTeX syntax preservation before Domain",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Verifies CommonMark underscore rules in HTML rendering: LaTeX macros and intra-word underscores do not receive <em>; legit _italic_ renders <em>.",
+      "notes": "Tests use captured external provider inputs or explicit synthetic syntax cases, then actual Domain/Document AST composition. Compatibility rules retain separate evidence requirements.",
       "testCount": 2,
       "tests": [
         {
@@ -828,68 +742,12 @@
       ]
     },
     {
-      "file": "tests/html-canonical-migration.test.ts",
-      "domain": "canonical_ast",
-      "classification": "P2",
-      "provenanceSource": "Real multi-turn Gemini conversation export through canonical pipeline",
-      "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Canonical HTML export pipeline contract; hardcoded 4-turn chat, no raw Gemini evidence.",
-      "testCount": 9,
-      "tests": [
-        {
-          "name": "migration setup: production entry returns a valid HTML FormattedResult",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: message count and order are correct",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: body text not dropped",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: attachments and images not dropped",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: thought not dropped",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: code block not dropped",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: table not dropped",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: citation not dropped",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        },
-        {
-          "name": "migration: duplicate message IDs fail closed at the production export boundary",
-          "classification": "P2",
-          "policy": "PRESERVE_PROJECT_CONTRACT"
-        }
-      ]
-    },
-    {
       "file": "tests/typst-headerless-table.test.ts",
       "domain": "typst_payload",
       "classification": "P2",
-      "provenanceSource": "Direct Canonical AST table-to-Typst payload mapping and WASM compile",
+      "provenanceSource": "Direct Content/Document AST table-to-Typst payload mapping and WASM compile",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Headerless tables are non-GFM standard; test builds Canonical AST table directly to verify Typst renderer and thematic break.",
+      "notes": "Headerless tables are non-GFM standard; test builds Content/Document AST table directly to verify Typst renderer and thematic break.",
       "testCount": 3,
       "tests": [
         {
@@ -911,7 +769,7 @@
     },
     {
       "file": "tests/typst-list-unknown-recursive.test.ts",
-      "domain": "canonical_ast",
+      "domain": "document_ast",
       "classification": "P2",
       "provenanceSource": "Typst payload nested list and visible unknown text mapping contract",
       "policy": "PRESERVE_PROJECT_CONTRACT",
@@ -947,7 +805,7 @@
     },
     {
       "file": "tests/typst-nested-semantics.test.ts",
-      "domain": "canonical_ast",
+      "domain": "document_ast",
       "classification": "P2",
       "provenanceSource": "Typst payload adapter structured quote and thought block mapping",
       "policy": "PRESERVE_PROJECT_CONTRACT",
@@ -982,12 +840,12 @@
       ]
     },
     {
-      "file": "tests/typst-payload.test.ts",
-      "domain": "canonical_ast",
+      "file": "tests/document-typst-contract.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "Typst v8 payload specification and adapter contract",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Canonical AST to Typst payload adapter contract test.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 17,
       "tests": [
         {
@@ -1031,7 +889,7 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "missing inline image asset without alt shows [image: id] placeholder",
+          "name": "missing inline image asset without alt preserves its resource identity as visible fallback",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -1079,7 +937,7 @@
     },
     {
       "file": "tests/typst-phase-b.test.ts",
-      "domain": "canonical_ast",
+      "domain": "document_ast",
       "classification": "P2",
       "provenanceSource": "Complex table spans and citation group specifications",
       "policy": "PRESERVE_PROJECT_CONTRACT",
@@ -1097,7 +955,7 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "message citationIds appends a note to blocks in Typst payload",
+          "name": "message sources append a note to blocks in Typst payload",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -1130,7 +988,7 @@
     },
     {
       "file": "tests/typst-table-span.test.ts",
-      "domain": "canonical_ast",
+      "domain": "document_ast",
       "classification": "P2",
       "provenanceSource": "Table cell span contract for Typst layout engine",
       "policy": "PRESERVE_PROJECT_CONTRACT",
@@ -1209,7 +1067,7 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "T1.4: convertMathMitex helper respects notation and display flags",
+          "name": "T1.4: convertMathWithMitex respects notation and display flags",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -1261,16 +1119,16 @@
       ]
     },
     {
-      "file": "tests/canonical-markdown-renderer.test.ts",
-      "domain": "canonical_markdown",
+      "file": "tests/document-markdown-contract.test.ts",
+      "domain": "document_ast",
       "classification": "P2",
-      "provenanceSource": "Canonical Markdown serialization and Gemini normalization production route contracts",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
       "policy": "PRESERVE_PROJECT_CONTRACT",
-      "notes": "Covers all Canonical blocks/inlines, local resource references, Sources, and structured/Markdown producer routes.",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter.",
       "testCount": 21,
       "tests": [
         {
-          "name": "Markdown header uses Canonical metadata and omits absent optional fields",
+          "name": "Markdown export envelope uses Domain metadata and omits absent optional fields",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -1315,7 +1173,7 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "Markdown block and inline images use local storageRef only",
+          "name": "Markdown block and inline images use prepared local bindings only",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -1350,12 +1208,12 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "Gemini structuredContent reaches Canonical Markdown without using the string body",
+          "name": "Gemini structuredContent reaches Document Markdown without using the string body",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "Gemini Markdown fallback reaches Canonical Markdown with semantic formatting",
+          "name": "Gemini Markdown fallback reaches Document Markdown with semantic formatting",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -1365,7 +1223,7 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
         {
-          "name": "Canonical Markdown rejects duplicate message IDs like HTML and PDF",
+          "name": "Document Markdown rejects duplicate message IDs like HTML and PDF",
           "classification": "P2",
           "policy": "PRESERVE_PROJECT_CONTRACT"
         },
@@ -1375,18 +1233,1852 @@
           "policy": "PRESERVE_PROJECT_CONTRACT"
         }
       ]
+    },
+    {
+      "file": "tests/document-pdf.test.ts",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "tests": [
+        {
+          "name": "PDF backend derives policies and metadata from immutable JSON display data",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "real PDF engine changes page policy without recomposing the document",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "PDF backend/compiler have no source-model imports; backend may infer layout from display neighbors",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "PDF missing placements preserve authored numeric captions and descriptions",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ],
+      "testCount": 4,
+      "domain": "document_ast",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter."
+    },
+    {
+      "file": "tests/provider-conversation-parser.test.ts",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "tests": [
+        {
+          "name": "markdown body keeps block order and structure",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "reasoning is parsed before Domain and composed as a disclosure",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "citations have message-local Domain identities referenced by content nodes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "attachments deduplicate semantic assets and prepare separate resource bindings",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "unknown role and non-string content are preserved, never dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "non-string content becomes bounded, deterministic visible text at normalization",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "title authority: rpc candidate wins over takeout/sniff",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "conversation identity and authored timestamp facts are preserved",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "turns shape flattens to user/assistant messages",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "parsed Domain is closed, JSON portable and does not mutate raw fixtures",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ambiguous inline image basename never binds arbitrarily",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "unique inline image basename still binds to its attachment",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "exact full ref wins over an ambiguous basename",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "inline markdown image reusing an attachment asset keeps a single visual placement",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "linked inline image reusing an attachment asset keeps a single visual placement",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "attachment not referenced inline keeps its trailing image block",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "two attachments with only one inlined keep one inline and one trailing block",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "composer rejects duplicate message IDs before any backend sees them",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "title authority and unknown source handling remain ingestion concerns",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "raw URL facts remain semantic; export envelope selects url before href",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "unknown raw fields are omitted from Domain and AST without mutating input",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ],
+      "testCount": 21,
+      "domain": "provider_parser",
+      "provenanceSource": "Provider-boundary parsing and CommonMark/GFM/LaTeX syntax preservation before Domain",
+      "notes": "Tests use captured external provider inputs or explicit synthetic syntax cases, then actual Domain/Document AST composition. Compatibility rules retain separate evidence requirements."
+    },
+    {
+      "file": "tests/document-html.test.ts",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "tests": [
+        {
+          "name": "HTML consumes the neutral composition and preserves immutable semantic input",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "JSON roundtrip and explicit presentation edits work without semantic input",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "table alignment follows logical columns for colSpan and rowSpan",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "backend decides unavailable resources, preserves caption, and keeps nested diagnostics",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "renderer requires prepared bindings and escapes text and URL attributes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "empty state is composed and locale is explicit",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "actual HTML backend has no semantic model or presentation inference imports",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "production HTML facade uses prepared archive paths consistently",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "backend accepts safe custom bindings and reports unsafe bindings as unavailable",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ],
+      "testCount": 9,
+      "domain": "document_ast",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter."
+    },
+    {
+      "file": "tests/document-neutral.test.ts",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "tests": [
+        {
+          "name": "neutral contract carries no units, output formats, UI controls or source-model dependencies",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ],
+      "testCount": 1,
+      "domain": "document_ast",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter."
+    },
+    {
+      "file": "tests/document-freeze.test.ts",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "tests": [
+        {
+          "name": "HTML owns DOM identities and does not derive document language from UI locale",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "file badges use only supplied media type or kind, including misleading labels",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "display date selects the first valid fact and normalizes to UTC at composition",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "PDF acquires every AST image; one frozen rich JSON AST serves all backends",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ],
+      "testCount": 4,
+      "domain": "document_ast",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter."
+    },
+    {
+      "file": "tests/document-markdown.test.ts",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "tests": [
+        {
+          "name": "Markdown backend projects spans while the neutral tree retains all headers",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Markdown consumes only JSON display choices, explicit time and prepared paths",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Markdown composition owns unavailability and emits diagnostics without remote embedding",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Markdown backend cannot import semantic models, registries or clocks",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Markdown front matter preserves string scalars and rejects invalid keys",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ],
+      "testCount": 5,
+      "domain": "document_ast",
+      "provenanceSource": "Format-neutral Document AST and actual HTML, Markdown and PDF backend contracts",
+      "notes": "Fixtures use Domain composition or frozen Document AST plus independent resource bindings; there is no conversation compatibility converter."
+    },
+    {
+      "file": "tests/document-ast-contract.test.ts",
+      "domain": "document_ast",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Provider model and exact Document AST contracts; explicit backend badges and real-WASM image rendering",
+      "notes": "Project semantic regressions; synthetic fixtures are not evidence of provider wire compatibility.",
+      "testCount": 2,
+      "tests": [
+        {
+          "name": "every visual/parity corpus fixture satisfies the exact current DocumentAst definition",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "contract rejects stale fields, nested extras, missing fields, wrong types and discriminants",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/document-file-badge.test.ts",
+      "domain": "document_ast",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Provider model and exact Document AST contracts; explicit backend badges and real-WASM image rendering",
+      "notes": "Project semantic regressions; synthetic fixtures are not evidence of provider wire compatibility.",
+      "testCount": 1,
+      "tests": [
+        {
+          "name": "file badge maps office/media types to short labels and safely falls back",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/document-rich-pdf.test.ts",
+      "domain": "document_ast",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Provider model and exact Document AST contracts; explicit backend badges and real-WASM image rendering",
+      "notes": "Project semantic regressions; synthetic fixtures are not evidence of provider wire compatibility.",
+      "testCount": 2,
+      "tests": [
+        {
+          "name": "rich PDF fields render physical images, including captions of missing parents",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "font fallback visits converted math in all rich PDF fields",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/domain-parsing.test.ts",
+      "domain": "domain",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Unified Domain parsing boundary, source coverage and provenance, side-channel evidence and legacy application compatibility",
+      "notes": "Project contracts; no provider wire compatibility claim and no storage migration.",
+      "testCount": 8,
+      "tests": [
+        {
+          "name": "unified parsing requires explicit provider identity and implemented format",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "historical record fixtures retain provider inference inside the migration boundary",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "source provenance and explicit completeness survive JSON without leaking transport state",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "positive truncation or paging evidence takes precedence over a complete claim",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "absence of truncation is not evidence of complete coverage",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Domain completeness is validated and copied independently from input evidence",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "conversation timestamps cannot lose meaning during JSON serialization",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "shared parse result keeps diagnostics and preparation evidence outside a closed Domain graph",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/provider-gemini-rpc-domain.test.ts",
+      "domain": "provider",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Direct Gemini RPC to Domain boundary, closed semantic facts, compatibility outputs and side-channel transport evidence",
+      "notes": "Native RPC evidence preserves Domain closure, source request IDs and explicit resource ownership without the retired record facade.",
+      "testCount": 13,
+      "tests": [
+        {
+          "name": "raw RPC input constructs Domain content, reasoning and citations directly",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "native parsing imports no historical persisted detail parser",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "source request tokens survive intact in source evidence and Domain",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "wire chronology, multiple candidates and source dates remain explicit",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "missing timestamps and request evidence are never fabricated",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "pagination and rejected turns yield partial coverage and side-channel diagnostics",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "metadata-only pages preserve title evidence without claiming a complete conversation",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "native Domain composition round-trips without moving transport into the graph",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "sanitized existing wire evidence retains structured content and closed image references",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "generated resources retain their authored request token independently of archive paths",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "raw format validation rejects wrong providers and malformed envelopes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "source extraction has no export paths and retains unsanitized source filenames",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "raw decoding never substitutes conversation or request IDs for absent message identities",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/provider-gemini-takeout-domain.test.ts",
+      "domain": "provider",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Direct raw HTML and actual ZIP byte decoding into closed Domain, source chronology and generation events, archive lookup ambiguity and transport separation",
+      "notes": "Native Takeout Domain contracts use explicit archive references and source timestamps; no dependency on the retired HTML facade.",
+      "testCount": 15,
+      "tests": [
+        {
+          "name": "Takeout raw HTML constructs Domain without persisted records or fabricated message dates",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "missing Takeout dates remain absent and activity logs never claim complete coverage",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "batch and selected parsing preserve separate conversation identities and source chronology",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "archive source paths and handles stay separate from export destinations",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "missing and ambiguous archive files remain explicit resources with diagnostics",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "a recorded generation event survives missing files without guessing ZIP ownership",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "explicit generated output references close body and attachment relationships over one source asset",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "uncertain media ownership preserves the source resource without inventing a message relationship",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "long report HTML becomes authored Content AST without synthetic document IDs or filenames",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Takeout extraction has no export naming and native parsing does not call compatibility constructors",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "raw ZIP bytes decode directly to selected and batch Domain results with actual archive entries",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ZIP parsing rejects malformed inventories, unverifiable HTML sizes and ambiguous activity selection",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Domain generation events reject invalid media kinds and output counts",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "response-only activity cannot fabricate a user prompt from its first content cell",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "authored assets prefixes are source paths and cannot collapse different ZIP entries",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/arch/semantic-layer-boundary.test.ts",
+      "domain": "architecture",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Physical layer ownership, erased type references and shared runtime dependency closure",
+      "notes": "Architecture contracts verify import boundaries and naming responsibility; they do not establish provider wire fidelity or live Tier 2 coverage.",
+      "testCount": 6,
+      "tests": [
+        {
+          "name": "retired compatibility modules are absent and no production source imports them",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "semantic layers own their files and obey dependency direction, including type-only references",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "native parsers and renderers cannot acquire forbidden dependencies through a shared runtime helper",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "boundary reader detects re-export, type-only, dynamic import and require escape routes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "native parsing does not allocate export paths or sanitized filenames",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "normal runtime cannot parse historical records or depend on application projections",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/takeout-archive-resources.test.ts",
+      "domain": "takeout",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Anonymized filename mismatch shapes observed in a local Google Takeout export plus synthetic ambiguity and ZIP lookup contracts",
+      "notes": "Only filename shapes are retained; source titles, timestamps and hashes are replaced. These contracts do not establish full provider payload fidelity or live Tier 2 coverage.",
+      "testCount": 8,
+      "tests": [
+        {
+          "name": "relative activity paths outrank root paths and duplicate basenames",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "real Takeout filename mismatch shapes recover all eighteen resources uniquely",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "stem and normalization collisions are ambiguous regardless of inventory order",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "an ambiguous stronger tier cannot be bypassed by a unique weaker match",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "fallback preserves complete hashes and does not infer unrelated suffixes or case changes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "URI decoding applies only to source references and archive filenames remain literal",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "extensionless image resolution retains generation facts and a separate acquisition handle",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ZIP selected and batch parsing retain the Gemini Apps activity directory in multi-product archives",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/domain-storage.test.ts",
+      "domain": "storage",
+      "classification": "P2",
+      "provenanceSource": "Versioned Domain storage, historical storage decoding, account isolation, resource durability and lossless migration contracts",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "notes": "Uses actual storage/parser APIs; real IndexedDB, restart, transaction-abort and extension-origin routing are covered separately by browser tests.",
+      "testCount": 12,
+      "tests": [
+        {
+          "name": "v2 stores structured Domain intact and excludes render/parse transport state",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "accounts and providers isolate identical IDs; non-Gemini IDs remain opaque",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "partial/older captures cannot truncate current detail; migration retries are idempotent",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "stable resource bytes survive subsequent detail saves and scoped deletion leaves other accounts intact",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "persisted contract rejects obsolete fields, malformed content, non-finite values and dangling resources",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "legacy-storage is a distinct unified parser format and joins metadata with fuller disk body",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "legacy metadata without body reports partial coverage instead of fabricating a transcript",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "identical captures retain the current record token",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "future schema freezes writes and deletion while known Domain remains readable",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "legacy upgrade does not guess ownership for shared IDs or orphan detail; source data survives",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "acquired bytes bind to source identity, survive captures and are erased on scoped deletion",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration retries cannot resurrect scoped deleted bodies, while a fresh capture can restore them",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/native-json-export.test.ts",
+      "domain": "domain",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Native Domain preservation and explicit external JSON serialization contracts",
+      "notes": "Synthetic closed Domain fixtures verify both public JSON outputs; no ChatGPT import compatibility claim.",
+      "testCount": 3,
+      "tests": [
+        {
+          "name": "complete JSON preserves the full native Domain and versioned resource destinations",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "OpenAI JSON converts roles, multimodal images and reasoning only at the output boundary",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "raw JSON requires actual provider evidence and never exports a synthetic snapshot",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/provider-chatgpt-tree.test.ts",
+      "domain": "provider",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "ChatGPT backend-api mapping evidence to Domain boundary: tree linearization, dialect markdown, reasoning/citations, asset downloads and optional-host access, verified live via 9222 debug profile",
+      "notes": "Provider mapping, branch/stream integrity, component ordering, asset binding and bounded network retry contracts, including a retained live questionnaire.",
+      "testCount": 32,
+      "tests": [
+        {
+          "name": "system and empty assistant turns are skipped, user turns kept in order",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "missing ChatGPT ancestors and cyclic mappings never claim complete Detail or loop",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "consecutive assistant turns merge into one node",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "a linked but streaming or interrupted ChatGPT reply never claims complete coverage",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "processChatGPTMapping walks from current_node to root",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPTProvider matches only chatgpt hostnames",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPTProvider checkReadiness reports logged-out session",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "tool image nodes are kept and their sediment pointers collected",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "files/download helpers narrow payloads and encode bytes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Detail submits image identities; bytes are acquired on demand without changing body quality",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "thinking walk attaches hidden reasoning to the following assistant node",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "dialect preprocessing shields code and normalizes math/citations",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "bodies parse to structured blocks and models stay per-message",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "repeated image pointers reuse one asset instead of breaking closure",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "citations dedupe by URL across tether and grouped references",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "uploaded non-image files recorded, images left to the image path",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "incremental refresh stops at first unchanged item and merges head",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "listConversations paginates until the reported total is reached",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPT current list schema without the legacy missing flag traverses all pages",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPT empty current list schema proves source exhaustion",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPT Detail never relabels a foreign source conversation ID",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPT list refuses source_end when pagination, ordering or completeness is unverified",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "optional access helper never prompts and registers only on grant",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Intelligent UI questionnaires use the provider fallback without executing or exporting component code",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Captured live DIL quiz parses nested questions/options before buttons, without fallback",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "DIL AsyncImage gallery becomes one ordered image resource instead of leaked control JSON",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "DIL galleries bind each query to its resolution ID despite reordered results",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "DIL fallback norm escapes preserve all table cells and math",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "an unclosed inline opener cannot consume formulas in later table cells or rows",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPT 429 respects Retry-After, refreshes identity, and retries the same page",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPT 429 cooldown aborts promptly without another request",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ChatGPT 429 retries are bounded and recheck a changed account",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/domain-ast-projection.test.ts",
+      "domain": "document_ast",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Notion L3b Composer and Document Model contracts, exercised through accepted L2 Domain and production export APIs",
+      "notes": "Controlled project semantics: Account/key binding, Index facts, source numbering, explicit media ownership and format-neutral renderer inputs. No claim of live Provider evidence.",
+      "testCount": 6,
+      "tests": [
+        {
+          "name": "projection uses matched Account and Index facts, preserving supplied partial body order",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "missing Index title and times get reading defaults without borrowing savedAt",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Composer numbers sources once across messages; renderers retain numbers and absent URLs",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "only explicit media placements become AST content; resource absence never changes the AST",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "code headers and initial disclosure folding are Renderer options for the same tree",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Composer modules cannot reach persistence, acquisition or provider services",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/document-ast-integration.test.ts",
+      "domain": "document",
+      "classification": "P2",
+      "provenanceSource": "Composer to Format integration: account isolation, metadata, citation numbering and unavailable media",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "notes": "Exercises current module interfaces without the retired Application export facade.",
+      "testCount": 4,
+      "tests": [
+        {
+          "name": "integration: exported metadata and message order",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "integration: renderers preserve Composer citation numbers",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "integration: renderers express unavailable media",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "integration: renderer options control code headers and disclosure folding",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/v2-module-integration.test.ts",
+      "domain": "document",
+      "classification": "P2",
+      "provenanceSource": "Real keyless source parsing, direct L2 admission, AST projection, task-scoped resource acquisition and physical ZIP bytes",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "notes": "Exercises current module interfaces without the retired Application export facade.",
+      "testCount": 1,
+      "tests": [
+        {
+          "name": "L1 → L2 → Composer → Format → Packaging keeps account, resource identities and physical bytes aligned",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/document-model-other-layers.test.ts",
+      "domain": "document",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Controlled fixtures exercising current L1, L2, L3b and L4 contracts; no independently verified live Provider capture.",
+      "notes": "Project behavior and interface migration coverage; does not claim P0 source evidence.",
+      "testCount": 2,
+      "tests": [
+        {
+          "name": "native provider model names survive L2 -> L3b and Markdown, HTML, Typst/PDF payloads",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "different authored models remain attached to their own messages in every v2 renderer",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/document-model.test.ts",
+      "domain": "document",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Controlled fixtures exercising current L1, L2, L3b and L4 contracts; no independently verified live Provider capture.",
+      "notes": "Project behavior and interface migration coverage; does not claim P0 source evidence.",
+      "testCount": 2,
+      "tests": [
+        {
+          "name": "turn models, absent/invalid models and escaped model names",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "compiled PDF visibly retains the model name",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/html-document-migration-other-layers.test.ts",
+      "domain": "document",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Controlled fixtures exercising current L1, L2, L3b and L4 contracts; no independently verified live Provider capture.",
+      "notes": "Project behavior and interface migration coverage; does not claim P0 source evidence.",
+      "testCount": 8,
+      "tests": [
+        {
+          "name": "migration: message count and order are correct",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: body text not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: attachments and images not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: thought not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: code block not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: table not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: citation not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: duplicate source message IDs preserve every message at export",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/html-document-migration.test.ts",
+      "domain": "document",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Controlled fixtures exercising current L1, L2, L3b and L4 contracts; no independently verified live Provider capture.",
+      "notes": "Project behavior and interface migration coverage; does not claim P0 source evidence.",
+      "testCount": 8,
+      "tests": [
+        {
+          "name": "migration: message count and order are correct",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: body text not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: attachments and images not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: thought not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: code block not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: table not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: citation not dropped",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "migration: duplicate source message IDs preserve every message at export",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/provider-native-callers.test.ts",
+      "domain": "provider",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Controlled fixtures exercising current L1, L2, L3b and L4 contracts; no independently verified live Provider capture.",
+      "notes": "Project behavior and interface migration coverage; does not claim P0 source evidence.",
+      "testCount": 9,
+      "tests": [
+        {
+          "name": "production pagination merges native pages chronologically and closes renamed resources",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "page merge dedupes stable messages and shared source images without collapsing anonymous assets",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "native token loops retain diagnostics and explicitly mark incomplete coverage",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "production RPC client parses raw responses without invoking the legacy detail facade",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "native pagination rejects mixed legacy message pages instead of dropping their bodies",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "metadata-only detail retry follows native pagination to its terminal page",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "cooperative ZIP decoding yields to the event loop and preserves synchronous HTML semantics",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Takeout prompt-cell attachments and audio stay user-owned while response references remain assistant-owned",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "metadata-only retry cannot hide a subsequent detail-page fetch failure",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/provider-native-callers_other_layers.test.ts",
+      "domain": "provider",
+      "classification": "P2",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "provenanceSource": "Controlled fixtures exercising current L1, L2, L3b and L4 contracts; no independently verified live Provider capture.",
+      "notes": "Project behavior and interface migration coverage; does not claim P0 source evidence.",
+      "testCount": 6,
+      "tests": [
+        {
+          "name": "native L1 facts preserve rich content and model through real L2, L3b and three renderers",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "L4 JSON serializes trusted native v2 Domain without legacy DTO or mutable source fields",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "real v2 Takeout import admits Index/Detail and retains variant filenames as lazy task bytes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "a partial Takeout cannot replace a complete v2 Detail or capture its source readers",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "ambiguous Takeout ZIP paths never select unrelated resource bytes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Application resources and L4 paths rename output without mutating L1 source identity or bytes",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/provider-chatgpt-dil.test.ts",
+      "domain": "chatgpt",
+      "classification": "P2",
+      "provenanceSource": "114 retained synthetic educational ChatGPT source/fallback captures plus component ordering and bounded non-executing interpreter contracts",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "notes": "Offline captured component source coverage and synthetic safety cases; does not claim live Tier 2 or interactive runtime fidelity.",
+      "testCount": 121,
+      "tests": [
+        {
+          "name": "Captured DIL live-00: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-01: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-02: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-03: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-04: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-05: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-06: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-07: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-08: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-09: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-10: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-11: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-12: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-13: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-14: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-15: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-16: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-17: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-18: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-19: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-20: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-21: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-22: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-23: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-24: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-25: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-26: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-27: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-28: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-29: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-30: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-31: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-32: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-33: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-34: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-35: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-36: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-37: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-38: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-39: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-40: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-41: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-42: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-43: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-44: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-45: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-46: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-47: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-48: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-49: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-50: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-51: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-52: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-53: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-54: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-55: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-56: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-57: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-58: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-59: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-60: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-61: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-62: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-63: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-64: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-65: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-66: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-67: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-68: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-69: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-70: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-71: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-72: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-73: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-74: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-75: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-76: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-77: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-78: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-79: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-80: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-81: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-82: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-83: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-84: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-85: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-86: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-87: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-88: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-89: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-90: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-91: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-92: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-93: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-94: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-95: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-96: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-97: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-98: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-99: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-100: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-101: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-102: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-103: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-104: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-105: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-106: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-107: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-108: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-109: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-110: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-111: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-112: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Captured DIL live-113: source is independently parseable without fallback",
+          "classification": "P2"
+        },
+        {
+          "name": "Live Helmholtz checklist stays before conclusion with all six labels and static initial counter",
+          "classification": "P2"
+        },
+        {
+          "name": "Layout cards, title, divider, code, SVG, learning widget and gallery render in source order",
+          "classification": "P2"
+        },
+        {
+          "name": "Literal loops render only referenced fields, retain repeated choices, and honor nested conditions",
+          "classification": "P2"
+        },
+        {
+          "name": "Components preserve Markdown code, inline code, formulas, and safe literal interpolation",
+          "classification": "P2"
+        },
+        {
+          "name": "Only the unsupported component uses uniquely anchored fallback; siblings and restored labels stay",
+          "classification": "P2"
+        },
+        {
+          "name": "Unknown, malformed and ambiguous components preserve fallback or explicitly report unavailable content",
+          "classification": "P2"
+        },
+        {
+          "name": "Expressions and handlers cannot execute calls, access prototypes, or expand arbitrary data",
+          "classification": "P2"
+        }
+      ]
+    },
+    {
+      "file": "tests/provider-fixture-contract.test.ts",
+      "domain": "provider",
+      "classification": "P2",
+      "provenanceSource": "Project fixture ownership, source independence and fresh captured input contracts; synthetic transport variants are not claimed as raw source evidence.",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "notes": "Recursive generator independence guard, endpoint mutation isolation and complete per-key source metadata. Source paths and origin categories are project contracts, not proof of external capture authenticity.",
+      "testCount": 3,
+      "tests": [
+        {
+          "name": "provider fixture references resolve and generators never execute a production parser",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "Grok endpoint fixtures isolate provider mutations from subsequent reads",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        },
+        {
+          "name": "fixture provenance covers every fixed key with existing evidence and honest source units",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/grok_rpc_fixture_closure.test.ts",
+      "domain": "provider",
+      "classification": "P2",
+      "provenanceSource": "Project fixture ownership, source independence and fresh captured input contracts; synthetic transport variants are not claimed as raw source evidence.",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "notes": "Inventory includes Python-embedded Node probes. Generator guards and mutation isolation preserve independent parser inputs.",
+      "testCount": 1,
+      "tests": [
+        {
+          "name": "Grok source and browser mocks use matching native endpoint generators",
+          "classification": "P2",
+          "policy": "PRESERVE_PROJECT_CONTRACT"
+        }
+      ]
+    },
+    {
+      "file": "tests/document-docx.test.ts",
+      "domain": "document_ast",
+      "classification": "P2",
+      "provenanceSource": "Synthetic v2 Document AST and Domain fixtures exercising local DOCX rendering and L4 export packaging; not independently verified provider evidence.",
+      "policy": "PRESERVE_PROJECT_CONTRACT",
+      "notes": "Tests actual zipped OOXML and safe links, resource embedding/companion packaging, and missing-image fallback. These are project-defined DOCX behavior contracts, not P0 provider captures.",
+      "testCount": 10,
+      "tests": [
+        {
+          "name": "DOCX renders actual OOXML, editable text, safe links, a merged table and embedded image",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX planner embeds supported images but preserves files and unsupported image formats alongside Word",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX handles empty conversation and unavailable images without losing the text",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX preserves portrait, landscape and progressive JPEG proportions in the actual OOXML",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX unreadable image dimensions preserve companion bytes and readable fallback text",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX image headers use byte-view offsets and reject zero dimensions",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX native lists preserve starts, nesting, restarts and unnumbered continuation paragraphs",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX converts common inline and display LaTeX structures to native Word math",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX unsupported and malformed formulas retain the entire original source without partial math",
+          "classification": "P2"
+        },
+        {
+          "name": "DOCX native math escapes XML text and never creates links from untrusted math commands",
+          "classification": "P2"
+        }
+      ]
     }
   ],
   "summary": {
-    "totalSuites": 23,
-    "totalTests": 217,
+    "totalSuites": 52,
+    "totalTests": 518,
     "byClassification": {
       "P0": 0,
-      "P1": 17,
-      "P2": 198,
+      "P1": 18,
+      "P2": 498,
       "P3": 2,
       "P4": 0
     }
   },
-  "lastAudited": "2026-09-28"
+  "lastAudited": "2026-10-27"
 }

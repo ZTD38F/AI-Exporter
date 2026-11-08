@@ -15,6 +15,10 @@ import json
 import base64
 import platform
 import glob
+import zipfile
+import struct
+import shutil
+import tempfile
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Dict, Any, List
@@ -33,8 +37,7 @@ from scripts.cdp_client import (
 from scripts.framework.pipeline.actions import (
     AwaitStreamSettledAction,
     AssertIdleAction,
-    StreamSettledConfig,
-    UniversalInputAction
+    StreamSettledConfig
 )
 from scripts.framework.selectors import WorkbenchSelectors
 from scripts.framework.gateway import get_gateway
@@ -144,13 +147,31 @@ class VisualPlayground:
             self.env.setup_download_behavior(output_dir=self.output_dir, cdp=self.cdp)
         else:
             try:
-                self.cdp.call("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": self.output_dir})
-            except Exception:
-                pass
+                res = self.cdp.call("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": self.output_dir})
+                if isinstance(res, dict) and "error" in res:
+                    print(f"⚠️ Page.setDownloadBehavior failed: {res['error']}")
+            except Exception as e:
+                print(f"⚠️ Page.setDownloadBehavior exception: {e}")
 
     def _setup_viewport(self):
         """Force standardized physical viewport and remove scaling distortions."""
+        if self.active_target == "popup" and not self._is_mock:
+            # Action popups retain Chrome's native surface size. Emulating a
+            # full page changes layout metrics but not the captured surface.
+            self.cdp.call("Emulation.clearDeviceMetricsOverride", {})
+            response = self.cdp.call("Page.getLayoutMetrics", {})
+            viewport = response.get("result", response).get("cssLayoutViewport", {})
+            width, height = viewport.get("clientWidth", 0), viewport.get("clientHeight", 0)
+            if width <= 0 or height <= 0:
+                raise RuntimeError("Action popup has no usable native viewport")
+            self.viewport_size = (width, height)
+            self.width, self.height = self.viewport_size
+            return
         if hasattr(self, "env") and self.env and not self._is_mock:
+            response = self.cdp.call("Page.getLayoutMetrics", {})
+            viewport = response.get("result", response).get("cssLayoutViewport", {})
+            if (viewport.get("clientWidth"), viewport.get("clientHeight")) == self.viewport_size:
+                return
             self.env.setup_viewport(self.cdp, self.viewport_size)
         else:
             try:
@@ -171,13 +192,19 @@ class VisualPlayground:
             except Exception:
                 pass
 
-    def teardown(self):
+    def teardown(self, keep_viewport: bool = False):
         """
         Safely tear down the playground:
         Explicitly clear any device metrics overrides to prevent viewport shrinkage bugs,
         and cleanly disconnect the CDP session.
         """
-        if hasattr(self, "env") and self.env and not self._is_mock:
+        if keep_viewport:
+            # Stateless CLI commands share one fixed test viewport; final teardown restores it.
+            self.cdp.close()
+            browser_cdp = getattr(self.env, "browser_cdp", None)
+            if browser_cdp:
+                browser_cdp.close()
+        elif hasattr(self, "env") and self.env and not self._is_mock:
             self.env.teardown(self.cdp)
         else:
             try:
@@ -198,18 +225,20 @@ class VisualPlayground:
     def _to_pixel(self, x: float, y: float) -> Tuple[int, int]:
         """
         Convert normalized (0.0 - 1.0) or absolute coordinates to CSS pixels for CDP Input dispatch.
-        Accurately scales by actual CSS layout viewport (window.innerWidth / innerHeight),
+        Accurately scales by CDP layout metrics without evaluating page JavaScript,
         natively accommodating any display DPI / Retina scaling (DPR 1.0, 1.5, 2.0).
         """
         css_w = float(self.width)
         css_h = float(self.height)
         dpr = 1.0
         try:
-            metrics = self.cdp.eval("({ w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio })")
-            if isinstance(metrics, dict):
-                css_w = float(metrics.get("w") or css_w)
-                css_h = float(metrics.get("h") or css_h)
-                dpr = float(metrics.get("dpr") or 1.0)
+            response = self.cdp.call("Page.getLayoutMetrics", {})
+            metrics = response.get("result", response)
+            viewport = metrics.get("cssLayoutViewport", {})
+            css_w = float(viewport.get("clientWidth") or css_w)
+            css_h = float(viewport.get("clientHeight") or css_h)
+            device_width = float(metrics.get("layoutViewport", {}).get("clientWidth") or css_w)
+            dpr = device_width / css_w
         except Exception:
             pass
 
@@ -239,14 +268,22 @@ class VisualPlayground:
         ZERO DOM elements, selectors, or text structures are returned.
         """
         step_name = step_name or f"shot_{int(time.time() * 1000)}"
-        res = self.cdp.call("Page.captureScreenshot", {"format": "png"})
-        if isinstance(res, dict) and "result" in res and isinstance(res["result"], dict):
-            b64_data = res["result"].get("data", "")
-        elif isinstance(res, dict):
-            b64_data = res.get("data", "")
-        else:
-            b64_data = ""
-        img_bytes = base64.b64decode(b64_data)
+        # A reconnect can race the compositor's resize. Never return an image
+        # whose coordinates differ from the viewport used by click/type.
+        for attempt in range(10):
+            res = self.cdp.call("Page.captureScreenshot", {"format": "png"})
+            data = res.get("result", res)
+            b64_data = data.get("data", "")
+            img_bytes = base64.b64decode(b64_data)
+            if img_bytes[:8] != b"\x89PNG\r\n\x1a\n" or len(img_bytes) < 24:
+                raise RuntimeError("Screenshot is not a valid PNG")
+            actual = struct.unpack(">II", img_bytes[16:24])
+            if actual == self.viewport_size:
+                break
+            if attempt == 9:
+                raise RuntimeError(f"Screenshot viewport mismatch: expected {self.viewport_size}, got {actual}")
+            time.sleep(0.1)
+            self._setup_viewport()
 
         file_path = os.path.join(self.output_dir, f"{step_name}.png")
         with open(file_path, "wb") as f:
@@ -342,23 +379,16 @@ class VisualPlayground:
         """
         Hardware-level text input primitive:
         1. Physically clicks (x, y) to gain focus if coordinates provided.
-        2. If clear_first=True, deterministically clears the target element via Tier 2 UniversalInputAction
-           (with coordinate hit-testing) and physical KeyA / Backspace keystrokes.
-        3. Inserts text via Tier 2 UniversalInputAction and CDP Input.insertText at physical focus.
+        2. If clear_first=True, clears the focused control using KeyA / Backspace.
+        3. Inserts text through CDP Input.insertText at physical focus.
+        Never inspect or mutate DOM nodes: non-text controls must keep their children.
         Note: To simply clear an input at (x, y), call input_text("", x=x, y=y, clear_first=True).
         """
-        px_x, px_y = self._to_pixel(x, y) if (x is not None and y is not None) else (None, None)
-        point = (px_x, px_y) if (px_x is not None and px_y is not None) else None
-
         if x is not None and y is not None:
             self.mouse_click(x, y, label="focus_for_input")
             time.sleep(0.1)
 
         if clear_first:
-            try:
-                UniversalInputAction.clear_target(self.cdp, point=point)
-            except Exception:
-                pass
             is_mac = platform.system().lower() == "darwin"
             modifier = 4 if is_mac else 2
             self.cdp.call("Input.dispatchKeyEvent", {
@@ -366,7 +396,8 @@ class VisualPlayground:
                 "windowsVirtualKeyCode": 65,
                 "key": "a",
                 "code": "KeyA",
-                "modifiers": modifier
+                "modifiers": modifier,
+                "commands": ["selectAll"]
             })
             self.cdp.call("Input.dispatchKeyEvent", {
                 "type": "keyUp",
@@ -392,7 +423,7 @@ class VisualPlayground:
 
         if text:
             if use_insert:
-                UniversalInputAction.insert_text(self.cdp, text, point=point)
+                self.cdp.call("Input.insertText", {"text": text})
             else:
                 for ch in text:
                     self.cdp.call("Input.dispatchKeyEvent", {"type": "char", "text": ch})
@@ -421,6 +452,8 @@ class VisualPlayground:
             "Tab": {"windowsVirtualKeyCode": 9, "key": "Tab", "code": "Tab"},
             "Backspace": {"windowsVirtualKeyCode": 8, "key": "Backspace", "code": "Backspace"},
             "Delete": {"windowsVirtualKeyCode": 46, "key": "Delete", "code": "Delete"},
+            "Home": {"windowsVirtualKeyCode": 36, "key": "Home", "code": "Home"},
+            "End": {"windowsVirtualKeyCode": 35, "key": "End", "code": "End"},
             "ArrowDown": {"windowsVirtualKeyCode": 40, "key": "ArrowDown", "code": "ArrowDown"},
             "Down": {"windowsVirtualKeyCode": 40, "key": "ArrowDown", "code": "ArrowDown"},
             "ArrowUp": {"windowsVirtualKeyCode": 38, "key": "ArrowUp", "code": "ArrowUp"},
@@ -431,6 +464,8 @@ class VisualPlayground:
             "Right": {"windowsVirtualKeyCode": 39, "key": "ArrowRight", "code": "ArrowRight"},
             "Space": {"windowsVirtualKeyCode": 32, "key": " ", "code": "Space"},
         }
+        # Background extension tabs need keyboard focus without stealing OS focus.
+        self.cdp.call("Emulation.setFocusEmulationEnabled", {"enabled": True})
         entry = KEY_MAP.get(key)
         if entry:
             vk = entry["windowsVirtualKeyCode"]
@@ -487,13 +522,9 @@ class VisualPlayground:
         cond = condition.lower().strip()
 
         if cond in ("stream_settled", "stream", "chat_complete"):
-            require_image = kwargs.get("require_image", False)
-            turn_start_time = kwargs.get("turn_start_time", t0)
             config = kwargs.get("config", None)
             action = AwaitStreamSettledAction(
                 timeout=timeout,
-                require_image=require_image,
-                turn_start_time=turn_start_time,
                 config=config
             )
             res = action.execute(None, self.cdp)
@@ -516,60 +547,48 @@ class VisualPlayground:
                 data=res.data or {}
             )
 
-        elif cond in ("zip_downloaded", "export_complete"):
+        elif cond in ("zip_downloaded", "download_complete", "export_complete"):
             download_dir = kwargs.get("download_dir") or self.output_dir
-            sys_downloads = os.path.expanduser("~/Downloads")
-            expected_pattern = kwargs.get("pattern", "gemini_export_*.zip")
+            expected_pattern = kwargs.get("pattern") or ("*.zip" if cond == "zip_downloaded" else "*")
+            previous = {}
             min_mtime = kwargs.get("min_mtime", 0.0)
             start_wait = time.time()
-
-            for _ in range(int(min(timeout, 60))):
-                status = self.cdp.eval(f"""
-                (() => {{
-                    const btn = document.querySelector('{WorkbenchSelectors.BTN_EXPORT}');
-                    return {{ isRunning: btn && btn.disabled }};
-                }})()
-                """)
-                if not status or not status.get("isRunning"):
-                    break
-                time.sleep(0.5)
 
             found_file = None
             while time.time() - start_wait < timeout:
                 time.sleep(0.8)
                 if os.path.isdir(download_dir):
-                    matches = glob.glob(os.path.join(download_dir, expected_pattern))
-                    if matches:
-                        newest = max(matches, key=os.path.getmtime)
-                        if os.path.getmtime(newest) >= min_mtime and os.path.getsize(newest) > 0:
-                            found_file = newest
-                            break
-
-                if os.path.isdir(sys_downloads):
-                    matches = glob.glob(os.path.join(sys_downloads, expected_pattern))
-                    if matches:
-                        newest = max(matches, key=os.path.getmtime)
-                        if os.path.getmtime(newest) >= min_mtime and os.path.getsize(newest) > 0:
-                            dest_zip = os.path.join(self.output_dir, os.path.basename(newest))
-                            if os.path.abspath(newest) != os.path.abspath(dest_zip):
-                                import shutil
-                                shutil.copy2(newest, dest_zip)
-                                found_file = dest_zip
-                            else:
-                                found_file = newest
-                            break
+                    matches = sorted(glob.glob(os.path.join(download_dir, expected_pattern)), key=os.path.getmtime, reverse=True)
+                    for candidate in matches:
+                        suffix = os.path.splitext(candidate)[1].lower()
+                        if suffix not in (".zip", ".md", ".json", ".html", ".pdf") or not os.path.isfile(candidate):
+                            continue
+                        stat = os.stat(candidate)
+                        signature = (stat.st_size, stat.st_mtime_ns)
+                        stable = previous.get(candidate) == signature
+                        previous[candidate] = signature
+                        if stat.st_mtime < min_mtime or stat.st_size == 0 or os.path.exists(candidate + ".crdownload"):
+                            continue
+                        if suffix == ".zip" and not zipfile.is_zipfile(candidate):
+                            continue
+                        if not stable:
+                            continue
+                        found_file = candidate
+                        break
+                    if found_file:
+                        break
 
             elapsed = time.time() - t0
             if found_file:
                 return WaitResult(
                     success=True,
-                    message=f"ZIP 导出成功落盘: {os.path.basename(found_file)} ({os.path.getsize(found_file)} bytes)",
+                    message=f"导出文件成功落盘: {os.path.basename(found_file)} ({os.path.getsize(found_file)} bytes)",
                     elapsed=elapsed,
                     data={"file_path": found_file, "size": os.path.getsize(found_file)}
                 )
             return WaitResult(
                 success=False,
-                message=f"等待 ZIP 导出落盘超时 ({timeout}s)",
+                message=f"等待导出文件落盘超时 ({timeout}s)",
                 elapsed=elapsed
             )
 
@@ -748,14 +767,37 @@ class VisualPlayground:
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """Run the comprehensive ExportSpecificationAsserter against a given exported ZIP file."""
         from scripts.framework.assertions import CDPAssertions
+        suffix = os.path.splitext(zip_path)[1].lower()
+        if suffix == ".md":
+            from tests.helpers.export_spec_asserter import ExportSpecificationAsserter
+            if not os.path.isfile(zip_path) or not os.path.getsize(zip_path):
+                return False, "Markdown file is missing or empty", {}
+            with tempfile.TemporaryDirectory(prefix="visual-export-") as stage:
+                shutil.copy2(zip_path, os.path.join(stage, os.path.basename(zip_path)))
+                checker = ExportSpecificationAsserter(stage)
+                ok = checker.run_all_assertions(min_conversations=min_conversations,
+                    expected_golden_chats=expected_golden_chats, target_chat_id=chat_id)
+                return ok, "Standalone Markdown specification " + ("passed" if ok else "failed"), {
+                    "format": "md", "md_count": len(checker.md_files), "errors": checker.errors,
+                    "warnings": checker.warnings, "file_path": zip_path}
+        if suffix != ".zip" or not zipfile.is_zipfile(zip_path):
+            return False, "Expected a valid ZIP or standalone Markdown; other formats need their own validator", {"format": suffix}
+        with zipfile.ZipFile(zip_path) as archive:
+            documents = [name for name in archive.namelist() if not name.endswith('/')
+                         and not any(part in ('assets', 'files', 'images') for part in name.split('/')[:-1])]
+            formats = {os.path.splitext(name)[1].lower() for name in documents}
+        if '.json' in formats and '.md' not in formats:
+            if expected_golden_chats:
+                return False, 'JSON golden content assertions are unsupported', {'format': 'json'}
+            from scripts.framework.json_archive import validate_json_archive
+            return validate_json_archive(zip_path, min_conversations, chat_id)
+        if '.md' not in formats and formats.intersection({'.html', '.pdf'}):
+            return False, 'Unsupported archive format: HTML/PDF need their own content validator', {'formats': sorted(formats)}
         extract_dir = os.path.join(self.output_dir, "extracted_export")
         return CDPAssertions.assert_exported_zip_spec(
-            zip_path=zip_path,
-            extract_dir=extract_dir,
-            min_conversations=min_conversations,
-            expected_golden_chats=expected_golden_chats,
-            chat_id=chat_id
-        )
+            zip_path=zip_path, extract_dir=extract_dir, min_conversations=min_conversations,
+            expected_golden_chats=expected_golden_chats, chat_id=chat_id)
+
 
 
 VisualSandbox = VisualPlayground
@@ -804,19 +846,22 @@ def open_visual_playground(
         time.sleep(1.0)
         print(f"🧩 当前活跃扩展 ID: {reinstalled_id}")
 
-    target_tab = env.ensure_tab(norm_target)
+    expected_path = {"options": "/src/ui/options/options.html", "popup": "/src/ui/popup/popup.html"}
+    target_tab = None
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        candidate = env.ensure_tab(norm_target)
+        if candidate:
+            parsed = urllib.parse.urlsplit(candidate.get("url", ""))
+            valid = (is_gemini_url(candidate.get("url", "")) if norm_target == "gemini" else
+                     parsed.scheme == "chrome-extension" and parsed.netloc == env.get_extension_id()
+                     and parsed.path == expected_path[norm_target])
+            if valid and candidate.get("webSocketDebuggerUrl"):
+                target_tab = candidate
+                break
+        time.sleep(0.2)
     if not target_tab:
-        tabs = get_tabs(port)
-        if not tabs:
-            raise RuntimeError(f"未在端口 {port} 找到任何活跃 Chrome 标签页。请先启动独立测试 Chrome。")
-        if norm_target == "gemini":
-            target_tab = next((t for t in tabs if t.get("type", "page") == "page" and is_gemini_url(t.get("url", ""))), None)
-        elif norm_target == "popup":
-            target_tab = next((t for t in tabs if t.get("type", "page") == "page" and "popup.html" in t.get("url", "")), None)
-        elif norm_target == "options":
-            target_tab = next((t for t in tabs if t.get("type", "page") == "page" and "options.html" in t.get("url", "")), None)
-        if not target_tab:
-            target_tab = tabs[0]
+        raise RuntimeError(f"Target {norm_target} not ready on port {port}; refusing unrelated tab fallback")
 
     cdp = CDPConnection(target_tab["webSocketDebuggerUrl"])
     playground = VisualPlayground(

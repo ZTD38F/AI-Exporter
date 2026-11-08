@@ -1,174 +1,63 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-const LiveSaveObserver = require('../src/content/liveSaveObserver.js');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { indexStorage } from './helpers/indexStorage.js';
+import { accountRuntime, ACCOUNT_UUID, ACCOUNT_OBSERVATION } from './helpers/accountRuntime.js';
+import { init, handleWindowMessage } from '../src/l1/sniffer/gemini/messageBridge.js';
+import { runCleanups } from '../src/runtime/content/cleanupRegistry.js';
+import { getDetail } from '../src/l3a/storageService.js';
+import { extractConversationIdFromUrl } from '../src/shared/utils/pathUtils.js';
+import { resolveCurrentAccount } from '../src/runtime/content/accountContext.js';
+import { detailGen as geminiDetailGen } from './fixtures/providers/geminiDetail.js';
 
-test('liveSaveObserver - DOM inspection of generating state', () => {
-    // 1. Clean DOM environment
-    const origDoc = (global as any).document;
-    const elementsMap = new Map<string, any>();
-
-    (global as any).document = {
-        querySelector: (sel: string) => {
-            return elementsMap.get(sel) || null;
-        },
-        body: {
-            nodeType: 1
-        }
-    };
-
-    try {
-        // Initially not generating
-        assert.strictEqual(LiveSaveObserver.checkIsGeneratingDOM(), false);
-
-        // Add a visible stop button
-        elementsMap.set('button[aria-label*="Stop"]', {
-            offsetParent: {} // visible
-        });
-        assert.strictEqual(LiveSaveObserver.checkIsGeneratingDOM(), true);
-
-        // Remove stop button, add streaming class
-        elementsMap.clear();
-        elementsMap.set('.streaming', {
-            offsetParent: {}
-        });
-        assert.strictEqual(LiveSaveObserver.checkIsGeneratingDOM(), true);
-
-        // Clean all
-        elementsMap.clear();
-        assert.strictEqual(LiveSaveObserver.checkIsGeneratingDOM(), false);
-    } finally {
-        (global as any).document = origDoc;
-    }
+// The old DOM/debounce LiveSaveObserver is retired. Actual passive admissions
+// commit Detail; stream completion requests Application acquisition without inventing DOM Detail.
+async function host(t: import('node:test').TestContext) {
+    const storage = indexStorage(), runtime = accountRuntime();
+    await resolveCurrentAccount(ACCOUNT_OBSERVATION, 'u0');
+    const changed: string[] = [], completed: string[] = [];
+    init({ onDetailChanged: key => changed.push(key.conversationId), onStreamComplete: key => completed.push(key.conversationId) });
+    t.after(() => { runCleanups(); runtime.restore(); storage.restore(); });
+    const event = (type: string, extra: Record<string, unknown> = {}) => ({ source: window, origin: location.origin,
+        data: { type, payload: { id: 'passive123', slot: 'u0', requestAccountObservation: ACCOUNT_OBSERVATION, ...extra } } }) as unknown as MessageEvent;
+    return { changed, completed, event };
+}
+test('active conversation extraction supports account routes and excludes reserved pages', () => {
+    assert.equal(extractConversationIdFromUrl('/app/82a15f0bc2e'), '82a15f0bc2e');
+    assert.equal(extractConversationIdFromUrl('/u/1/app/999abcdef'), '999abcdef');
+    assert.equal(extractConversationIdFromUrl('/app'), null);
+    assert.equal(extractConversationIdFromUrl('/app/trash'), null);
 });
-
-test('liveSaveObserver - URL active ID extraction', () => {
-    const origLoc = (global as any).location;
-    (global as any).location = {
-        pathname: '/app/82a15f0bc2e'
-    };
-
-    try {
-        const id = LiveSaveObserver.getActiveConversationId();
-        assert.strictEqual(id, '82a15f0bc2e');
-
-        (global as any).location.pathname = '/u/1/app/999abcdef';
-        const id2 = LiveSaveObserver.getActiveConversationId();
-        assert.strictEqual(id2, '999abcdef');
-
-        (global as any).location.pathname = '/app';
-        const id3 = LiveSaveObserver.getActiveConversationId();
-        assert.strictEqual(id3, null);
-    } finally {
-        (global as any).location = origLoc;
-    }
+test('stream lifecycle notifications do not save unfinished or uncommitted DOM content', async t => {
+    const h = await host(t);
+    await handleWindowMessage(h.event('GEMINI_STREAM_GENERATE_START'));
+    await handleWindowMessage(h.event('GEMINI_STREAM_GENERATE_COMPLETE'));
+    assert.deepEqual(h.changed, []);
+    assert.deepEqual(h.completed, ['passive123']);
+    assert.equal(await getDetail({ accountId: ACCOUNT_UUID, conversationId: 'passive123' }), null);
 });
-
-test('liveSaveObserver - Lifecycle and debounced save trigger', async () => {
-    const origWin = (global as any).window;
-    const origDoc = (global as any).document;
-
-    const eventListeners: Record<string, Function[]> = {};
-
-    (global as any).window = {
-        addEventListener: (event: string, fn: Function) => {
-            if (!eventListeners[event]) eventListeners[event] = [];
-            eventListeners[event].push(fn);
-        },
-        removeEventListener: (event: string, fn: Function) => {
-            if (eventListeners[event]) {
-                eventListeners[event] = eventListeners[event].filter(f => f !== fn);
-            }
-        }
-    };
-
-    (global as any).document = {
-        body: { nodeType: 1 },
-        querySelector: () => null
-    };
-
-    (global as any).MutationObserver = class {
-        observe() {}
-        disconnect() {}
-    };
-
-    let savedId: string | null = null;
-    let savedReason: string | null = null;
-
-    try {
-        LiveSaveObserver.init({
-            debounceMs: 50,
-            getActiveId: () => 'test_chat_conv_1',
-            onTurnComplete: (cid: string, reason: string) => {
-                savedId = cid;
-                savedReason = reason;
-            }
-        });
-
-        assert.strictEqual(LiveSaveObserver.isObserverActive(), true);
-
-        // Manual flush trigger
-        LiveSaveObserver.flushCurrentTurnNow();
-        assert.strictEqual(savedId, 'test_chat_conv_1');
-        assert.strictEqual(savedReason, 'turn_complete');
-
-        // Test cleanup
-        LiveSaveObserver.cleanup();
-        assert.strictEqual(LiveSaveObserver.isObserverActive(), false);
-    } finally {
-        (global as any).window = origWin;
-        (global as any).document = origDoc;
-        delete (global as any).MutationObserver;
-    }
+test('a real completed passive Detail triggers after storage commit and duplicate captures do not retrigger', async t => {
+    const h = await host(t);
+    const text = geminiDetailGen('G_LIVE_SAVE_OBSERVER_01');
+    const event = h.event('GEMINI_NETWORK_BATCHEXECUTE', { text, requestedAt: 1700000000000, truncated: false,
+        url: 'https://gemini.google.com/_/BardChatUi/data/batchexecute', detailRequest: { conversationId: 'passive123', requestCursor: null } });
+    await handleWindowMessage(event);
+    assert.equal((await getDetail({ accountId: ACCOUNT_UUID, conversationId: 'passive123' }))?.quality.status, 'complete');
+    assert.deepEqual(h.changed, ['passive123']);
+    await handleWindowMessage(event);
+    assert.deepEqual(h.changed, ['passive123']);
 });
-
-test('liveSaveObserver - RPC stream lifecycle triggers fast save without debounce lag', async () => {
-    const origWin = (global as any).window;
-    const origDoc = (global as any).document;
-
-    (global as any).window = {
-        addEventListener: () => {},
-        removeEventListener: () => {}
-    };
-    (global as any).document = {
-        body: { nodeType: 1 },
-        querySelector: () => null
-    };
-    (global as any).MutationObserver = class {
-        observe() {}
-        disconnect() {}
-    };
-
-    let savedId: string | null = null;
-    let savedReason: string | null = null;
-
-    try {
-        LiveSaveObserver.init({
-            debounceMs: 500, // even with high debounce, RPC stream complete should be near-instant
-            getActiveId: () => 'default_active_id',
-            onTurnComplete: (cid: string, reason: string) => {
-                savedId = cid;
-                savedReason = reason;
-            }
-        });
-
-        // 1. Notify stream start for a new conversation
-        LiveSaveObserver.notifyStreamStart('c_stream_123');
-
-        // 2. Notify stream complete
-        LiveSaveObserver.notifyStreamComplete('c_stream_123');
-
-        // Wait 65ms (well below debounceMs of 500ms)
-        await new Promise(r => setTimeout(r, 65));
-
-        assert.strictEqual(savedId, 'c_stream_123');
-        assert.strictEqual(savedReason, 'turn_complete');
-
-        LiveSaveObserver.cleanup();
-    } finally {
-        (global as any).window = origWin;
-        (global as any).document = origDoc;
-        delete (global as any).MutationObserver;
-    }
+test('foreign origin and foreign window notifications cannot trigger completion', async t => {
+    const h = await host(t);
+    await handleWindowMessage({ ...h.event('GEMINI_STREAM_GENERATE_COMPLETE'), origin: 'https://evil.test' } as MessageEvent);
+    await handleWindowMessage({ ...h.event('GEMINI_STREAM_GENERATE_COMPLETE'), source: {} } as MessageEvent);
+    assert.deepEqual(h.completed, []); assert.deepEqual(h.changed, []);
 });
-
+test('cleanup removes passive dispatch and reinitialization installs one current listener', async t => {
+    const h = await host(t);
+    runCleanups();
+    await handleWindowMessage(h.event('GEMINI_STREAM_GENERATE_COMPLETE'));
+    assert.deepEqual(h.completed, []);
+    init({ onStreamComplete: key => h.completed.push(key.conversationId) });
+    await handleWindowMessage(h.event('GEMINI_STREAM_GENERATE_COMPLETE'));
+    assert.deepEqual(h.completed, ['passive123']);
+});

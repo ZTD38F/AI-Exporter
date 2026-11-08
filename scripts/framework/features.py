@@ -19,7 +19,7 @@ class TestStatus(Enum):
 
 
 class FeatureDomain(Enum):
-    PAGE_CHAT = "Gemini 网页端与多轮问答"
+    PAGE_CHAT = "平台网页端与多轮问答"
     LIFECYCLE = "会话生命周期与实时同步"
     TAKEOUT = "Takeout 离线导入与标题晋级"
     WORKBENCH = "工作台搜索、过滤与交互控制"
@@ -46,10 +46,15 @@ class TestResult:
 
 
 class FeatureRegistry:
-    def __init__(self):
+    def __init__(self, standard=True):
         self._features: Dict[str, Feature] = {}
         self._results: Dict[str, TestResult] = {}
-        self._init_standard_features()
+        if standard:
+            self._init_standard_features()
+
+    @property
+    def results(self):
+        return dict(self._results)
 
     def _init_standard_features(self):
         # -------------------------------------------------------------
@@ -64,11 +69,11 @@ class FeatureRegistry:
         ))
         self.register(Feature(
             id="feat_imagen_multimodal",
-            domain=FeatureDomain.PAGE_CHAT,
-            name="AI Imagen 生图与附件落地",
-            description="包含生图指令的 Prompt 触发，网页成功渲染高分辨率生成图像",
+            domain=FeatureDomain.EXPORT_DISK,
+            name="图片导出与网页内容一致性",
+            description="核对 golden 会话导出 ZIP 中每轮图片引用、实体附件与网页画面",
             critical=True,
-            prerequisites=["feat_chat_generation"]
+            prerequisites=["feat_zip_export_download"]
         ))
         self.register(Feature(
             id="feat_inpage_export_badge",
@@ -100,8 +105,8 @@ class FeatureRegistry:
         self.register(Feature(
             id="feat_updated_badge_display",
             domain=FeatureDomain.LIFECYCLE,
-            name="「已更新」徽章与智能勾选",
-            description="已导出过的会话检测到新提问后，渲染琥珀色「已更新」徽章并被默认自动勾选",
+            name="来源更新时间与导出记录",
+            description="追加提问后验证来源更新时间晚于已有导出记录；v2 保持显式选择",
             critical=True,
             prerequisites=["feat_continued_chat_promotion"]
         ))
@@ -117,7 +122,7 @@ class FeatureRegistry:
             id="feat_ephemeral_chat_pruning",
             domain=FeatureDomain.LIFECYCLE,
             name="瞬态会话网页端删除实时剥离",
-            description="在网页端侧边栏删除会话，Options 列表与 Storage 在无需刷新情况下平滑剥离该项",
+            description="核验请求绑定的删除确认，同 Key Index/Detail/ExportRecord 原子删除，其他会话保留，Options 无刷新移除",
             critical=True
         ))
         self.register(Feature(
@@ -135,14 +140,14 @@ class FeatureRegistry:
             id="feat_takeout_zip_import",
             domain=FeatureDomain.TAKEOUT,
             name="离线 Takeout ZIP 导入",
-            description="导入预置纯净 Takeout ZIP，离线附件池建立，初始提问前缀临时标题生效",
+            description="导入预置 Takeout ZIP，验证来源事实接纳、Asset 引用闭合及源归档字节；不创建持久附件池",
             critical=True
         ))
         self.register(Feature(
             id="feat_deep_scan_pagination",
             domain=FeatureDomain.TAKEOUT,
             name="全量拉取历史分页同步",
-            description="点击【全量拉取历史】按钮，分页拉取所有云端会话，进度条正常推进至 100%",
+            description="点击 Scan All，验证实际 Recent 扫描结果和持久化 Coverage",
             critical=True
         ))
         self.register(Feature(
@@ -201,7 +206,7 @@ class FeatureRegistry:
             id="feat_tour_guide_interactive",
             domain=FeatureDomain.WORKBENCH,
             name="新手向导交互与 0 遮挡防撞",
-            description="推进向导步骤，气泡与高亮目标 0 遮挡重叠，完成后写入 Storage 持久化标记",
+            description="推进 v2 向导、验证目标无碰撞及 URL 启动意图消费，不依赖持久化标记",
             critical=False
         ))
 
@@ -216,10 +221,18 @@ class FeatureRegistry:
             critical=True
         ))
         self.register(Feature(
+            id="feat_gemini_dual_parse",
+            domain=FeatureDomain.EXPORT_DISK,
+            name="Gemini structured 与 Markdown 双路对比",
+            description="非阻断审计：同一份原生 RPC 分别走两条解析路径，完整保留逐轮差异与来源证据",
+            critical=False,
+            prerequisites=["feat_zip_export_download"]
+        ))
+        self.register(Feature(
             id="feat_multimodal_spec_assertion",
             domain=FeatureDomain.EXPORT_DISK,
             name="4 大黄金分类规范断言",
-            description="解压导出的 ZIP，严格断言 Frontmatter 7 键、附件非空、AI Imagen 模型归属",
+            description="解压导出的 ZIP，按 v2 Frontmatter 检查附件、来源事实与 Imagen 模型归属",
             critical=True,
             prerequisites=["feat_zip_export_download"]
         ))
@@ -228,24 +241,21 @@ class FeatureRegistry:
             domain=FeatureDomain.EXPORT_DISK,
             name="跳过已导出会话前置极速过滤",
             description="勾选【跳过已导出】时，已导出会话前置分流瞬间跳过（防空 ZIP 保护），含新会话时精准分流导出",
-            critical=True,
-            prerequisites=["feat_multimodal_spec_assertion"]
+            critical=True
         ))
         self.register(Feature(
             id="feat_html_export_download",
             domain=FeatureDomain.EXPORT_DISK,
             name="HTML 独立网页 ZIP 导出与落盘核验",
             description="切换导出格式为 HTML (.html)，下载 ZIP 并解压，严格断言独立网页结构、CSS 样式与附件落地",
-            critical=True,
-            prerequisites=["feat_fast_skip_exported"]
+            critical=True
         ))
         self.register(Feature(
             id="feat_pdf_export_download",
             domain=FeatureDomain.EXPORT_DISK,
             name="PDF 真实编译 ZIP 导出与落盘核验",
             description="切换导出格式为 PDF (.pdf)，通过沙箱 Typst WASM 真实编译导出 ZIP，解压严格断言 %PDF- 二进制规范与非空",
-            critical=True,
-            prerequisites=["feat_html_export_download"]
+            critical=True
         ))
         self.register(Feature(
             id="feat_stale_tab_image_export",
@@ -253,7 +263,7 @@ class FeatureRegistry:
             name="失效 Gemini 标签页下的图片导出",
             description="旧标签页无消息接收端时仍成功导出 Imagen 图片与引用",
             critical=True,
-            prerequisites=["feat_pdf_export_download"]
+            prerequisites=["feat_imagen_multimodal"]
         ))
 
     def register(self, feature: Feature):
@@ -330,7 +340,10 @@ class FeatureRegistry:
                 lines.append(f" {f.id:<34} | {f.name:<24} | {status_icon:<8} | {duration_str:<7} | {msg}")
 
         lines.append("\n" + "=" * 80)
-        overall_status = "🎉 全部通过 (ALL PASSED)" if failed_count == 0 and passed_count > 0 else ("⚠️ 存在失败项" if failed_count > 0 else "未完成")
+        overall_status = ("🎉 全部通过 (ALL PASSED)" if passed_count == total_count
+                          else "✅ 门禁通过（含非阻断审计警告）" if passed_count + warn_count == total_count
+                          else "⚠️ 存在失败项" if failed_count > 0
+                          else "⚠️ 未完整执行（含跳过或待执行项）")
         lines.append(f" 汇总统计: 总计 {total_count} 项 | 通过: {passed_count} | 失败: {failed_count} | 跳过: {skipped_count} | 警告: {warn_count}")
         lines.append(f" 最终判定: {overall_status}")
         lines.append("=" * 80)

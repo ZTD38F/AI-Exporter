@@ -1,0 +1,339 @@
+:root {
+  --tour-bg: #121420;
+  --tour-border: #282c44;
+  --tour-accent: #4f46e5;
+  --tour-accent2: #06b6d4;
+  --tour-text: #f1f3fc;
+  --tour-muted: #8a92b2;
+}
+
+.tour-overlay-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 100000;
+  pointer-events: auto;
+  overflow: hidden;
+  transition: opacity 0.25s ease;
+}
+
+.tour-spotlight {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(5, 6, 10, 0.78);
+  border: 2px solid rgba(99, 102, 241, 0.85);
+  box-sizing: border-box;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+  z-index: 100001;
+}
+
+.tour-spotlight.tour-spotlight-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tour-popover {
+  position: fixed;
+  z-index: 100002;
+  pointer-events: auto;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  background: var(--tour-bg);
+  border: 1px solid var(--tour-border);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  color: var(--tour-text);
+  padding: 16px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* Placement changes must never animate controls outside the viewport. */
+  transition: opacity 0.2s ease;
+}
+
+.tour-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.tour-step-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a5b4fc;
+  background: rgba(79, 70, 229, 0.18);
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  padding: 2px 8px;
+  border-radius: 99px;
+  letter-spacing: 0.02em;
+}
+
+.tour-step-badge.tour-feature-badge {
+  color: #38bdf8;
+  background: rgba(14, 165, 233, 0.18);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.tour-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--tour-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.tour-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tour-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  line-height: 1.35;
+  color: #ffffff;
+}
+
+.tour-content {
+  font-size: 13px;
+  color: #cbd2e8;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.tour-action-box {
+  margin: 10px 0 14px 0;
+  padding: 10px 12px;
+  background: rgba(14, 15, 23, 0.8);
+  border: 1px solid var(--tour-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tour-action-btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  background: linear-gradient(135deg, var(--tour-accent), var(--tour-accent2));
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+}
+
+.tour-action-btn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.tour-action-btn.secondary {
+  background: #1e2133;
+  border: 1px solid var(--tour-border);
+  color: #e2e8f0;
+  box-shadow: none;
+}
+
+.tour-action-btn.secondary:hover {
+  background: #282c44;
+}
+
+.tour-status-indicator[hidden], .tour-content[hidden] { display: none; }
+
+.tour-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  background: transparent !important;
+}
+
+.tour-status-indicator.ok,
+.tour-status-indicator.tour-status-ok {
+  color: #34d399 !important;
+  background: transparent !important;
+}
+
+.tour-status-indicator.warn,
+.tour-status-indicator.tour-status-warn {
+  color: #fbbf24 !important;
+  background: transparent !important;
+}
+
+.tour-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tour-skip-btn {
+  background: transparent;
+  border: none;
+  color: var(--tour-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+.tour-skip-btn:hover {
+  color: #f1f3fc;
+}
+
+.tour-nav-btns {
+  display: flex;
+  margin-left: auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.tour-nav-btn {
+  border: 1px solid var(--tour-border);
+  background: #171926;
+  color: var(--tour-text);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tour-nav-btn:hover {
+  background: #222638;
+}
+
+.tour-nav-btn.primary {
+  background: linear-gradient(135deg, var(--tour-accent), var(--tour-accent2));
+  border: none;
+  color: white;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+}
+
+.tour-nav-btn.primary:hover {
+  opacity: 0.95;
+}
+
+.tour-action-hint {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #a5b4fc;
+  background: rgba(79, 70, 229, 0.12);
+  border: 1px dashed rgba(99, 102, 241, 0.4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The original main Tour presentation, with v2's click-safe cutout instead of
+   the original shadow overlay so unrelated controls never receive clicks. */
+.tour-overlay-container {
+  pointer-events: none;
+}
+.tour-spotlight {
+  box-shadow: none;
+}
+.tour-backdrop {
+  position: fixed;
+  background: rgba(5, 6, 10, 0.78);
+  pointer-events: auto;
+}
+.tour-popover {
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+}
+.tour-action-btn[hidden] {
+  display: none;
+}
+.tour-takeout-footer {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tour-takeout-footer .tour-nav-btns {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+
+.tour-upgrade-popover { width: 440px; }
+.tour-upgrade-copy p { margin: 0 0 11px; }
+.tour-upgrade-copy p:last-child { margin-bottom: 0; }
+.tour-upgrade-footer { justify-content: flex-end; gap: 8px; }
+
+.tour-action-btn:disabled,
+.tour-action-btn:disabled:hover,
+.tour-nav-btn:disabled,
+.tour-nav-btn:disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.platform-authorization { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.platform-permission-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; border: 1px solid var(--tour-border); border-radius: 10px; min-width: 0; }
+.platform-permission-list[hidden], .platform-permission-row[hidden], .platform-permission-hint[hidden] { display: none; }
+.platform-permission-list legend { font-size: 11px; color: var(--tour-muted); margin-left: 10px; padding: 0 4px; }
+.platform-permission-row { padding: 10px 12px; }
+.platform-permission-row:not([hidden]) ~ .platform-permission-row:not([hidden]) { border-top: 1px solid var(--tour-border); }
+.platform-permission-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.platform-permission-choice { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.platform-permission-choice input { width: 16px; height: 16px; margin: 0; accent-color: var(--tour-accent); }
+.platform-permission-choice:has(input:focus-visible) { outline: 2px solid var(--tour-accent); outline-offset: 4px; border-radius: 2px; }
+.platform-permission-state { font-size: 11px; color: var(--tour-muted); }
+.platform-permission-state[data-authorized="true"] { color: var(--ok, #10b981); }
+.platform-permission-row details { font-size: 11px; color: var(--tour-muted); margin: 4px 0 0 25px; }
+.platform-permission-row summary { cursor: pointer; }
+.platform-permission-row ul { margin: 4px 0; padding-left: 16px; overflow-wrap: anywhere; }
+.platform-permission-hint { margin: 0; font-size: 11px; line-height: 1.6; color: var(--tour-muted); }
+
+/* The first lesson shows the real authorization menu and two separate explanations. */
+.tour-popover.tour-authorization-menu {
+  outline: 2px solid var(--tour-accent);
+  outline-offset: 2px;
+}
+.tour-coach-card {
+  position: fixed;
+  z-index: 100002;
+  pointer-events: auto;
+  box-sizing: border-box;
+  width: 256px;
+  padding: 16px;
+  border: 1px solid var(--tour-accent);
+  border-radius: 12px;
+  background: var(--tour-bg);
+  color: var(--tour-text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .25);
+}
+.tour-coach-card h3 { margin: 0 0 8px; font-size: 14px; }
+.tour-coach-card p { margin: 0; }
+.tour-authorization-compact .tour-coach-card { position: static; width: auto; margin: 10px 0; box-shadow: none; }
+.tour-platform-choices { display: flex; flex-direction: column; gap: 8px; }
+
+/* The onboarding export demonstrates one conversation. */
+body[data-guided-selection="true"] #btnSelectAll { display: none; }

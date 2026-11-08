@@ -1,21 +1,19 @@
+import { geminiListPage, GEMINI_LIST_CAPTURE } from './fixtures/providers/geminiListCapture.js';
+import { useIndexStorage } from './helpers/indexStorage.js';
+useIndexStorage();
 export {};
 
 const test = require('node:test');
 const assert = require('node:assert');
 
-// Ensure parser is available in global for geminiClient in Node environment
-const { GeminiResponseParserClass } = require('../src/core/api/geminiParser.js');
-// 1. Test 429 rate limit backoff in GeminiAPIClient
 test('perf - geminiClient 429 backoff retries and recovers on transient rate limit', async () => {
-    const { GeminiAPIClient } = require('../src/core/api/geminiClient.js');
+    const { GeminiAPIClient } = require('../src/l1/client/gemini/geminiClient.js');
     const client = new GeminiAPIClient();
 
-    // Mock global fetch
     const originalFetch = (global as any).fetch;
     let callCount = 0;
     const recordedDelays: number[] = [];
 
-    // Save and mock setTimeout to avoid real delays in test
     const originalSetTimeout = (global as any).setTimeout;
     (global as any).setTimeout = (fn: any, delay: any) => {
         recordedDelays.push(delay);
@@ -34,21 +32,18 @@ test('perf - geminiClient 429 backoff retries and recovers on transient rate lim
                     text: async () => 'Rate limit exceeded'
                 };
             }
-            // 3rd call succeeds with minimal valid batchexecute list
-            const mockListInner = JSON.stringify([null, [["c_conv123", "Conversation 1", [1700000000, 0], [1700000000, 0], 1]], null]);
-            const mockTop = JSON.stringify([["wrb.fr", "MaZiqc", mockListInner]]);
             return {
                 ok: true,
                 status: 200,
                 headers: new Map(),
-                text: async () => `)]}'\n\n${mockTop}`
+                text: async () => geminiListPage().responseBody
             };
         };
 
         const res = await client.getConversationList(null, 'test_sid', null, { maxRetries: 3 });
         assert.strictEqual(callCount, 3, 'should have retried twice and succeeded on 3rd attempt');
-        assert.ok(res.conversations && res.conversations.length === 1, 'should have parsed conversations successfully');
-        assert.strictEqual(res.conversations[0].id, 'conv123');
+        assert.ok(res.conversations && res.conversations.length === GEMINI_LIST_CAPTURE.firstPageRows, 'should have parsed conversations successfully');
+        assert.strictEqual(res.conversations[0].id, GEMINI_LIST_CAPTURE.first.id);
         // P1-035: getConversationList now sets a 30s timeoutMs per request, so each
         // postBatchexecute arms one 30000ms timeout timer alongside the backoff sleeps.
         const timeoutTimers = recordedDelays.filter(d => d === 30000);
@@ -64,7 +59,7 @@ test('perf - geminiClient 429 backoff retries and recovers on transient rate lim
 });
 
 test('perf - geminiClient 429 throws after exceeding maxRetries', async () => {
-    const { GeminiAPIClient } = require('../src/core/api/geminiClient.js');
+    const { GeminiAPIClient } = require('../src/l1/client/gemini/geminiClient.js');
     const client = new GeminiAPIClient();
 
     const originalFetch = (global as any).fetch;
@@ -94,42 +89,29 @@ test('perf - geminiClient 429 throws after exceeding maxRetries', async () => {
     }
 });
 
-// 2. Test Takeout HTML parsing time-slicing and progress
-test('perf - takeoutEngine yields to event loop and reports incremental progress on large archives', async () => {
-    const TakeoutEngine = require('../src/core/engine/takeoutEngine.js');
-    (global as any).JSZip = require('../lib/jszip.min.js');
-    const zip = new (global as any).JSZip();
-
-    // Construct 120 blocks to trigger both 50-block time slicing and 100-block progress report
-    let html = '<html><body>';
-    for (let i = 1; i <= 120; i++) {
-        html += `
-        <div class="outer-cell">
-          <a href="https://gemini.google.com/app/c_takeout_chat_${i}">Link</a>
-          Prompted Question ${i}<br>
-          <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1"><p>Answer ${i}</p></div>
-        </div>`;
-    }
-    html += '</body></html>';
-    zip.file('Takeout/Gemini/MyActivity.html', html);
-    const buf = await zip.generateAsync({ type: 'nodebuffer' });
-
-    const progressReports: any[] = [];
-    TakeoutEngine.clearTakeoutData();
-    const res = await TakeoutEngine.parseTakeoutZip(buf, (pct: any, msg: any) => {
-        progressReports.push({ pct, msg });
-    });
-
-    assert.strictEqual(res.conversations.length, 120, 'all 120 conversations should be parsed');
-    // Check that incremental progress for block 100 was reported
-    const detailProgress = progressReports.find(p => p.msg && p.msg.includes('100/120'));
-    assert.ok(detailProgress, 'should report progress for 100/120 blocks during time slicing');
-    assert.ok(detailProgress.pct >= 70 && detailProgress.pct <= 88, 'pct should be scaled between 70 and 88');
+test('perf - Takeout import yields to the event loop and reports monotonic progress for 120 conversations', async (t: import('node:test').TestContext) => {
+    const { importTakeout } = require('../src/l1/imports/takeout/importTakeout.js');
+    const { listIndexes } = require('../src/l3a/storageService.js');
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'JSZip');
+    const JSZip = require('../lib/jszip.min.js');
+    Object.defineProperty(globalThis, 'JSZip', { configurable: true, value: JSZip });
+    t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'JSZip', descriptor); else Reflect.deleteProperty(globalThis, 'JSZip'); });
+    const zip = new JSZip();
+    zip.file('Takeout/Gemini/MyActivity.html', '<html><body>' + Array.from({ length: 120 }, (_, index) =>
+        `<div class="outer-cell"><a href="https://gemini.google.com/app/takeout_${index}">Link</a><div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">Prompted Question ${index}<br><p>Answer ${index}</p></div></div>`).join('') + '</body></html>');
+    const reports: number[] = [];
+    let yielded = false; setTimeout(() => { yielded = true; }, 0);
+    const id = '10000000-0000-4000-8000-000000000001';
+    const result = await importTakeout(await zip.generateAsync({ type: 'nodebuffer' }), id, (percent: number) => reports.push(percent));
+    assert.strictEqual(result.imported, 120); assert.strictEqual((await listIndexes(id)).length, 120);
+    assert.strictEqual(yielded, true);
+    assert.strictEqual(reports[reports.length - 1], 100);
+    assert.ok(reports.every((value, index) => index === 0 || value >= reports[index - 1]));
+    assert.ok(reports.some(percent => percent > 70 && percent < 100));
 });
 
-// 3. Test AssetFetcher ArrayBuffer transfer
 test('perf - assetFetcher returns ArrayBuffer directly when preferBuffer is true', async () => {
-    const AssetFetcher = require('../src/content/assetFetcher.js');
+    const { AssetFetcher } = require('../src/runtime/capabilities/assetFetcher.js');
 
     const originalFetch = (global as any).fetch;
     const testData = Buffer.from('fake image binary content 1234567890');
@@ -163,19 +145,38 @@ test('perf - assetFetcher returns ArrayBuffer directly when preferBuffer is true
 });
 
 test('perf - assetFetcher returns base64 when preferBuffer is false', async () => {
-    const AssetFetcher = require('../src/content/assetFetcher.js');
+    const { AssetFetcher } = require('../src/runtime/capabilities/assetFetcher.js');
 
     const originalFetch = (global as any).fetch;
+    const originalReader = Object.getOwnPropertyDescriptor(globalThis, 'FileReader');
+    // Content Scripts have FileReader; Node does not. Mock that browser boundary,
+    // not a production Buffer fallback, and use a real Blob in the response.
+    class TestFileReader {
+        result: string | null = null;
+        error: Error | null = null;
+        onloadend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        readAsDataURL(blob: Blob): void {
+            void blob.arrayBuffer().then(
+                bytes => {
+                    this.result = `data:${blob.type};base64,${Buffer.from(bytes).toString('base64')}`;
+                    this.onloadend?.();
+                },
+                (error: unknown) => {
+                    this.error = error instanceof Error ? error : new Error(String(error));
+                    this.onerror?.();
+                }
+            );
+        }
+    }
+    Object.defineProperty(globalThis, 'FileReader', { configurable: true, value: TestFileReader });
     const testData = Buffer.from('fake image binary content 1234567890');
     try {
         (global as any).fetch = async () => ({
             ok: true,
             headers: new Map([['content-type', 'image/png']]),
-            blob: async () => ({
-                size: testData.length,
-                type: 'image/png',
-                arrayBuffer: async () => testData.buffer.slice(testData.byteOffset, testData.byteOffset + testData.byteLength)
-            })
+            blob: async () => new Blob([testData.toString('utf8')], { type: 'image/png' })
         });
 
         let responsePayload: any = null;
@@ -188,54 +189,24 @@ test('perf - assetFetcher returns base64 when preferBuffer is false', async () =
 
         assert.ok(responsePayload, 'should receive response');
         assert.strictEqual(responsePayload.success, true);
-        assert.ok(responsePayload.dataBase64, 'dataBase64 should be generated when preferBuffer is false');
+        assert.strictEqual(responsePayload.dataBase64, testData.toString('base64'), 'base64 must preserve actual Blob bytes');
         assert.strictEqual(responsePayload.dataBuffer, undefined, 'dataBuffer should not be generated when preferBuffer is false');
     } finally {
         (global as any).fetch = originalFetch;
+        if (originalReader) Object.defineProperty(globalThis, 'FileReader', originalReader);
+        else Reflect.deleteProperty(globalThis, 'FileReader');
     }
 });
 
-// 4. Test ExportEngine rateLimitCooldownUntil initialization
-test('perf - ExportEngine initializes and tracks rateLimitCooldownUntil', () => {
-    const { ExportEngine } = require('../src/core/engine/exportEngine.js');
-    const engine = new ExportEngine();
-    assert.strictEqual(engine.rateLimitCooldownUntil, 0, 'rateLimitCooldownUntil should be initialized to 0');
+
+
+test('perf - runtime Tab transport times out instead of hanging an acquisition task', async (t: import('node:test').TestContext) => {
+    const { sendTabMessage } = require('../src/runtime/capabilities/tabService.js');
+    const host = chrome;
+    const previous = Object.getOwnPropertyDescriptor(host, 'tabs');
+    Object.defineProperty(host, 'tabs', { configurable: true, value: { sendMessage() {} } });
+    t.after(() => { if (previous) Object.defineProperty(host, 'tabs', previous); else Reflect.deleteProperty(host, 'tabs'); });
+    const start = Date.now();
+    await assert.rejects(sendTabMessage(12345, { action: 'getFileBlob' }, 50), /timed out/);
+    assert.ok(Date.now() - start >= 45);
 });
-
-// 5. Test AssetPipeline downloadTimeoutMs protection against hanging tabs.sendMessage (Issue A2)
-test('perf - AssetPipeline times out and recovers gracefully when tabs.sendMessage hangs', async () => {
-    const AssetPipeline = require('../src/core/engine/assetPipeline.js');
-    const originalChrome = (global as any).chrome;
-
-    try {
-        // Mock chrome.tabs.sendMessage that never responds
-        (global as any).chrome = {
-            runtime: {},
-            tabs: {
-                sendMessage: (_tabId: any, _message: any, _callback: any) => {
-                    // Intentionally never call callback to simulate hanging tab/content script
-                }
-            }
-        };
-
-        const pipeline = new AssetPipeline({
-            downloadTimeoutMs: 50, // fast timeout for unit test
-            getGeminiTab: async () => ({ id: 12345 })
-        });
-
-        const start = Date.now();
-        const res = await pipeline.processAsset(
-            { url: 'https://example.com/hanging-asset.jpg', fileName: 'test.jpg' },
-            { id: 'chat_123' },
-            { isImage: true }
-        );
-        const duration = Date.now() - start;
-
-        assert.strictEqual(res.saved, false, 'should not be marked as saved');
-        assert.ok(res.failReason.includes('timed out'), `failReason should indicate timeout, got "${res.failReason}"`);
-        assert.ok(duration >= 45, `should have waited for timeout, duration: ${duration}ms`);
-    } finally {
-        (global as any).chrome = originalChrome;
-    }
-});
-

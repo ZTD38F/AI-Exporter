@@ -1,219 +1,79 @@
-import { test, expect } from './fixtures';
-
-test.describe('E2E: Live Auto-Save Controls & In-Page Persistence Flow', () => {
-  test('should render unified directory card, auto-prompt picker on toggle, and sync dir label', async ({ context, extensionId }) => {
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await optionsPage.waitForLoadState('domcontentloaded');
-
-    await optionsPage.evaluate(async () => {
-      await chrome.storage.local.set({
-        has_completed_tour: true,
-        last_seen_feature_version: '999.0.0'
-      });
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { readFile } from 'node:fs/promises';
+import { openOptions, seedConversations, openPopup, storedSettings, uiProbeBundle, accountId } from './uiFixture';
+test.beforeEach(async({context,extensionId})=>{void extensionId;await seedRegistryAccounts(context);});
+test('directory authorization is explicit; enabled intention and the real stored capability restore after reload',async({context,extensionId})=>{
+    const page=await openOptions(context,extensionId);await page.evaluate(()=>{
+        Reflect.set(window,'pickerCalls',0);Reflect.set(window,'showDirectoryPicker',async()=>{Reflect.set(window,'pickerCalls',Reflect.get(window,'pickerCalls')+1);return navigator.storage.getDirectory();});
     });
+    await expect(page.locator('#btnSetDir')).toBeDisabled();await expect(page.locator('#liveSaveDiskToggle')).toBeDisabled();
+    await page.locator('input[name="delivery"][value="folderWriter"]').check();
+    await expect(page.locator('#btnSetDir')).toBeEnabled();await expect(page.locator('#liveSaveDiskToggle')).toBeDisabled();
+    await page.locator('#btnSetDir').click();await expect(page.locator('#btnSetDir')).toBeEnabled();
+    await expect(page.locator('#liveSaveDiskToggle')).toBeEnabled();await page.locator('#liveSaveDiskToggle').check();
+    await expect(page.locator('#liveSaveStatus')).toHaveText('Live Save active');
+    expect(await page.evaluate(()=>Reflect.get(window,'pickerCalls'))).toBe(1);await expect.poll(async()=>(await storedSettings(page)).enabledDisk).toBe(true);
+    await expect.poll(async()=>(await storedSettings(page)).exportDelivery).toBe('folderWriter');
+    expect(await page.evaluate(async()=>!!await Reflect.get(globalThis,'uiFixture').getDirectoryHandle())).toBe(true);
+    await page.reload();await expect(page.locator('#liveSaveDiskToggle')).toBeChecked();await expect(page.locator('#liveSaveStatus')).toHaveText('Live Save active');
+});
+test('page postMessage cannot invoke disk writing or forge Live Save feedback',async({context,extensionId})=>{
+    const page=await openOptions(context,extensionId);await seedConversations(page,[{id:'live'}]);await page.evaluate(async()=>{const api=Reflect.get(globalThis,'uiFixture');await api.setDirectoryHandle(await navigator.storage.getDirectory());await api.updateSettings({enabledDisk:true});});
+    const source=await context.newPage();await source.route('https://gemini.google.com/**',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><script>window.WIZ_global_data={qDCSke:'10000000001',SNlM0e:'token',cfb2h:'build'}</script><main>Offline fixture</main>`}));await source.goto('https://gemini.google.com/app/live');await expect(source.locator('#geminiExportBadge')).toBeVisible();
+    await source.evaluate(()=>{window.postMessage({type:'GEMINI_LIVE_SAVE_TRIGGER',payload:{cid:'live',reason:'turn_complete',mockMode:true}},location.origin);window.postMessage({action:'runLiveSave',key:{accountId:'fake',conversationId:'live'}},location.origin);});
+    // Wait across several event-loop turns for the window-message listener to execute.
+    await source.evaluate(()=>new Promise(resolve=>setTimeout(resolve,200)));
+    await expect(source.locator('#geminiExportBadge')).not.toHaveClass(/live-saved/);expect(await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').listExportRecords(id),accountId)).toEqual({});
+    expect(await page.evaluate(async()=>{const root=await navigator.storage.getDirectory();const names=[];for await(const name of Reflect.get(root,'keys').call(root))names.push(name);return names;})).toEqual([]);
+});
+test('Background Live Save and manual folder delivery use the same planned filename and physical content',async({context,extensionId})=>{
+    const page=await openOptions(context,extensionId);await seedConversations(page,[{id:'0123456789abcdef',title:'Quantum Computing',body:'Shared physical body'}]);
+    await page.evaluate(async()=>{const api=Reflect.get(globalThis,'uiFixture');await api.setDirectoryHandle(await navigator.storage.getDirectory());await api.updateSettings({enabledDisk:true,defaultFormat:'markdown',skipExported:false,exportDelivery:'folderWriter'});});
+    const worker=context.serviceWorkers()[0];await worker.evaluate(await uiProbeBundle());const result=await worker.evaluate(id=>Reflect.get(globalThis,'uiFixture').runLiveSave({accountId:id,conversationId:'0123456789abcdef'}),accountId);expect(result.exported).toBe(1);
+    const files=await page.evaluate(async()=>{const root=await navigator.storage.getDirectory();const files:{name:string,text:string}[]=[];for await(const [name,handle]of Reflect.get(root,'entries').call(root))if(handle.kind==='file')files.push({name,text:await(await(handle as FileSystemFileHandle).getFile()).text()});return files;});expect(files).toHaveLength(1);expect(files[0].text).toContain('Shared physical body');expect(files[0].name).toMatch(/abcdef.*\.md$/);
+    // Switching to browser delivery pauses Live Save, but manual download remains available.
+    await page.locator('input[name="delivery"][value="browserDownload"]').check();
+    await expect(page.locator('#liveSaveDiskToggle')).toBeDisabled();
+    await expect.poll(async()=>(await storedSettings(page)).exportDelivery).toBe('browserDownload');
+    await page.locator('#btnSelectAll').click();const pending=page.waitForEvent('download');await page.locator('#btnExport').click();const download=await pending;expect(download.suggestedFilename()).toBe(files[0].name);expect(await readFile((await download.path())!,'utf8')).toBe(files[0].text);
+});
+test('non-Markdown formats pause effective saving across Options, Popup and reload while preserving enabledDisk',async({context,extensionId})=>{
+    const page=await openOptions(context,extensionId);
+    await page.evaluate(()=>{Reflect.set(window,'showDirectoryPicker',async()=>navigator.storage.getDirectory());});
+    await page.locator('input[name="delivery"][value="folderWriter"]').check();
+    await page.locator('#btnSetDir').click();await expect(page.locator('#liveSaveDiskToggle')).toBeEnabled();
+    await page.locator('#liveSaveDiskToggle').check();await expect(page.locator('body')).toHaveAttribute('data-busy','false');
+    for(const format of ['pdf','html','json']){await page.locator('#format').selectOption(format);await expect(page.locator('#liveSaveDiskToggle')).toBeDisabled();await expect(page.locator('#liveSaveDiskToggle')).toBeChecked();expect((await storedSettings(page)).enabledDisk).toBe(true);}
+    await page.reload();await expect(page.locator('#liveSaveDiskToggle')).toBeDisabled();await expect(page.locator('#liveSaveDiskToggle')).toBeChecked();const popup=await openPopup(context,extensionId);await popup.locator('[data-format="markdown"]').click();await expect(page.locator('#format')).toHaveValue('markdown');await expect(page.locator('#liveSaveDiskToggle')).toBeEnabled();await expect(page.locator('#liveSaveDiskToggle')).toBeChecked();
+    await popup.locator('[data-format="html"]').click();await expect(page.locator('#format')).toHaveValue('html');await expect(page.locator('#liveSaveDiskToggle')).toBeDisabled();await expect(page.locator('#liveSaveDiskToggle')).toBeChecked();
+});
 
-    // 1. Verify card elements exist (and legacy/removed boxes are absent)
-    const diskToggle = optionsPage.locator('#liveSaveDiskToggle');
-    const dirBox = optionsPage.locator('#dirBox');
-    const dirLabel = optionsPage.locator('#dirLabel');
-    await expect(optionsPage.locator('#includeIndex')).toHaveCount(0);
-    await expect(optionsPage.locator('#liveSaveDbToggle')).toHaveCount(0);
-    await expect(optionsPage.locator('#liveSaveDiskBox')).toHaveCount(0);
-    await expect(optionsPage.locator('#liveSaveStatusTag')).toHaveCount(0);
-    await expect(diskToggle).toBeVisible();
-    await expect(dirBox).toBeVisible();
-    await expect(diskToggle).not.toBeChecked();
-
-    // 2. Mock showDirectoryPicker to abort first
-    await optionsPage.evaluate(() => {
-      (window as any).showDirectoryPicker = async () => {
-        const err = new Error('User cancelled');
-        err.name = 'AbortError';
-        throw err;
-      };
-    });
-
-    // 3. Click diskToggle without directory set -> picker prompts and user aborts -> rollback to unchecked
-    await diskToggle.click();
-    await expect(diskToggle).not.toBeChecked();
-
-    // 4. Now mock showDirectoryPicker to return a directory
-    await optionsPage.evaluate(() => {
-      (window as any).showDirectoryPicker = async () => ({
-        name: 'E2E_Test_Vault',
-        kind: 'directory'
-      });
-    });
-
-    // 5. Click diskToggle again -> picker prompts and succeeds -> checked and dirLabel updated
-    await diskToggle.click();
-    await expect(diskToggle).toBeChecked();
-    await expect(dirLabel).toContainText('E2E_Test_Vault');
-
-    // 6. Click again to disable
-    await diskToggle.click();
-    await expect(diskToggle).not.toBeChecked();
-
-    // 7. Click again to re-enable with existing directory -> immediately checked without prompting
-    await diskToggle.click();
-    await expect(diskToggle).toBeChecked();
-
-    await optionsPage.close();
-  });
-
-  test('page postMessage cannot trigger a live save write or mock feedback', async ({ context, extensionId }) => {
-    const geminiPage = await context.newPage();
-
-    // Route HTML for Gemini page
-    await geminiPage.route('https://gemini.google.com/app/live_test_chat_1', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html; charset=utf-8',
-        body: `<!DOCTYPE html>
-        <html>
-        <head>
-          <title>AI Agent Live Auto-Save Test - Google Gemini</title>
-        </head>
-        <body>
-          <h1 data-test-id="conversation-title">AI Agent Live Auto-Save Test</h1>
-          <user-query><div class="query-text">Can you live save this message?</div></user-query>
-          <model-response><div class="markdown">Yes, live save persists your conversation in real time!</div></model-response>
-        </body>
-        </html>`
-      });
-    });
-
-    const mockDetailInner = JSON.stringify([
-      [
-        ["c_live_test_chat_1", "turn_1", [null, null, ["Can you live save this message?"]]],
-        ["c_live_test_chat_1", "turn_2", [null, null, ["Yes, live save persists your conversation in real time!"]]]
-      ],
-      "token_123",
-      "AI Agent Live Auto-Save Test"
-    ]);
-    const mockRpcResponse = `)]}'\n\n[["wrb.fr","hNvQHb",${JSON.stringify(mockDetailInner)}]]`;
-
-    await geminiPage.route('**/batchexecute*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: mockRpcResponse
-      });
-    });
-
-    await geminiPage.goto('https://gemini.google.com/app/live_test_chat_1');
-    await geminiPage.waitForLoadState('domcontentloaded');
-
-    // Wait for injected badge
-    const badge = geminiPage.locator('#geminiExportBadge');
-    await expect(badge).toBeVisible();
-
-    // A page script must not invoke the extension's disk writer or mock mode.
-    await geminiPage.evaluate(() => {
-      window.postMessage({
-        type: 'GEMINI_LIVE_SAVE_TRIGGER',
-        payload: {
-          cid: 'live_test_chat_1',
-          reason: 'turn_complete',
-          mockMode: true
-        }
-      }, location.origin);
-    });
-
-    await geminiPage.waitForTimeout(500);
-    await expect(badge).not.toHaveClass(/live-saved/);
-
-    await geminiPage.close();
-  });
-
-  test('should write live save files to gemini_export folder with cid6 filename matching manual export', async ({ context, extensionId }) => {
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await optionsPage.waitForLoadState('domcontentloaded');
-
-    // Test FsWriter initialization and directory structure consistency
-    const result = await optionsPage.evaluate(async () => {
-      const written: Record<string, any> = {};
-      const mockDir = {
-        name: 'MyVault',
-        getDirectoryHandle: async (folder: string) => ({
-          name: folder,
-          getFileHandle: async (file: string) => ({
-            createWritable: async () => ({
-              write: async (content: any) => { written[`${folder}/${file}`] = content; },
-              close: async () => {}
-            })
-          }),
-          getDirectoryHandle: async (subFolder: string) => ({
-            name: subFolder,
-            getFileHandle: async (assetFile: string) => ({
-              createWritable: async () => ({
-                write: async (content: any) => { written[`${folder}/${subFolder}/${assetFile}`] = content; },
-                close: async () => {}
-              })
-            })
-          })
-        })
-      };
-
-      const FsWriterModule = (window as any).FsWriter;
-      const FsWriterClass = FsWriterModule?.FsWriter || FsWriterModule;
-      const writer = new FsWriterClass(mockDir, 'gemini_export');
-      await writer.init();
-
-      // Write markdown with cid6
-      const cid = 'c_0123456789abcdef';
-      const cid6 = cid.replace(/^c_/, '').slice(-6);
-      const fileName = `Quantum Computing_${cid6}.md`;
-      await writer.writeFile(fileName, '# Quantum Computing\n\nContent');
-
-      // Write asset into assets/
-      await writer.writeFile(`assets/${cid6}_t1_img1.png`, new Uint8Array([1, 2, 3]));
-
-      return {
-        writtenFiles: Object.keys(written),
-        fileName,
-        cid6
-      };
-    });
-
-    expect(result.cid6).toBe('abcdef');
-    expect(result.fileName).toBe('Quantum Computing_abcdef.md');
-    expect(result.writtenFiles).toContain('gemini_export/Quantum Computing_abcdef.md');
-    expect(result.writtenFiles).toContain('gemini_export/assets/abcdef_t1_img1.png');
-
-    await optionsPage.close();
-  });
-  test('non-Markdown formats disable live save across workbench, popup, and reload', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    const toggle = page.locator('#liveSaveDiskToggle');
-    await expect(toggle).toBeEnabled();
+test('title promotion updates the same physical Live Save document across separate tasks', async ({ context, extensionId }) => {
+    const page = await openOptions(context, extensionId);
+    const id = '0123456789abcdef';
+    await seedConversations(page, [{ id, title: 'Conversation with Gemini', titleSource: 'derived', body: 'Initial body' }]);
     await page.evaluate(async () => {
-      await chrome.storage.local.set({ live_save_config: { enabledDisk: true, format: 'markdown', includeAssets: true } });
+        const api = Reflect.get(globalThis, 'uiFixture');
+        await api.setDirectoryHandle(await navigator.storage.getDirectory());
+        await api.updateSettings({ enabledDisk: true, defaultFormat: 'markdown', skipExported: false, exportDelivery: 'folderWriter' });
     });
-    await expect(toggle).toBeChecked();
-    for (const format of ['pdf', 'html', 'json', 'json_openai']) {
-      await page.selectOption('#format', format);
-      await expect(toggle).toBeDisabled();
-      await expect(toggle).not.toBeChecked();
-      await expect.poll(() => page.evaluate(async () => {
-        const data = await chrome.storage.local.get('live_save_config');
-        return (data.live_save_config as { enabledDisk: boolean }).enabledDisk;
-      })).toBe(false);
-    }
-    await page.reload();
-    await expect(toggle).toBeDisabled();
-    const popup = await context.newPage();
-    await popup.goto(`chrome-extension://${extensionId}/src/ui/popup/popup.html`);
-    await popup.locator('[data-value="markdown"]').click();
-    await expect(page.locator('#format')).toHaveValue('markdown');
-    await expect(toggle).toBeEnabled();
-    await expect(toggle).not.toBeChecked();
-    await popup.locator('[data-value="html"]').click();
-    await expect(page.locator('#format')).toHaveValue('html');
-    await expect(toggle).toBeDisabled();
-  });
-
+    const worker = context.serviceWorkers()[0];
+    await worker.evaluate(await uiProbeBundle());
+    const save = () => worker.evaluate(({ accountId, id }) => Reflect.get(globalThis, 'uiFixture').runLiveSave({ accountId, conversationId: id }), { accountId, id });
+    expect((await save()).exported).toBe(1);
+    await seedConversations(page, [{ id, title: 'Authoritative truss title', titleSource: 'provider', body: 'Updated complete body' }]);
+    expect((await save()).exported).toBe(1);
+    const files = await page.evaluate(async () => {
+        const directory = await navigator.storage.getDirectory();
+        const files: { name: string; text: string }[] = [];
+        for await (const [name, handle] of Reflect.get(directory, 'entries').call(directory)) {
+            if (handle.kind === 'file') files.push({ name, text: await (await (handle as FileSystemFileHandle).getFile()).text() });
+        }
+        return files;
+    });
+    expect(files).toHaveLength(1);
+    expect(files[0].name).toBe('Conversation with Gemini_abcdef.md');
+    expect(files[0].text).toContain('Authoritative truss title');
+    expect(files[0].text).toContain('Updated complete body');
+    expect(files[0].text).not.toContain('Initial body');
 });

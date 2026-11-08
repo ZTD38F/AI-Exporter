@@ -40,19 +40,21 @@ def find_archive_resource(root, document, reference):
 
 
 class _HtmlReferences(HTMLParser):
-    def __init__(self):
+    def __init__(self, kind=None):
         super().__init__(convert_charrefs=True)
+        self.kind = kind
         self.references = []
 
     def handle_starttag(self, tag, attrs):
         key = 'href' if tag == 'a' else 'src' if tag in ('img', 'video', 'audio', 'source') else None
-        if key:
+        if key and (self.kind is None or (self.kind == 'image' and tag == 'img')
+                    or (self.kind == 'link' and tag == 'a')):
             self.references.extend(value for attr, value in attrs if attr == key and value)
 
 
-def resource_references(content, html=False):
+def resource_references(content, html=False, kind=None):
     if html:
-        parser = _HtmlReferences()
+        parser = _HtmlReferences(kind)
         parser.feed(content)
         return parser.references
     repo_root = Path(__file__).resolve().parents[2]
@@ -69,7 +71,7 @@ def resource_references(content, html=False):
             or not isinstance(ref.get('reference'), str) for ref in references
         ):
             raise ValueError('invalid parser reference output')
-        return [ref['reference'] for ref in references]
+        return [ref['reference'] for ref in references if kind is None or ref['kind'] == kind]
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise RuntimeError(f'Markdown parser reference extraction failed: {exc}') from exc
 

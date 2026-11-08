@@ -1,0 +1,34 @@
+name: Application Unit Tests
+
+on:
+  pull_request:
+    branches: [dev/v2]
+    paths:
+      - 'src/application/**'
+      - 'tests/application_*.test.ts'
+      - 'tests/helpers/applicationHarness.ts'
+      - '.github/workflows/application-unit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application-unit:
+    name: Application isolated unit contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run only Application unit tests, without unrelated module type errors
+        run: |
+          node -r ./tests/ts_register.js --test \
+            tests/application_export.test.ts \
+            tests/application_sync.test.ts \
+            tests/application_settings_cleanup.test.ts

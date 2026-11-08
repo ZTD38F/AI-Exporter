@@ -1,86 +1,33 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
-
-const SRC = (p: string) => fs.readFileSync(path.join(__dirname, '..', 'src', p), 'utf8');
-
-// ---------- P1-118: CSS.escape ----------
-test('p1_h3 - P1-118: listView escapes dynamic ids in selectors', () => {
-    const src = SRC('ui/views/listView.ts');
-    assert.ok(src.includes('CSS.escape'), 'updateItemExportStatus must use CSS.escape');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { chromium, type Browser, type Page } from 'playwright';
+import { mount, read, A } from './helpers/uiPortHarness.js';
+let browser:Browser,page:Page;
+test.before(async()=>{browser=await chromium.launch({chromiumSandbox: true, headless:true});});test.afterEach(async()=>{await page?.close();});test.after(async()=>{await browser?.close();});
+async function open(kind:'popup'|'options'='options',patch:Record<string,unknown>={}){page=await browser.newPage();await mount(page,kind,patch);}
+test('P1-118: dynamic IDs and title updates stay literal and cannot escape into DOM selectors or markup',async()=>{
+    const id='chat:with[brackets]';await open('options',{indexes:[{key:{accountId:A,conversationId:id},title:'<img src=x onerror=alert(1)>'}]});await page.locator('#list input').check();await page.locator('#btnExport').click();await page.waitForFunction(()=>document.body.dataset.busy!=='true');
+    assert.equal(await page.locator('#list img').count(),0);assert.equal((await read(page,'exports'))[0].keys[0].conversationId,id);
 });
-
-// ---------- P1-119: dirHandleController ----------
-test('p1_h3 - P1-119: restore never calls requestPermission without a gesture', async () => {
-    const dh = require('../src/ui/controllers/dirHandleController.js');
-    let requested = false;
-    const fakeHandle = {
-        queryPermission: async () => 'prompt',
-        requestPermission: async () => { requested = true; return 'granted'; },
-        keys: async function* () {}
-    };
-    const ok = await dh.verifyDirPermission(fakeHandle);
-    assert.strictEqual(ok, false, 'prompt permission is not granted');
-    assert.strictEqual(requested, false, 'requestPermission must not fire without user activation');
+test('P1-120: File input resets after success and failure so the same archive can be selected again',async()=>{
+    for(const failImport of [false,true]){
+        await open('options',{failImport});for(let i=0;i<2;i++) {await page.locator('#takeoutFileInput').setInputFiles({name:'original.zip',mimeType:'application/zip',buffer:Buffer.from('fixture')});await page.waitForFunction(()=>document.body.dataset.busy!=='true');assert.equal(await page.locator('#takeoutFileInput').inputValue(),'');assert.equal((await read(page,'imports')).length,i+1);}
+        assert.match(await page.locator('#status').textContent()??'',failImport?/Operation failed/:/Imported 2/);await page.close();
+    }
 });
-test('p1_h3 - P1-119: stored handle is only dropped on confirmed NotFoundError', () => {
-    const src = SRC('ui/controllers/dirHandleController.ts');
-    assert.ok(src.includes('r.notFound'), 'restore must gate handle deletion on notFound');
-    assert.ok(src.includes('userActivation'), 'requestPermission gated on user activation');
+test('P1-121: failed focus refresh reports readable feedback in the workbench status',async()=>{
+    await open();await page.locator('#list input').waitFor();await page.evaluate(()=>{Reflect.get(window,'harness').failRead=true;window.dispatchEvent(new Event('focus'));});await page.waitForFunction(()=>document.getElementById('status')?.textContent==='Operation failed. Please retry; details are available in the logs or diagnostic report.');
+    assert.equal(await page.locator('#btnSyncAll').isEnabled(),true);
 });
-
-// ---------- P1-120/121/122: options UI glue ----------
-test('p1_h3 - P1-120: takeout file input is reset after import', () => {
-    const src = SRC('ui/options/modules/optionsTakeout.ts');
-    assert.ok(src.includes('input.value = '), 'input must be cleared so the same zip can be re-picked');
+test('P1-122: both UI entry points report readiness failures without unhandled startup rejections',async()=>{
+    for(const kind of ['options','popup'] as const){await open(kind,{failReady:true});await page.waitForFunction(()=>document.getElementById('status')?.textContent==='Operation failed. Please retry; details are available in the logs or diagnostic report.');assert.equal(await page.locator(kind==='popup'?'#btnCurrent':'#btnExport').isDisabled(),true);await page.close();}
 });
-test('p1_h3 - P1-121: loadStore failure reaches the UI log', () => {
-    const src = SRC('ui/options/modules/optionsInit.ts');
-    assert.ok(/loadStore error[\s\S]{0,400}log\(/.test(src), 'catch must call log()');
-    assert.ok(src.includes("'error'"), 'logged at error level');
+test('P1-123: current Settings language changes refresh Popup labels and keep current format',async()=>{
+    await open('popup');await page.locator('#btnCurrent').waitFor();await page.evaluate(()=>{const h=Reflect.get(window,'harness');h.settings.language='zh';h.settings.defaultFormat='html';h.fireSettingsChange();});await page.waitForFunction(()=>document.getElementById('btnCurrent')?.textContent?.includes('导出当前对话'));assert.equal(await page.locator('[data-format="html"]').getAttribute('aria-pressed'),'true');
 });
-test('p1_h3 - P1-122: initWorkbench boot is catch-guarded on both paths', () => {
-    const src = SRC('ui/options/options.ts');
-    assert.ok(src.includes('startWorkbench'), 'guarded starter exists');
-    assert.ok(src.includes(".catch("), 'startup promise has .catch');
-    assert.ok(src.includes("addEventListener('DOMContentLoaded', startWorkbench)"), 'DOMContentLoaded path wrapped');
+test('P1-121/123: processing feedback and terminal results render in both languages',async()=>{
+    for(const language of ['en','zh']){await open('options',{holdExport:true,settings:{language}});await page.locator('#btnSelectAll').click();await page.locator('#btnExport').click();assert.match(await page.locator('#status').textContent()??'',language==='en'?/Prepared 1 conversations · delivered 0 documents · downloaded 0 attachments/:/已准备 1 条会话 · 已交付正文 0 条 · 已下载 0 个附件/);await page.evaluate(()=>Reflect.get(window,'harness').finishExport());await page.waitForFunction(()=>document.body.dataset.busy!=='true');assert.match(await page.locator('#status').textContent()??'',language==='en'?/Successfully downloaded/:/成功下载/);await page.close();}
 });
-
-// ---------- P1-123: popup ----------
-test('p1_h3 - P1-123: popup language switch re-applies i18n + toggle UI + count', () => {
-    const src = SRC('ui/popup/popup.ts');
-    assert.ok(src.includes('i18n.applyI18n()'), 'explicit applyI18n on language change');
-    assert.ok(src.includes('applyLangToggleUI()'), 'toggle UI refreshed');
-    assert.ok(src.includes('await updateCount()'), 'count refreshed');
-});
-test('p1_h3 - P1-123: export-current-page has a re-entrancy guard released in finally', () => {
-    const src = SRC('ui/popup/popup.ts');
-    assert.ok(src.includes('__exportingCurrentPage'), 'guard variable exists');
-    assert.ok(/finally\s*\{\s*__releaseExportGuard\(\);/.test(src), 'guard released when the async callback ends');
-});
-test('p1_h3 - P1-123: popupExportBusy key exists in en and zh', () => {
-    const en = require('../src/core/utils/locales/en.js');
-    const zh = require('../src/core/utils/locales/zh.js');
-    assert.ok(typeof en.popupExportBusy === 'string' && en.popupExportBusy.length > 0, 'en key present');
-    assert.ok(typeof zh.popupExportBusy === 'string' && zh.popupExportBusy.length > 0, 'zh key present');
-});
-
-// ---------- P1-121: loadStoreFailed i18n key ----------
-test('p1_h3 - P1-121: loadStoreFailed key exists in en and zh', () => {
-    const en = require('../src/core/utils/locales/en.js');
-    const zh = require('../src/core/utils/locales/zh.js');
-    assert.ok(typeof en.loadStoreFailed === 'string' && en.loadStoreFailed.length > 0, 'en key present');
-    assert.ok(typeof zh.loadStoreFailed === 'string' && zh.loadStoreFailed.length > 0, 'zh key present');
-});
-
-// ---------- Direct-write modal mutex (decisionMade guards the observer) ----------
-test('p1_h3 - direct-write: decisionMade guards the modal observer', () => {
-    const src = SRC('ui/options/modules/optionsExport.ts');
-    assert.ok(src.includes('decisionMade'), 'decisionMade flag exists');
-    assert.ok(/!decisionMade\)\s*settleDecision\(\)/.test(src), 'observer only settles when no decision was made (Esc/X)');
-    const folderCb = src.indexOf('async () => {\n                        decisionMade = true;');
-    assert.ok(folderCb !== -1, 'folder-choice callback sets decisionMade synchronously at the top');
-    assert.ok(src.includes('await decisionPromise'), 'exportSelected waits for the user decision');
+test('direct-write: the explicitly chosen delivery reaches Application once without a competing prompt decision',async()=>{
+    await open('options',{directoryName:'exports'});await page.locator('input[name="delivery"][value="folderWriter"]').check();await page.locator('#btnSelectAll').click();await page.locator('#btnExport').click();await page.waitForFunction(()=>document.body.dataset.busy!=='true');const requests=await read(page,'exports');assert.equal(requests.length,1);assert.equal(requests[0].delivery,'folderWriter');assert.equal(await page.locator('#directWriteModal').isVisible(),false);
 });

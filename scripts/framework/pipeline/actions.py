@@ -1,4 +1,3 @@
-# scripts/framework/pipeline/actions.py
 """
 Atomic Action Primitives for Gemini Interaction Pipeline.
 Each action encapsulates exactly one single-responsibility step with state invariants,
@@ -67,13 +66,17 @@ class AssertIdleAction(AtomicAction):
     def execute(self, ctx: Any, cdp: Any) -> ActionResult:
         start = time.time()
         while time.time() - start < self.max_wait:
-            busy = cdp.eval(f"""
-            (() => {{
-                const stopBtn = document.querySelector('{self.stop_btn_selector}');
-                const isStreaming = !!document.querySelector('{self.streaming_indicators_selector}');
-                return !!(stopBtn && stopBtn.offsetWidth > 0) || isStreaming;
-            }})()
-            """)
+            try:
+                busy = cdp.eval(f"""
+                (() => {{
+                    const stopBtn = document.querySelector('{self.stop_btn_selector}');
+                    const isStreaming = !!document.querySelector('{self.streaming_indicators_selector}');
+                    const workbenchBusy = document.body?.dataset.busy === 'true';
+                    return workbenchBusy || !!(stopBtn && stopBtn.offsetWidth > 0) || isStreaming;
+                }})()
+                """)
+            except (TimeoutError, OSError):
+                busy = True
             if not busy:
                 return ActionResult(True, "页面处于完全空闲状态")
             time.sleep(1.0)
@@ -190,7 +193,6 @@ class UniversalInputAction:
         px_x = point[0] if point and len(point) >= 2 else None
         px_y = point[1] if point and len(point) >= 2 else None
 
-        # 1. 物理寻址并上焦
         cdp.eval(f"""
         (() => {{
             let target = null;
@@ -289,15 +291,12 @@ class StagePromptAction(AtomicAction):
         return PipelineStage.STAGED
 
     def execute(self, ctx: Any, cdp: Any) -> ActionResult:
-        # 1. 彻底清空目标编辑器
         UniversalInputAction.clear_target(cdp, selector=self.editor_selector)
         time.sleep(0.2)
 
-        # 2. 原生输入文本并派发事件
         UniversalInputAction.insert_text(cdp, self.prompt_text, selector=self.editor_selector)
         time.sleep(0.2)
 
-        # 3. 校验注入结果
         editor_sel_json = json.dumps(self.editor_selector)
         staged_len = cdp.eval(f"""
         (() => {{
@@ -363,6 +362,12 @@ class SingleClickSendAction(AtomicAction):
                     const label = (sendBtn.getAttribute('aria-label') || '').toLowerCase();
                     if (!label.includes('stop') && !label.includes('停止')) {{
                         const targetBtn = sendBtn.tagName === 'BUTTON' ? sendBtn : (sendBtn.querySelector('button') || sendBtn);
+                        const replies = [...document.querySelectorAll('model-response')];
+                        window.__tier2ReplyCountBeforeSend = replies.length;
+                        window.__tier2RepliesBeforeSend = {{
+                            ids: new Set(replies.map(el => el.closest('.conversation-container[id]')?.id).filter(Boolean)),
+                            nodes: new WeakSet(replies)
+                        }};
                         targetBtn.click();
                         return {{ clicked: true }};
                     }}
@@ -413,43 +418,26 @@ class SingleClickSendAction(AtomicAction):
 
 @dataclass
 class StreamSettledConfig:
-    """可配置的流式落盘与判定规则，支持不同 AI 平台策略定制"""
+    """Selectors for observing a new reply, independent of expected content or extension events."""
     stop_btn_selector: str = GeminiSelectors.STOP_BTN
-    send_btn_selector: str = GeminiSelectors.SEND_BTN_NOT_STOP
     editor_selector: str = GeminiSelectors.EDITOR
     streaming_indicators_selector: str = GeminiSelectors.STREAMING_INDICATORS
-    model_response_selector: str = GeminiSelectors.MODEL_RESPONSE_ALL
-    images_selector: str = GeminiSelectors.IMAGES
+    model_response_selector: str = GeminiSelectors.MODEL_RESPONSE
+    model_response_body_selector: str = GeminiSelectors.MODEL_RESPONSE_BODY
     retry_btn_selector: str = GeminiSelectors.RETRY_BTN
     toast_selector: str = GeminiSelectors.TOAST
-    stream_complete_flag: str = "__geminiLastStreamComplete"
-    stream_state_var: str = "__testStreamState"
-    abort_keywords: Tuple[str, ...] = ("you stopped this response", "你已停止此回复")
-    error_keywords: Tuple[str, ...] = ("something went wrong", "无法生成图片", "i cannot generate", "unable to process")
 
 
 class AwaitStreamSettledAction(AtomicAction):
-    """
-    权威等待流式生成与落盘。
-    以扩展网络层真实捕获的 STREAM_COMPLETE 事件为主准绳，图片实体与 DOM 状态为辅助。
-    同时内建 Fail-Fast 即刻熔断：遇「You stopped this response」或卡片报错 1 秒内中止，绝不盲等 300 秒。
-    """
+    """Wait for a new, idle, stable reply. Validate its contents on exported files."""
 
-    def __init__(
-        self,
-        timeout: int = 300,
-        require_image: bool = False,
-        turn_start_time: Optional[float] = None,
-        config: Optional[StreamSettledConfig] = None
-    ):
+    def __init__(self, timeout: int = 300, config: Optional[StreamSettledConfig] = None):
         self.timeout = timeout
-        self.require_image = require_image
-        self.turn_start_time = turn_start_time or time.time()
         self.config = config or StreamSettledConfig()
 
     @property
     def name(self) -> str:
-        return f"AwaitStreamSettled(timeout={self.timeout}s, require_image={self.require_image})"
+        return f"AwaitStreamSettled(timeout={self.timeout}s)"
 
     @property
     def allowed_stages(self) -> Set[PipelineStage]:
@@ -460,105 +448,100 @@ class AwaitStreamSettledAction(AtomicAction):
         return PipelineStage.SETTLED
 
     def execute(self, ctx: Any, cdp: Any) -> ActionResult:
-        start_wait = time.time()
-        turn_start_ms = int(self.turn_start_time * 1000)
-        last_seen_len = 0
-        stable_count = 0
+        deadline = time.monotonic() + self.timeout
+        previous, stable = None, 0
+        last_state, last_error = {}, None
+        retried_response = False
+        retry_started, failed_content = False, None
         cfg = self.config
-
-        while time.time() - start_wait < self.timeout:
-            time.sleep(1.0)
-            elapsed = time.time() - start_wait
-
-            state = cdp.eval(f"""
-            (() => {{
-                const stopBtn = document.querySelector('{cfg.stop_btn_selector}');
-                const hasStop = !!(stopBtn && stopBtn.offsetWidth > 0);
-                const sendBtn = document.querySelector('{cfg.send_btn_selector}');
-                const hasSend = !!(sendBtn && sendBtn.offsetWidth > 0 && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true');
-                const editor = document.querySelector('{cfg.editor_selector}');
-                const isEditorReady = !!(editor && (editor.getAttribute('contenteditable') === 'true' || editor.offsetWidth > 0));
-                const isStreamingDOM = !!document.querySelector('{cfg.streaming_indicators_selector}');
-
-                const streamState = window.{cfg.stream_state_var} || {{}};
-                const lastCompleteTime = window.{cfg.stream_complete_flag} || 0;
-                const netCompleted = !!streamState.completed || (lastCompleteTime >= {turn_start_ms});
-
-                const allModels = Array.from(document.querySelectorAll('{cfg.model_response_selector}'));
-                const currCount = allModels.length;
-                const lastModel = currCount > 0 ? allModels[currCount - 1] : null;
-                const lastLen = lastModel ? (lastModel.textContent || '').trim().length : 0;
-                const lastSnippet = lastModel ? (lastModel.textContent || '').trim().slice(0, 150) : '';
-                const hasImages = lastModel ? (lastModel.querySelectorAll('{cfg.images_selector}').length > 0) : false;
-
-                const retryBtn = document.querySelector('{cfg.retry_btn_selector}');
-                const toastEl = document.querySelector('{cfg.toast_selector}');
-
-                return {{
-                    hasStop,
-                    hasSend,
-                    isEditorReady,
-                    isStreamingDOM,
-                    netCompleted,
-                    currCount,
-                    lastLen,
-                    lastSnippet,
-                    hasImages,
-                    hasRetry: !!retryBtn,
-                    toast: toastEl ? toastEl.textContent.trim() : null
-                }};
-            }})()
-            """)
-
-            if not state:
+        while time.monotonic() < deadline:
+            try:
+                state = cdp.eval(f"""
+                (() => {{
+                    const stop = document.querySelector('{cfg.stop_btn_selector}');
+                    const editor = document.querySelector('{cfg.editor_selector}');
+                    const models = [...document.querySelectorAll('{cfg.model_response_selector}')];
+                    const last = models.at(-1);
+                    const originalBody = last?.querySelector('{cfg.model_response_body_selector}');
+                    const body = originalBody?.cloneNode(true);
+                    body?.querySelectorAll('follow-up, elicitations, elicitations-group, .elicitations-container, [hide-from-message-actions], mini-app, thought-container, thought-box, .thought-container, .thought-wrapper, .model-thought, [data-thought]').forEach(el => el.remove());
+                    body?.querySelectorAll('button').forEach(el => {{ if (!el.querySelector('img')) el.remove(); }});
+                    const content = body?.innerHTML || '';
+                    const replyId = last?.closest('.conversation-container[id]')?.id || null;
+                    const before = window.__tier2RepliesBeforeSend;
+                    return {{
+                        // Gemini virtualizes old turns: the sixth reply can replace
+                        // the first while the mounted response count stays at five.
+                        // Stable turn IDs also reject a re-render of the old answer.
+                        newReply: !!last && (before
+                            ? replyId ? !before.ids.has(replyId) : !before.nodes.has(last)
+                            : models.length > (window.__tier2ReplyCountBeforeSend ?? 0)),
+                        replyId,
+                        modelCount: models.length,
+                        beforeSendCount: window.__tier2ReplyCountBeforeSend ?? 0,
+                        busy: !!(stop && stop.offsetWidth > 0) || !!document.querySelector('{cfg.streaming_indicators_selector}'),
+                        editorReady: !!editor && !(editor.textContent || '').trim(),
+                        hasContent: !!body?.textContent.trim() || !!body?.querySelector('img, video, audio'),
+                        content,
+                        error: /^(www\\.)?google\\.com$/.test(location.hostname) && location.pathname.startsWith('/sorry')
+                            ? 'Google human verification required; complete verification in the test browser'
+                            : document.querySelector('{cfg.retry_btn_selector}') ? 'Page shows a retry control'
+                            : document.querySelector('{cfg.toast_selector}')?.textContent.trim() || null
+                    }};
+                }})()
+                """) or {}
+            except (TimeoutError, OSError) as error:
+                last_error = str(error)
+                previous, stable = None, 0
+                time.sleep(1.0)
                 continue
-
-            # 异常熔断守护 1：若检测到报错 Toast 或 Retry 按钮，严禁盲目自动点击重试，立即熔断！
-            if state.get("hasRetry") or state.get("toast"):
-                err_text = state.get("toast") or "页面弹出 Retry 重试按钮（服务遇到错误）"
-                return ActionResult(False, f"触发熔断停机 (绝不盲目狂点重试): {err_text}")
-
-            last_snippet = (state.get("lastSnippet") or "").lower()
-            # 异常熔断守护 2：若卡片内被掐死或打出报错提示，即刻熔断，绝不盲等 300 秒！
-            if any(abort_kw in last_snippet for abort_kw in cfg.abort_keywords):
-                return ActionResult(False, f"检测到回复被异常中断掐死 ({last_snippet[:60]})")
-            if any(err_kw in last_snippet for err_kw in cfg.error_keywords):
-                return ActionResult(False, f"卡片内显示报错信息: {last_snippet[:60]}")
-
-            has_stop = state.get("hasStop", False)
-            has_send = state.get("hasSend", False)
-            is_editor_ready = state.get("isEditorReady", False)
-            is_stream_dom = state.get("isStreamingDOM", False)
-            net_completed = state.get("netCompleted", False)
-            last_len = state.get("lastLen", 0)
-            has_images = state.get("hasImages", False)
-
-            # 权威判断 1：必须网络层确证完成 + 页面 UI 已脱离忙碌态 + DOM 停止流式
-            if net_completed and not has_stop and (has_send or is_editor_ready) and not is_stream_dom:
-                if self.require_image:
-                    if has_images or elapsed > 45:
+            last_state = {key: value for key, value in state.items() if key != 'content'}
+            last_state['contentLength'] = len(state.get('content') or '')
+            if state.get('error'):
+                if (state['error'] == 'Page shows a retry control' and not retried_response
+                        and state.get('newReply') and state.get('replyId')):
+                    # Retry only the provider's failed current response, never
+                    # resubmit a prompt or act on an older turn's retry button.
+                    clicked = cdp.eval(f"""
+                    (() => {{
+                        const last = [...document.querySelectorAll('{cfg.model_response_selector}')].at(-1);
+                        if (last?.closest('.conversation-container[id]')?.id !== {json.dumps(state['replyId'])}) return false;
+                        const retry = last.querySelector('{cfg.retry_btn_selector}');
+                        if (!retry || !retry.getClientRects().length || retry.disabled || retry.getAttribute('aria-disabled') === 'true') return false;
+                        retry.click();
+                        return true;
+                    }})()
+                    """)
+                    if clicked is True:
+                        print('         ↻ Gemini current response failed; clicked its Retry once without resubmitting the prompt')
+                        retried_response = True
+                        failed_content = state.get('content')
+                        previous, stable = None, 0
                         time.sleep(1.0)
-                        return ActionResult(True, f"生图回复完成并落地 (网络确认, 耗时 {elapsed:.1f}s, 检测到图片实体)")
-                else:
-                    time.sleep(0.5)
-                    return ActionResult(True, f"流式回复权威完成 (网络事件确认, 耗时 {elapsed:.1f}s, 字符数: {last_len})")
-
-            # 严格安全兜底 2：在等待超过 15 秒后，若 Stop 消失且 UI 就绪，且图片落地或文本连续 4 次稳定
-            if not has_stop and (has_send or is_editor_ready) and not is_stream_dom and elapsed > 15:
-                if self.require_image and has_images:
-                    time.sleep(1.0)
-                    return ActionResult(True, f"生图回复完成并落地 (DOM 图片实体确认, 耗时 {elapsed:.1f}s)")
-                elif not self.require_image and last_len > 20:
-                    if last_len == last_seen_len:
-                        stable_count += 1
-                        if stable_count >= 4:
-                            time.sleep(0.5)
-                            return ActionResult(True, f"流式回复权威完成 (DOM 稳定确认, 耗时 {elapsed:.1f}s, 字符数: {last_len})")
-                    else:
-                        last_seen_len = last_len
-                        stable_count = 0
-
-        return ActionResult(False, f"等待流式完成超时 ({self.timeout}s)")
+                        continue
+                return ActionResult(False, state['error'])
+            if retried_response and (state.get('busy') or state.get('content') != failed_content):
+                retry_started = True
+            # Gemini can retain the restored failed prompt as an unsent draft
+            # after Retry. Reply identity and a fresh retry transition supply
+            # completion evidence without treating that draft as a new send.
+            ready = (state.get('newReply') and not state.get('busy')
+                     and (state.get('editorReady') or retried_response)
+                     and (not retried_response or retry_started) and state.get('hasContent'))
+            if ready:
+                snapshot = (state.get('replyId'), state.get('content'))
+                stable = stable + 1 if snapshot == previous else 1
+                previous = snapshot
+                if stable >= 4:
+                    return ActionResult(True, "New reply is idle and stable; exported artifacts supply content acceptance")
+            else:
+                previous, stable = None, 0
+            time.sleep(1.0)
+        diagnostics = {**last_state, "stableSamples": stable, "retriedResponse": retried_response}
+        if last_error:
+            diagnostics["lastObservationError"] = last_error
+        return ActionResult(False, f"Reply did not become idle and stable within {self.timeout}s; "
+                            f"last observation: {json.dumps(diagnostics, ensure_ascii=False)}", diagnostics)
 
 
 class HumanCooldownAction(AtomicAction):

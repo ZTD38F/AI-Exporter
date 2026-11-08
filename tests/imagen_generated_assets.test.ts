@@ -1,9 +1,11 @@
+import { composeFixture } from './helpers/documentFixture.js';
+const { historicalFixture } = require('./helpers/nativeFixture.js');
+const { extractImages } = require('./helpers/recordFixture/attachments.js');
 export {};
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { GeminiResponseParserClass } = require('../src/core/api/geminiParser.js');
-const ChatFormatter = require('../src/core/engine/chatFormatter.js');
+import { renderDocumentMarkdown } from '../src/l4/format/markdown/renderMarkdown.js';
 
 test('geminiParser - extracts Imagen generated image node (Pattern 2)', () => {
     const imagenNode = [
@@ -51,7 +53,7 @@ test('geminiParser - extracts Imagen generated image node (Pattern 2)', () => {
         ]
     ];
 
-    const images = GeminiResponseParserClass.extractImages(candidateBlock);
+    const images = extractImages(candidateBlock);
     assert.strictEqual(images.length, 1);
     assert.strictEqual(images[0].fileName, "watermarked_img_16704480932994645752.jpg");
     assert.strictEqual(images[0].mimeType, "image/jpeg");
@@ -81,7 +83,7 @@ test('geminiParser - extracts Python plot generated asset (Pattern 2)', () => {
         [900, 700, 93650]
     ];
 
-    const images = GeminiResponseParserClass.extractImages(plotNode);
+    const images = extractImages(plotNode);
     assert.strictEqual(images.length, 1);
     assert.strictEqual(images[0].fileName, "ekf_fusion_result.png");
     assert.strictEqual(images[0].mimeType, "image/png");
@@ -119,7 +121,9 @@ test('chatFormatter - formats generated image as markdown and cleans placeholder
         ]
     };
 
-    const { content: res } = await ChatFormatter.formatMarkdownCanonical(mockChat);
+    const parsed = historicalFixture(mockChat);
+    const { document, resources } = await composeFixture(parsed.conversation, parsed.resourceHints);
+    const res = renderDocumentMarkdown(document, resources);
     // 必须包含 Markdown 图片引用 ![]
     assert.ok(res.includes('!['));
     assert.ok(res.includes('assets/b800f3_watermarked_img_16704480932994645752.jpg'));
@@ -128,7 +132,7 @@ test('chatFormatter - formats generated image as markdown and cleans placeholder
 });
 
 test('assetFetcher - ensureAlr appends or preserves alr=yes parameter', () => {
-    const AssetFetcher = require('../src/content/assetFetcher.js');
+    const AssetFetcher = require('../src/runtime/capabilities/assetFetcher.js');
     const ensureAlr = AssetFetcher.ensureAlr || (AssetFetcher.AssetFetcher && AssetFetcher.AssetFetcher.ensureAlr);
 
     assert.strictEqual(ensureAlr('https://lh3.googleusercontent.com/gg/abc'), 'https://lh3.googleusercontent.com/gg/abc?alr=yes');
@@ -138,7 +142,7 @@ test('assetFetcher - ensureAlr appends or preserves alr=yes parameter', () => {
 });
 
 test('assetFetcher - extractLh3 parses lh3-lh6 and unescapes json characters', () => {
-    const AssetFetcher = require('../src/content/assetFetcher.js');
+    const AssetFetcher = require('../src/runtime/capabilities/assetFetcher.js');
     const extractLh3 = AssetFetcher.extractLh3 || (AssetFetcher.AssetFetcher && AssetFetcher.AssetFetcher.extractLh3);
 
     const normal = 'https://lh3.google.com/rd-gg/abc123=s512?alr=yes';
@@ -149,11 +153,12 @@ test('assetFetcher - extractLh3 parses lh3-lh6 and unescapes json characters', (
 });
 
 test('assetFetcher - fetchGgChain follows multi-hop ALR text redirects to final image', async () => {
-    const AssetFetcher = require('../src/content/assetFetcher.js');
+    const AssetFetcher = require('../src/runtime/capabilities/assetFetcher.js');
     const fetchGgChain = AssetFetcher.fetchGgChain || (AssetFetcher.AssetFetcher && AssetFetcher.AssetFetcher.fetchGgChain);
 
-    const oldFetch = (global as any).fetch;
+    const originalFetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
     const callLog: string[] = [];
+    const fakeBinary = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4]);
 
     try {
         (global as any).fetch = async (url: string) => {
@@ -180,7 +185,6 @@ test('assetFetcher - fetchGgChain follows multi-hop ALR text redirects to final 
                 };
             } else if (url.includes('/rd-gg/final')) {
                 // Hop 2: returns binary image/jpeg
-                const fakeBinary = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4]);
                 return {
                     ok: true,
                     status: 200,
@@ -199,12 +203,15 @@ test('assetFetcher - fetchGgChain follows multi-hop ALR text redirects to final 
         assert.ok(res, 'Must return response');
         assert.strictEqual(res.ok, true);
         assert.strictEqual(res.headers.get('content-type'), 'image/jpeg');
-        assert.strictEqual(callLog.length, 3, 'Must follow 3 hops to resolve image');
-        // Ensure every hop was queried with alr=yes
-        assert.ok(callLog[0].includes('alr=yes'), 'Hop 0 must include alr=yes');
-        assert.ok(callLog[1].includes('alr=yes'), 'Hop 1 must enforce alr=yes');
-        assert.ok(callLog[2].includes('alr=yes'), 'Hop 2 must enforce alr=yes');
+        assert.deepStrictEqual(callLog, [
+            'https://lh3.googleusercontent.com/gg/start?alr=yes',
+            'https://lh3.google.com/rd-gg/hop1?alr=yes',
+            'https://lh3.googleusercontent.com/rd-gg/final?alr=yes'
+        ], 'the multi-hop fetch must follow each redirect with ALR preserved');
+        const blob = await res.blob();
+        assert.deepStrictEqual(new Uint8Array(await blob.arrayBuffer()), fakeBinary, 'the final image bytes must be returned intact');
     } finally {
-        (global as any).fetch = oldFetch;
+        if (originalFetchDescriptor) Object.defineProperty(globalThis, 'fetch', originalFetchDescriptor);
+        else Reflect.deleteProperty(globalThis, 'fetch');
     }
 });

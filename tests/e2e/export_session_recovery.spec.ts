@@ -1,233 +1,118 @@
-import { test, expect } from './fixtures';
-
-test.describe('E2E: Export Session Recovery Banner & Interruption Handling', () => {
-  test('should update chat title in storage & workbench during export, and restore session banner on reload', async ({ context, extensionId }) => {
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await optionsPage.waitForLoadState('domcontentloaded');
-
-    // 1. Pre-populate initial Takeout imported chat
-    await optionsPage.evaluate(async () => {
-      const initialConvs = [
-        {
-          id: 'chat_session_test_1',
-          title: 'Takeout Prompt 临时问题',
-          titleSource: 'takeout',
-          titles: { takeout: 'Takeout Prompt 临时问题' },
-          timestamp: 1680000000000
-        },
-        {
-          id: 'chat_session_test_2',
-          title: '未导出第二个问题',
-          titleSource: 'legacy',
-          titles: { legacy: '未导出第二个问题' },
-          timestamp: 1680000050000
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { openOptions, seedConversations, accountId } from './uiFixture';
+import { readFile } from 'node:fs/promises';
+import { A, mount, read } from '../helpers/uiPortHarness';
+test('old interrupted sessions stay inert after reload and language changes; source titles remain untouched',async({context,extensionId})=>{
+    await seedRegistryAccounts(context);const page=await openOptions(context,extensionId);await seedConversations(page,[{id:'one',title:'Takeout Prompt 临时问题',titleSource:'derived'},{id:'two'}]);
+    await page.evaluate(()=>chrome.storage.local.set({gemini_last_export_session:{status:'interrupted',total:2,current:1,lastChatId:'one',lastChatTitle:'Must not overwrite source title'}}));
+    await page.reload();await expect(page.locator('#list .item')).toHaveCount(2);await expect(page.locator('#exportSessionBanner,#btnResumeExport,#btnDismissExportBanner')).toHaveCount(0);await expect(page.locator('#list input:checked')).toHaveCount(0);
+    await page.locator('#langToggle').uncheck();
+    await expect(page.locator('html')).toHaveAttribute('lang','zh-CN');
+    await expect(page.locator('[data-chat-id="one"]')).toContainText('Takeout Prompt 临时问题');
+    await expect(page.locator('#btnExport')).toBeDisabled();
+    await page.locator('#langToggle').check();
+    await expect(page.locator('html')).toHaveAttribute('lang','en');
+    await expect(page.locator('[data-chat-id="one"]')).toContainText('Takeout Prompt 临时问题');
+    // Direct IDB inspection is through current Storage, with no v1 globals or aliases.
+    const {exposeUIStorage}=await import('./uiFixture');await exposeUIStorage(page);
+    const index=await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').getIndex({accountId:id,conversationId:'one'}),accountId);expect(index.title).toBe('Takeout Prompt 临时问题');expect(index.titleSource).toBe('derived');
+});
+test('active export locks scan, settings and selection through cancellation and releases only when the task returns',async({page})=>{
+    // Delay only the Application port; all workbench handlers and rendering execute.
+    await mount(page,'options',{holdExport:true});await page.locator('#btnSelectAll').click();await page.locator('#btnExport').click();
+    for(const id of ['btnSyncAll','btnExport','format','accountIdSelect','skipExported','includeAssets','liveSaveDiskToggle','btnSetDir','btnTourGuide'])await expect(page.locator(`#${id}`)).toBeDisabled();await expect(page.locator('#list input')).toBeDisabled();await expect(page.locator('#exportSessionBanner')).toHaveCount(0);
+    await expect(page.locator('input[name="delivery"]:enabled')).toHaveCount(0);
+    await expect(page.locator('#exportOptionsLock')).toBeVisible();
+    const beforeSettings = await read(page,'settings');
+    const beforePatches = await read(page,'patches');
+    await page.evaluate(() => {
+        for (const [id,value] of [['format','pdf'],['skipExported',false],['includeAssets',false]]) {
+            const input = document.getElementById(String(id)) as HTMLInputElement;
+            if (typeof value === 'boolean') input.checked = value; else input.value = value;
+            input.dispatchEvent(new Event('change',{bubbles:true}));
         }
-      ];
-      await chrome.storage.local.set({
-        gemini_conversations: initialConvs,
-        exportedIds: {}
-      });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
+        const radio = document.querySelector<HTMLInputElement>('input[value="folderWriter"]')!;
+        radio.checked = true; radio.dispatchEvent(new Event('change',{bubbles:true}));
     });
+    expect(await read(page,'settings')).toEqual(beforeSettings);
+    expect(await read(page,'patches')).toEqual(beforePatches);
+    await expect(page.locator('#format')).toHaveValue(beforeSettings.defaultFormat);
+    await expect(page.locator('#includeAssets')).toBeChecked({ checked: beforeSettings.includeAssets });
+    await expect(page.locator('input[value="browserDownload"]')).toBeChecked();
+    const request = (await read(page, 'exports'))[0];
+    const progress = await page.locator('#status').textContent();
+    const originalLog = await page.locator('#log').textContent();
+    await expect(page.locator('#devToggle')).toBeEnabled();
+    await page.locator('#devToggle').check();
+    await expect(page.locator('body')).toHaveClass(/dev-mode/);
+    await expect.poll(async () => (await read(page, 'settings')).developerMode).toBe(true);
+    await expect(page.locator('#langToggle')).toBeEnabled();
+    await page.locator('#langToggle').uncheck();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+    await expect.poll(async () => (await read(page, 'settings')).language).toBe('zh');
+    await expect(page.locator('body')).toHaveAttribute('data-busy', 'true');
+    await expect(page.locator('#status')).toHaveText('已准备 1 条会话 · 已交付正文 0 条 · 已下载 0 个附件');
+    await expect(page.locator('#log')).toHaveText(originalLog!);
+    await expect(page.locator('#format')).toBeDisabled();
+    expect(await read(page, 'exports')).toEqual([request]);
+    await page.locator('#devToggle').uncheck();
+    await expect(page.locator('body')).not.toHaveClass(/dev-mode/);
+    await expect(page.locator('#langToggle')).toBeEnabled();
+    await page.locator('#langToggle').check();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.locator('#status')).toHaveText(progress!);
+    await expect(page.locator('#log')).toHaveText(originalLog!);
+    await page.locator('#list span').click({force:true});await expect(page.locator('#list input')).toBeChecked();await page.locator('#btnCancel').click();await expect(page.locator('#btnSyncAll')).toBeDisabled();
+    await expect(page.locator('#exportOptionsLock')).toBeVisible();
+    await expect(page.locator('#includeAssets')).toBeDisabled();
+    await page.evaluate(()=>Reflect.get(window,'harness').finishExport());await expect(page.locator('#btnSyncAll')).toBeEnabled();await expect(page.locator('#list input')).toBeEnabled();await expect(page.locator('#status')).toContainText('Cancelled');expect((await read(page,'exports')).length).toBe(1);
+    await expect(page.locator('#exportOptionsLock')).toBeHidden();
+    await expect(page.locator('#format')).toBeEnabled();
+    await expect(page.locator('#includeAssets')).toBeEnabled();
+    await expect(page.locator('#btnTourGuide')).toBeEnabled();
+});
 
-    const targetItem = optionsPage.locator('[data-chat-id="chat_session_test_1"]');
-    await expect(targetItem).toContainText('Takeout Prompt 临时问题');
 
-    // 2. Simulate export session in storage (interrupted state)
-    await optionsPage.evaluate(async () => {
-      await chrome.storage.local.set({
-        gemini_exporter_lang: 'zh',
-        gemini_last_export_session: {
-          status: 'interrupted',
-          slot: 'u0',
-          total: 2,
-          current: 1,
-          lastChatId: 'chat_session_test_1',
-          lastChatTitle: '深度学习架构与微调实战',
-          updatedAt: Date.now()
-        }
-      });
-    });
-
-    // 3. Reload options workbench (user refreshed the page)
-    await optionsPage.reload();
-    await optionsPage.waitForLoadState('domcontentloaded');
-
-    // 4. Verify Export Session Recovery Banner is rendered in Chinese
-    const banner = optionsPage.locator('#exportSessionBanner');
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText('发现未完成的导出任务');
-    await expect(banner).toContainText('共 2 条');
-    await expect(banner).toContainText('已处理 1 条');
-    await expect(banner).toContainText('剩余 1 条未导出');
-    await expect(banner).toContainText('深度学习架构与微调实战');
-
-    const btnResume = optionsPage.locator('#btnResumeExport');
-    await expect(btnResume).toBeVisible();
-    await expect(btnResume).toContainText('继续导出未完成项');
-
-    // 5. Test switching language to English dynamically updates banner
-    await optionsPage.locator('#langToggle').check();
-    await expect(banner).toContainText('Unfinished export task found');
-    await expect(banner).toContainText('Total 2 chats, processed 1, 1 remaining');
-    await expect(btnResume).toContainText('Resume Unfinished');
-
-    // 6. Verify dismissing banner
-    const btnDismiss = optionsPage.locator('#btnDismissExportBanner');
-    await btnDismiss.click();
-    await expect(banner).not.toBeVisible();
-
-    const sessionData = await optionsPage.evaluate(async () => {
-      return await chrome.storage.local.get(['gemini_last_export_session']);
-    });
-    expect(sessionData.gemini_last_export_session).toBeUndefined();
-  });
-
-  test('should disable scan during export and never show interruption banner during active run', async ({ context, extensionId }) => {
-    // 1. Open mock Gemini page in background with delayed batchexecute response
-    const geminiPage = await context.newPage();
-
-    await geminiPage.route('https://gemini.google.com/**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html',
-        body: `<!DOCTYPE html>
-        <html>
-        <head>
-          <script>
-            window._WIZ_global_data = {
-              SNlM0e: 'mock_at_token_recovery',
-              cfb2h: 'boq_assistant-bard-web-server_20260802.09_p1'
-            };
-          </script>
-        </head>
-        <body>Gemini Mock Session Active</body>
-        </html>`
-      });
-    });
-
-    let resolveRoute: () => void = () => {};
-    const routeGate = new Promise<void>((resolve) => {
-      resolveRoute = resolve;
-    });
-
-    const turns = [
-      [
-        ["c_chat_delay_001"],
-        "turn_id_1",
-        [["延迟测试提问"]],
-        [
-          [
-            ["rc_cand_1", ["延迟测试回答"]]
-          ]
-        ]
-      ]
-    ];
-    const mockDetailInner = JSON.stringify([
-      turns,
-      "tC_sample_token",
-      "待导出延迟测试会话"
-    ]);
-    const mockRpcResponse = `)]}'\n\n[["wrb.fr","hNvQHb",${JSON.stringify(mockDetailInner)}]]`;
-
-    await geminiPage.route('**/batchexecute*', async (route) => {
-      await routeGate;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: mockRpcResponse
-      });
-    });
-
-    await geminiPage.goto('https://gemini.google.com/app');
-    await geminiPage.waitForLoadState('domcontentloaded');
-
-    // 2. Open Workbench Options page
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await optionsPage.waitForLoadState('domcontentloaded');
-
-    // Seed test conversation
-    await optionsPage.evaluate(async () => {
-      const convs = [
-        { id: 'chat_delay_001', title: '待导出延迟测试会话', timestamp: 1700000000000 },
-        ...Array.from({ length: 40 }, (_, i) => ({
-          id: `chat_scroll_${i}`, title: `滚动测试会话 ${i}`, timestamp: 1699999999999 - i
-        }))
-      ];
-      await chrome.storage.local.set({
-        gemini_conversations: convs,
-        exportedIds: {}
-      });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-
-    await optionsPage.click('#btnSelectNone');
-    await optionsPage.locator('[data-chat-id="chat_delay_001"] input[type=checkbox]').check();
-    await expect(optionsPage.locator('#list input[type=checkbox]:checked')).toHaveCount(1);
-
-    // 3. Trigger real export via clicking #btnExport to naturally enter running state
-    await optionsPage.click('#btnExport');
-
-    const banner = optionsPage.locator('#exportSessionBanner');
-    await expect(banner).not.toBeVisible();
-
-    const btnScan = optionsPage.locator('#btnIncrementalScan');
-    const btnDeepScan = optionsPage.locator('#btnDeepScan');
-    const btnExport = optionsPage.locator('#btnExport');
-
-    // Buttons must be naturally disabled while ExportEngine is active
-    await expect(btnScan).toBeDisabled();
-    await expect(btnDeepScan).toBeDisabled();
-    await expect(btnExport).toBeDisabled();
-
-    const list = optionsPage.locator('#list');
-    await expect(list.locator('input[type=checkbox]').first()).toBeDisabled();
-    await list.locator('.chat-title').nth(1).click();
-    await expect(list.locator('input[type=checkbox]:checked')).toHaveCount(1);
-    await list.hover();
-    await optionsPage.mouse.wheel(0, 450);
-    await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
-
-    // 4. Trigger loadStore while export is running
-    await optionsPage.evaluate(async () => {
-      await chrome.storage.local.set({
-        gemini_last_export_session: {
-          status: 'running',
-          slot: 'u0',
-          total: 10,
-          current: 3,
-          updatedAt: Date.now()
-        }
-      });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-
-    // Banner MUST remain hidden while export is running
-    await expect(banner).not.toBeVisible();
-
-    // A render during export must preserve the selection lock.
-    await expect(list.locator('input[type=checkbox]').first()).toBeDisabled();
-    const checkedAfterRender = await list.locator('input[type=checkbox]:checked').count();
-    await list.locator('.chat-title').first().click();
-    await expect(list.locator('input[type=checkbox]:checked')).toHaveCount(checkedAfterRender);
-
-    // 5. Unblock network gate so export completes cleanly without hanging context teardown
-    const downloadPromise = optionsPage.waitForEvent('download', { timeout: 15000 }).catch(() => null);
-    resolveRoute();
-    await downloadPromise;
-
-    // Export completes, naturally re-enabling all action buttons
-    await expect(btnScan).toBeEnabled({ timeout: 10000 });
-    await expect(btnDeepScan).toBeEnabled();
-    await expect(btnExport).toBeEnabled();
-    await expect(list.locator('input[type=checkbox]').first()).toBeEnabled();
-  });
+test('downloaded diagnostics include historic partial outcomes and captured export causes', async ({page}) => {
+    const record = { exportedAt: 1, format: 'markdown', status: 'partial', chatTime: 5,
+        otherContentMissing: true, attachmentIssues: [{ resourceId: 'image-1', name: 'image.png',
+            sourceUrl: 'https://example.test/expired', code: 'RESOURCE_SOURCE_EXPIRED', httpStatus: 403 }] };
+    await mount(page, 'options', { holdExport: true, partial: true, records: { [A]: { a: record } } });
+    await page.locator('#devToggle').check();
+    await page.locator('#btnSelectAll').click();
+    await page.locator('#btnExport').click();
+    await page.evaluate(({record}) => {
+        const h = Reflect.get(window, 'harness');
+        const key = h.exports[0].keys[0];
+        h.exportOptions.onDiagnostic({ key, stage: 'source_refresh', code: 'SOURCE_REFRESH_FAILED', message: 'RPC unavailable' });
+        h.exportOptions.onDiagnostic({ key, stage: 'source_parse', code: 'GEMINI_DETAIL_PAGES',
+            message: 'Source Detail pagination evidence', details: { pageCount: 2, versionChanged: true,
+                pages: [{ page: 1, sourceVersion: 100 }, { page: 2, sourceVersion: 200 }] } });
+        h.exportOptions.onItemUpdate({ key, status: 'exported', record });
+        h.finishExport();
+    }, {record});
+    await expect(page.locator('body')).toHaveAttribute('data-busy', 'false');
+    const downloaded = page.waitForEvent('download');
+    await page.locator('#btnExportDiag').focus();
+    await page.locator('#btnExportDiag').press('Enter');
+    const file = await downloaded;
+    const diag = JSON.parse(await readFile((await file.path())!, 'utf8'));
+    expect(diag.schemaVersion).toBe(2);
+    expect(diag.diagnosticRevision).toBe(2);
+    expect(typeof diag.environment.online).toBe('boolean');
+    expect(diag.extensionVersion).toBe('1.8.1');
+    expect(diag.currentExportIssues[0].record.attachmentIssues[0].httpStatus).toBe(403);
+    expect(diag.currentExportIssues[0].reasonAvailability).toContain('Stored outcome only');
+    const run = diag.exportRuns[0];
+    expect(run.request.keys).toEqual([{accountId: A, conversationId: 'a'}]);
+    expect(run.request.format).toBe('markdown');
+    expect(run.finishedAt).toBeGreaterThanOrEqual(run.startedAt);
+    expect(run.result.partial).toBe(1);
+    expect(run.items[0].record).toEqual(record);
+    expect(run.items[0].title).toBe('<img src=x onerror=alert(1)>');
+    expect(run.diagnostics[1]).toMatchObject({ stage: 'source_parse', code: 'GEMINI_DETAIL_PAGES',
+        details: { pageCount: 2, versionChanged: true,
+            pages: [{ page: 1, sourceVersion: 100 }, { page: 2, sourceVersion: 200 }] } });
+    expect(run.diagnostics[0]).toMatchObject({ code: 'SOURCE_REFRESH_FAILED', message: 'RPC unavailable',
+        key: { accountId: A, conversationId: 'a' } });
 });

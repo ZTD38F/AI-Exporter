@@ -95,7 +95,7 @@ def run_custom_ai_mode(
         print(" [❌ 错误] 途径二 (自定义 AI 模式) 需要配置自定义多模态接口 Endpoint！")
         print(" 请通过 --endpoint 参数或 CUSTOM_AI_ENDPOINT 环境变量提供接口 URL。")
         print(" 例如: --endpoint http://localhost:8000/v1/chat/completions")
-        print(" 若需通过子智能体探索，请使用途径一: npm run test:visual")
+        print(" 若需通过子智能体探索，请使用途径一: python3 scripts/test_visual_agent.py --playground")
         print("=" * 68)
         return False
 

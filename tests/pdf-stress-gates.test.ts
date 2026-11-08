@@ -1,3 +1,10 @@
+import { v2LiveSaveHost } from './helpers/v2LiveSaveHost.js';
+import { exportRequest } from './helpers/v2ExportHost.js';
+import { ingestDetail } from '../src/l2/ingestion.js';
+import { runExport } from '../src/application/export/runExport.js';
+import { listExportRecords } from '../src/l3a/storageService.js';
+import { buildExportFileName } from '../src/shared/utils/pathUtils.js';
+const { historicalFixture } = require('./helpers/nativeFixture.js');
 /**
  * tests/pdf-stress-gates.test.ts
  * Phase F 压力/附件/内存门禁测试（Tier 1）。
@@ -6,7 +13,7 @@
  * 测得 121 消息长会话可编译、100 会话最慢 50.6s（含真编译）、300 次编译 0 失败、
  * 无内存泄漏信号。
  *
- * §1–§4 是预处理阶段门禁：normalizeGeminiConversation（F2b）+ toTypstPayload（F2c 前端），
+ * §1–§4 是预处理阶段门禁：provider parsing + Domain composition + PDF backend，
  * 日常 CI 常开。§5（Item 4）是真编译器（Typst WASM sandbox，Phase D）落地后的端到端门禁：
  * 完整链路 PdfExporter → project → resources → payload → real Typst → delivery；
  * release-only——RELEASE_STRESS=1 时跑 100 会话 / 2000 消息全量，日常 CI 只跑 2 会话微型冒烟。
@@ -24,12 +31,11 @@ export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { normalizeGeminiConversation } = require('../src/core/export/canonical/index.js');
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
+const { parseFixture } = require('./helpers/documentFixture.js');
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
 
 // §5 全链路门禁的依赖（真编译器 + 文本提取）。§1–§4 不需要它们。
-const { PdfExporter } = require('../src/core/export/pdf/index.js');
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
 const {
     RealWasmSandboxHost,
     repoRoot,
@@ -38,16 +44,14 @@ const {
 const { extractPdfText } = require('./helpers/pdfTextExtract.js');
 
 const BASE_TS = 1727000000000;
-const TYPST_OPTS = { assetPath: (_a: any) => undefined };
+const TYPST_OPTS = {};
 
-// ---------------------------------------------------------------------------
 // 合成器：照抄 P0 s4 样本构成（60 轮 / 121 消息；分页、思考、引用、图片、
 // 缺失附件、未知角色），外加任务要求的混合内容：中文、公式、代码块、表格、
 // 引用、附件占位。
 //
 // 注意：块级公式必须独占一行。P0 发现 F1 bug——`$$...$$` 同行后跟文本时整个
 // 消息块被静默丢弃（REPORT.md §6）。样本构造主动规避该形状，bug 本体留给仓库修。
-// ---------------------------------------------------------------------------
 
 function mdFor(i: number, role: string): string {
     const parts: string[] = [];
@@ -148,23 +152,21 @@ function makeBatchConversation(n: number): any {
     };
 }
 
-// ---------------------------------------------------------------------------
 // 1. 长会话压力：121 消息 normalize + payload
 // 预算 60s 的依据：本机实测 ~1.1s（P0 预处理阶段秒级）；取约 55 倍余量，
 // 防 CI 机器慢 + 未来 normalizer 增重。10 分钟是整链路（含真编译）预算，
 // 真编译器落地后此处预算要收紧为端到端口径。
-// ---------------------------------------------------------------------------
 
 test('stress: 121-message conversation normalizes and converts well under budget', async () => {
     const raw = makeStressConversation();
     assert.strictEqual(raw.messages.length, 121, 'synthetic conversation must have 121 messages');
 
     const t0 = Date.now();
-    const { bundle, diagnostics } = await normalizeGeminiConversation(raw);
-    const { payload } = toTypstPayload(bundle, TYPST_OPTS);
+    const { document, resources, diagnostics } = await parseFixture(raw);
+    const { payload } = renderTypstFixture(document, resources, TYPST_OPTS);
     const elapsedMs = Date.now() - t0;
 
-    assert.strictEqual(payload.messageCount, 121, 'payload must carry all 121 messages');
+    assert.strictEqual(payload.messages.length, 121, 'payload must carry all 121 messages');
     assert.strictEqual(payload.messages.length, 121);
     assert.ok(
         payload.messages.every((m: any) => Array.isArray(m.blocks) && m.blocks.length > 0),
@@ -177,12 +179,10 @@ test('stress: 121-message conversation normalizes and converts well under budget
     );
 });
 
-// ---------------------------------------------------------------------------
 // 2. 100 会话 batch 压力：总耗时有明确上界
 // 预算 120s 的依据：本机实测 100 会话 × 8 消息 = 800 消息共 ~1.9s；
 // P0 的 50.6s 是含 WASM 真编译的口径，此处只测预处理。120s ≈ 60 倍余量，
 // 留给 CI 机器抖动。真编译器落地后升级为端到端 batch 门。
-// ---------------------------------------------------------------------------
 
 test('stress: 100-conversation batch has bounded total preprocessing time', async () => {
     const batch = Array.from({ length: 100 }, (_, n) => makeBatchConversation(n));
@@ -190,9 +190,9 @@ test('stress: 100-conversation batch has bounded total preprocessing time', asyn
     const t0 = Date.now();
     let totalMessages = 0;
     for (const raw of batch) {
-        const { bundle } = await normalizeGeminiConversation(raw);
-        const { payload } = toTypstPayload(bundle, TYPST_OPTS);
-        totalMessages += payload.messageCount;
+        const { document, resources } = await parseFixture(raw);
+        const { payload } = renderTypstFixture(document, resources, TYPST_OPTS);
+        totalMessages += payload.messages.length;
     }
     const elapsedMs = Date.now() - t0;
 
@@ -203,29 +203,27 @@ test('stress: 100-conversation batch has bounded total preprocessing time', asyn
     );
 });
 
-// ---------------------------------------------------------------------------
 // 3. 内存无泄漏信号：50 次 normalize+payload 循环，heapUsed 增长有界
 // 实测（本机，3 轮）：+1.0 / +0.0 / +0.1 MB → 断言 < 100MB。
 // 诚实标注：这是"无泄漏信号"门，不是精确泄漏证明——WASM 堆内内存无法从
 // 外部单独归因（P0 REPORT.md §3）；且本环境未暴露 gc，断言的是含惰性 GC 的
 // 堆增长上界。
-// ---------------------------------------------------------------------------
 
 test('memory: repeated normalize+payload shows no leak signal', async () => {
     const raw = makeStressConversation();
 
     // 预热一次，让 JIT / 惰性初始化稳定
     {
-        const { bundle } = await normalizeGeminiConversation(raw);
-        toTypstPayload(bundle, TYPST_OPTS);
+        const { document, resources } = await parseFixture(raw);
+        renderTypstFixture(document, resources, TYPST_OPTS);
     }
 
     const before = process.memoryUsage().heapUsed;
     let lastMessageCount = 0;
     for (let i = 0; i < 50; i++) {
-        const { bundle } = await normalizeGeminiConversation(raw);
-        const { payload } = toTypstPayload(bundle, TYPST_OPTS);
-        lastMessageCount = payload.messageCount;
+        const { document, resources } = await parseFixture(raw);
+        const { payload } = renderTypstFixture(document, resources, TYPST_OPTS);
+        lastMessageCount = payload.messages.length;
     }
     const after = process.memoryUsage().heapUsed;
     const growthBytes = after - before;
@@ -238,7 +236,6 @@ test('memory: repeated normalize+payload shows no leak signal', async () => {
     );
 });
 
-// ---------------------------------------------------------------------------
 // 4. 50MiB 附件门：规格测试（占位）
 //
 // 规格测试——Phase D asset resolver 落地时把本节的本地 helper 换成 import 真模块，
@@ -250,7 +247,6 @@ test('memory: repeated normalize+payload shows no leak signal', async () => {
 //   c) 0 字节 / 非法 size → 拒绝并告警。理由：0 字节文件无法携带任何内容进 PDF；
 //      若按"可用"放行会产生空引用，违背"缺失资源不能静默消失"铁律；拒绝后走
 //      missing-asset 可见路径（列出名称），保持非静默。
-// ---------------------------------------------------------------------------
 
 const ATTACHMENT_SIZE_LIMIT_BYTES = 50 * 1024 * 1024; // 52_428_800
 
@@ -333,7 +329,6 @@ test('attachment gate spec: set budget boundary at exactly 50MiB', async () => {
     assert.strictEqual(over.accepted, false, 'one byte over the set budget is rejected');
 });
 
-// ---------------------------------------------------------------------------
 // 5. Item 4 (P0)：100 会话 full-pipeline release stress（含真编译）
 //
 // 完整链路：PdfExporter → normalize → project → resources → payload →
@@ -346,7 +341,7 @@ test('attachment gate spec: set budget boundary at exactly 50MiB', async () => {
 // 门（全量口径）：
 //   a) 0 crash：exporter.run() 不抛异常；
 //   b) 0 blank PDF：每份 PDF 有 %PDF- 魔数、pageCount ≥ 1、可提取文本非空；
-//   c) 0 false success：failed 列表为空；每条 exported 记录 status=ok 且
+//   c) 0 false success：failed 列表为空；每条 exported 记录 status=partial（注入缺失图片） 且
 //      1:1 对应一份已写入的非空 PDF（fileName / bytesWritten 对得上）；
 //   d) all conversations accounted for：succeeded + failed == N，输入 id
 //      在 exported + failed 中恰好出现一次；
@@ -361,7 +356,6 @@ test('attachment gate spec: set budget boundary at exactly 50MiB', async () => {
 // 内存说明：rough peak 只是 Node 堆采样（onItemExported 回调处）；WASM 堆内
 // 内存无法从外部单独归因（P0 REPORT.md §3）。fake writer 为断言而持有全部
 // PDF 字节，peak 天然包含约 100 份 PDF 的体量。
-// ---------------------------------------------------------------------------
 
 const RELEASE_STRESS = process.env.RELEASE_STRESS === '1';
 
@@ -398,160 +392,39 @@ function makeFullConversation(n: number, msgCount: number): any {
     };
 }
 
-test('stress: full-pipeline release stress with real Typst compile (Item 4)', async () => {
-    const N = RELEASE_STRESS ? 100 : 2;
-    const MSG_PER_CONV = 20;
-    const totalMessages = N * MSG_PER_CONV;
-    const conversations = Array.from({ length: N }, (_, n) => makeFullConversation(n, MSG_PER_CONV));
-    assert.strictEqual(
-        conversations.reduce((s, c) => s + c.messages.length, 0),
-        totalMessages,
-        'synthetic input must carry the expected message count',
-    );
-
-    const cjkFont = resolveLocalCjkFont();
-    const fontPaths = cjkFont
-        ? ['src/ui/sandbox/fonts/NewCMMath-Regular.otf', cjkFont]
-        : undefined;
-
-    const host = new RealWasmSandboxHost(repoRoot());
-    const compiler = new TypstSandboxCompiler({ host, ...(fontPaths ? { fontPaths } : {}) });
-
-    // in-memory writer：delivery stage 的落盘断言目标（useZip: false 只走 writeFile）。
-    const files: Array<{ name: string; bytes: Uint8Array }> = [];
-    const writer = {
-        async writeFile(relativePath: string, content: any) {
-            const bytes =
-                content instanceof Uint8Array ? content : new TextEncoder().encode(String(content));
-            files.push({ name: relativePath, bytes });
-            return relativePath;
-        },
-    };
-
-    const exported: Array<{ id: string; record: any }> = [];
-    const errorLogs: string[] = [];
-    const exporter = new PdfExporter(compiler); // 真编译器（非 stub）
-
-    const heapStart = process.memoryUsage().heapUsed;
-    let heapPeak = heapStart;
-    const sampleHeap = () => {
-        const h = process.memoryUsage().heapUsed;
-        if (h > heapPeak) heapPeak = h;
-    };
-
-    let crash: unknown = null;
-    let result: any = null;
-    const t0 = Date.now();
-    try {
-        result = await exporter.run(
-            {
-                selected: conversations.map((c) => ({ id: c.id, title: c.title })),
-                conversations,
-                useZip: false,
-                writer,
-            },
-            {
-                onItemExported: (id: string, record: any) => {
-                    exported.push({ id, record });
-                    sampleHeap();
-                },
-                onLog: (msg: string, level?: string) => {
-                    if (level === 'error') errorLogs.push(msg);
-                },
-            },
-        );
-    } catch (e) {
-        crash = e;
-    } finally {
-        // compiler 是外部注入的（PdfExporter 不拥有），这里负责 dispose。
-        compiler.dispose();
+test('stress: full-pipeline release stress with real Typst compile (Item 4)', async (t: import('node:test').TestContext) => {
+    const N=RELEASE_STRESS?100:2, MSG_PER_CONV=20;
+    const conversations=Array.from({length:N},(_,n)=>makeFullConversation(n,MSG_PER_CONV));
+    assert.strictEqual(conversations.reduce((s,c)=>s+c.messages.length,0),N*MSG_PER_CONV);
+    const h=v2LiveSaveHost(t),ids:string[]=[];
+    for(const raw of conversations){
+        const {conversation:{index,detail}}=historicalFixture(raw);
+        await ingestDetail(index.key.accountId,index.key.conversationId,detail,index);ids.push(index.key.conversationId);
     }
-    const elapsedMs = Date.now() - t0;
-    const heapEnd = process.memoryUsage().heapUsed;
-    sampleHeap();
-
-    const mib = (b: number) => (b / 1048576).toFixed(1);
-    console.log(
-        `  Item4 stress: mode=${RELEASE_STRESS ? 'FULL' : 'smoke'}, N=${N}, ` +
-        `messages=${totalMessages}, cjkFont=${cjkFont ? 'injected' : 'absent (known degradation)'}, ` +
-        `succeeded=${result?.succeeded ?? 'CRASH'}, failed=${result?.failed?.length ?? 'CRASH'}, ` +
-        `elapsed=${(elapsedMs / 1000).toFixed(1)}s, ` +
-        `heap start=${mib(heapStart)}MiB peak=${mib(heapPeak)}MiB end=${mib(heapEnd)}MiB` +
-        (errorLogs.length ? `, errorLogs=${errorLogs.length}` : ''),
-    );
-
-    // Gate a) 0 crash
-    assert.strictEqual(
-        crash, null,
-        `exporter.run threw: ${(crash as Error)?.stack ?? String(crash)}`,
-    );
-    assert.ok(result, 'result must be present when nothing crashed');
-    assert.strictEqual(result.aborted, false, 'run must not report aborted');
-    assert.strictEqual(result.total, N, 'result.total must equal the input conversation count');
-
-    // Gate d) all conversations accounted for —— 先算账，再谈别的
-    const inputIds = new Set(conversations.map((c) => c.id));
-    const exportedIds = exported.map((e) => e.id);
-    const failedIds = result.failed.map((f: any) => f.id);
-    assert.strictEqual(
-        result.succeeded + result.failed.length, N,
-        'succeeded + failed must equal N',
-    );
-    assert.strictEqual(
-        new Set([...exportedIds, ...failedIds]).size, N,
-        'every input id must appear exactly once across exported + failed',
-    );
-    for (const id of inputIds) {
-        assert.ok(
-            exportedIds.includes(id) || failedIds.includes(id),
-            `conversation ${id} is unaccounted for`,
-        );
+    const cjkFont=resolveLocalCjkFont();
+    const real=new TypstSandboxCompiler({host:new RealWasmSandboxHost(repoRoot()),...(cjkFont?{fontPaths:['src/l4/format/pdf/sandbox/fonts/NewCMMath-Regular.otf',cjkFont]}:{})});
+    // Adapt only the browser sandbox platform. Every compile still invokes real
+    // Typst WASM; the task's default compiler keeps its normal ownership.
+    const original=TypstSandboxCompiler.prototype.compile;
+    let compiles=0;
+    t.mock.method(TypstSandboxCompiler.prototype,'compile',async (payload:unknown,context:unknown)=>{
+        compiles++;return original.call(real,payload,context);
+    });
+    const start=Date.now(),heapStart=process.memoryUsage().heapUsed;let heapPeak=heapStart;
+    let result;try{
+        result=await runExport(exportRequest(ids,{format:'pdf',delivery:'folderWriter',includeAssets:true}),{onProgress:()=>{heapPeak=Math.max(heapPeak,process.memoryUsage().heapUsed);}});
+    }finally{real.dispose();}
+    const elapsed=Date.now()-start;
+    console.log(`Item4 stress: mode=${RELEASE_STRESS?'FULL':'smoke'}, N=${N}, messages=${N*MSG_PER_CONV}, exported=${result.exported}, failed=${result.failed.length}, compiles=${compiles}, elapsed=${elapsed}ms, heapGrowthMiB=${((heapPeak-heapStart)/1048576).toFixed(1)}`);
+    assert.strictEqual(result.aborted,false);assert.deepStrictEqual(result.failed,[]);assert.strictEqual(result.exported,N);assert.strictEqual(result.partial,N);assert.strictEqual(compiles,N);
+    const records=await listExportRecords(exportRequest(ids).keys[0].accountId);assert.deepStrictEqual(Object.keys(records).sort(),ids.slice().sort());
+    const files=[...h.files].filter(([name])=>name.endsWith('.pdf'));assert.strictEqual(files.length,N);
+    for(const [i,id] of ids.entries()){
+        assert.strictEqual(records[id].status,'partial');
+        const expected=buildExportFileName(conversations[i].title,id,'pdf');
+        const bytes=h.files.get(expected);if(!(bytes instanceof Uint8Array))throw Error(`record ${id} must have a delivered file at ${expected}`);
+        assert.ok(bytes.byteLength>0);assert.strictEqual(Buffer.from(bytes.subarray(0,5)).toString(),'%PDF-');
+        const extracted=extractPdfText(bytes);assert.ok(extracted.pageCount>=1);assert.ok(extracted.text.trim().length>0);
     }
-
-    // Gate c) 0 false success：failed 必须为空；每条成功记录 1:1 对应真实落盘字节
-    assert.deepStrictEqual(
-        result.failed.map((f: any) => ({ id: f.id, error: f.error })),
-        [],
-        `stress gate allows 0 failures; got ${result.failed.length}`,
-    );
-    assert.strictEqual(exported.length, result.succeeded, 'onItemExported count must match succeeded');
-    assert.strictEqual(
-        files.length, exported.length,
-        'written files must match exported records 1:1 (no orphan file, no missing file)',
-    );
-    const filesByName = new Map(files.map((f) => [f.name, f.bytes]));
-    for (const { id, record } of exported) {
-        assert.strictEqual(record.status, 'ok', `record ${id} must be ok`);
-        const bytes = filesByName.get(record.fileName);
-        if (bytes === undefined) {
-            // assert.ok 在此仓库的 @types/node 下不收窄类型，用 throw 保证类型安全；
-            // node:test 中 throw 即测试失败，信息同样明确。
-            throw new Error(
-                `record ${id} points at ${record.fileName} which was never written (false success)`,
-            );
-        }
-        assert.ok(bytes.length > 0, `record ${id}: written PDF is empty (false success)`);
-        assert.strictEqual(
-            bytes.length, record.bytesWritten,
-            `record ${id}: bytesWritten mismatch (false success)`,
-        );
-        assert.strictEqual(
-            Buffer.from(bytes.slice(0, 5)).toString('latin1'), '%PDF-',
-            `record ${id}: missing %PDF- magic (false success)`,
-        );
-    }
-
-    // Gate b) 0 blank PDF：每份 PDF 至少 1 页且可提取文本非空
-    const blank: string[] = [];
-    for (const f of files) {
-        const ex = extractPdfText(f.bytes);
-        if (!(ex.pageCount >= 1 && ex.text.trim().length > 0)) blank.push(f.name);
-    }
-    assert.deepStrictEqual(blank, [], `blank PDFs detected: ${blank.slice(0, 5).join(', ')}`);
-
-    // Gate e) < 10 分钟（全量口径；冒烟天然远小于此）
-    assert.ok(
-        elapsedMs < 600_000,
-        `full-pipeline stress took ${(elapsedMs / 1000).toFixed(1)}s, over the 10-minute budget`,
-    );
+    assert.ok(elapsed<600_000,`full-pipeline stress exceeded 10min: ${elapsed}ms`);
 });

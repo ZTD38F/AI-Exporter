@@ -1,4 +1,3 @@
-# scripts/visual_agent/agent.py
 """
 Autonomous Visual QA Agent (`AutonomousVisualAgent`).
 Operates as an active, intelligent QA agent interacting with the VisualPlayground:
@@ -114,7 +113,6 @@ class AutonomousVisualAgent:
                 "timestamp": time.time()
             })
 
-            # 派发动作
             if action.action_type == VisualActionType.CLICK:
                 self.playground.mouse_click(action.x, action.y, label=step_name)
 
@@ -182,12 +180,10 @@ class AutonomousVisualAgent:
             step += 1
             step_name = f"{step_prefix}_{step}"
 
-            # 1. 纯视觉感知 (0 DOM 泄露)
             obs = self.playground.capture_screen(step_name)
             self.scorecard.record_screenshot(step_name, obs.file_path)
             self.log(f"[步进 {step}/{max_steps}] 截屏捕获: {os.path.basename(obs.file_path)} ({len(obs.image_bytes)} bytes)", "SEE")
 
-            # 2. 视觉多模态推理决策
             action = self.provider.decide_action(
                 screenshot_bytes=obs.image_bytes,
                 instruction=objective,
@@ -205,7 +201,6 @@ class AutonomousVisualAgent:
             }
             self.action_history.append(step_record)
 
-            # 3. 目标达成判定与独立断言闭环
             if action.action_type == VisualActionType.DONE:
                 elapsed = time.time() - t0
                 if verify_fn:
@@ -278,7 +273,6 @@ class AutonomousVisualAgent:
                     history=self.action_history
                 )
 
-            # 4. 派发硬件级动作或主动阻塞挂起
             if action.action_type == VisualActionType.CLICK:
                 self.log(f"物理鼠标点击 -> ({action.x:.3f}, {action.y:.3f})", "ACT")
                 self.playground.mouse_click(action.x, action.y, label=step_name)

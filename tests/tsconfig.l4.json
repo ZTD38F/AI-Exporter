@@ -1,0 +1,21 @@
+{
+  "extends": "../tsconfig.json",
+  "include": [
+    "../src/l4/**/*.ts",
+    "./document-file-badge.test.ts",
+    "./fs_writer_disk.test.ts",
+    "./l4-html-v2-unit.test.ts",
+    "./l4-delivery.test.ts",
+    "./l4-internal-contract.test.ts",
+    "./l4-json-v2-unit.test.ts",
+    "./l4-packaging.test.ts",
+    "./l4-resource-path.test.ts",
+    "./l4-v2-renderer-unit.test.ts",
+    "./local-font-provider.test.ts",
+    "./pdf-format.test.ts",
+    "./pdf-image-resource-matrix.test.ts",
+    "./writers.test.ts",
+    "./document_renderer_boundary.types.ts",
+    "./helpers/l4V2Fixtures.ts"
+  ]
+}

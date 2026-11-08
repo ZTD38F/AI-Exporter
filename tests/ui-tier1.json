@@ -1,0 +1,14 @@
+{
+  "suites": [
+    "tests/ui_v2.test.ts",
+    "tests/ui_controllers.test.ts",
+    "tests/ui_views.test.ts",
+    "tests/ui_legacy_safety.test.ts",
+    "tests/tour_guide.test.ts",
+    "tests/options_index_notification.test.ts",
+    "tests/options_live_save.test.ts",
+    "tests/options_title_persist.test.ts",
+    "tests/p1_h3_ui.test.ts",
+    "tests/seam_s3_ui_timeout.test.ts"
+  ]
+}

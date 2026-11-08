@@ -1,19 +1,16 @@
+import { composeFixture } from './helpers/documentFixture.js';
+const { historicalFixture } = require('./helpers/nativeFixture.js');
 /**
- * tests/html_export.test.ts
- * HTML export via the production canonical path
- * (ChatFormatter.formatHtmlCanonical: normalizeGeminiConversation ->
- * CanonicalHtmlRenderer).
- *
  * Item 2 (P0): the legacy sync toHtml() / formatContent(chat, 'html') path
  * was removed; these tests now exercise the canonical renderer, which
- * shares GEM_HTML_CSS / GEM_HTML_SCRIPT / sanitizeUrl from htmlTemplate.ts.
+ * shares GEM_HTML_CSS / GEM_HTML_SCRIPT from htmlTemplate.ts.
  */
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
-const ChatFormatter = require('../src/core/engine/chatFormatter.js');
+import { renderDocumentHtml } from '../src/l4/format/html/renderHtml.js';
 
-test('html_export - formatHtmlCanonical returns valid structure, metadata, and styles', async () => {
+test('html_export - formatHtmlDocument returns valid structure, metadata, and styles', async () => {
     const mockChat = {
         id: 'chat_html_test_123',
         title: 'Quantum Computing & Algorithms',
@@ -45,23 +42,18 @@ test('html_export - formatHtmlCanonical returns valid structure, metadata, and s
         ]
     };
 
-    const res = await ChatFormatter.formatHtmlCanonical(mockChat);
-    assert.strictEqual(res.ext, 'html');
-    assert.strictEqual(res.mime, 'text/html');
+    const native = historicalFixture(mockChat);
+    const { document, resources } = await composeFixture(native.conversation, native.resourceHints);
+    const { html } = await renderDocumentHtml(document, resources);
 
-    const html = res.content;
-
-    // 1. Valid HTML5 Doctype & Meta
     assert.ok(html.startsWith('<!DOCTYPE html>'), 'Must start with <!DOCTYPE html>');
     assert.ok(html.includes('<title>Quantum Computing &amp; Algorithms</title>'), 'Title must be safely escaped in <title>');
-    assert.ok(html.includes('generator" content="AI Exporter"'), 'Must contain generator meta');
+    assert.ok(html.includes('generator" content="Gemini Exporter"'), 'Must contain generator meta');
 
-    // 2. High fidelity Print Stylesheet (@media print) & Pure 1:1 Stream
     assert.ok(html.includes('@media print'), 'Must include @media print styles for PDF readiness');
     assert.ok(!html.includes('gem-top-bar'), 'Must NOT contain top bar to keep 1:1 fidelity');
     assert.ok(html.includes('prefers-color-scheme'), 'Must support adaptive system theme');
 
-    // 3. User Turn & Attachments
     assert.ok(html.includes('gem-turn-user'), 'Must contain user turn section');
     assert.ok(html.includes('gem-user-bubble'), 'Must contain user bubble');
     assert.ok(html.includes("What is Grover&#39;s algorithm?"), 'Must contain user text escaped');
@@ -71,7 +63,6 @@ test('html_export - formatHtmlCanonical returns valid structure, metadata, and s
     assert.ok(html.includes('assets/quantum_notes.pdf'), 'Must link file attachment to assets/ path');
     assert.ok(html.includes('download="quantum_notes.pdf"'), 'File card must include download attribute');
 
-    // 4. Model Turn: Thoughts, Table, Code Block, Math
     assert.ok(html.includes('gem-turn-model'), 'Must contain model turn section');
     assert.ok(html.includes('gem-thoughts'), 'Must contain thoughts accordion');
     assert.ok(html.includes('amplitude amplification principles'), 'Must contain thoughts text');
@@ -83,7 +74,6 @@ test('html_export - formatHtmlCanonical returns valid structure, metadata, and s
     assert.ok(html.includes('grover_iterations'), 'Must contain code block content');
     assert.ok(html.includes('gem-math-inline'), 'Must format inline math');
 
-    // 5. Clean Layout Assertions: Zero sidebar, zero bottom chat input, zero reaction bars
     assert.ok(!html.includes('class="sidebar"'), 'Must NOT contain sidebar');
     assert.ok(!html.includes('id="chat-input"'), 'Must NOT contain chat input box');
     assert.ok(!html.includes('thumb_up'), 'Must NOT contain thumbs up/down buttons');
@@ -96,13 +86,14 @@ test('html_export - supports English localization and handles empty conversation
         messages: []
     };
 
-    const resEn = await ChatFormatter.formatHtmlCanonical(emptyChat, { lang: 'en' });
-    assert.ok(resEn.content.includes('lang="en"'), 'HTML lang attribute must be en');
-    assert.ok(resEn.content.includes('Empty conversation or fetch failed.'), 'Must render English empty notice');
+    const { document, resources } = await composeFixture(historicalFixture(emptyChat).conversation);
+    const { html: htmlEn } = await renderDocumentHtml(document, resources, { locale: 'en' });
+    assert.ok(htmlEn.includes('<html>'), 'Unknown document language must not be inferred from English UI');
+    assert.ok(htmlEn.includes('Empty conversation.'), 'Must render English empty notice');
 
-    const resZh = await ChatFormatter.formatHtmlCanonical(emptyChat, { lang: 'zh' });
-    assert.ok(resZh.content.includes('lang="zh-CN"'), 'HTML lang attribute must be zh-CN');
-    assert.ok(resZh.content.includes('暂无对话记录或拉取失败。'), 'Must render Chinese empty notice');
+    const { html: htmlZh } = await renderDocumentHtml(document, resources, { locale: 'zh' });
+    assert.ok(htmlZh.includes('<html>'), 'Unknown document language must not be inferred from Chinese UI');
+    assert.ok(htmlZh.includes('暂无对话记录。'), 'Must render Chinese empty notice');
 });
 
 test('html_export - XSS protection escapes malicious tags', async () => {
@@ -117,9 +108,10 @@ test('html_export - XSS protection escapes malicious tags', async () => {
         ]
     };
 
-    const res = await ChatFormatter.formatHtmlCanonical(attackChat);
-    assert.ok(!res.content.includes('<script>alert("hacked")</script>'), 'Title script tags must be escaped');
-    assert.ok(res.content.includes('&lt;script&gt;alert(&quot;hacked&quot;)&lt;/script&gt;'), 'Title must be HTML encoded');
+    const { document, resources } = await composeFixture(historicalFixture(attackChat).conversation);
+    const { html } = await renderDocumentHtml(document, resources);
+    assert.ok(!html.includes('<script>alert("hacked")</script>'), 'Title script tags must be escaped');
+    assert.ok(html.includes('&lt;script&gt;alert(&quot;hacked&quot;)&lt;/script&gt;'), 'Title must be HTML encoded');
 });
 
 test('html_export - XSS pseudo-protocols in markdown links are disarmed to safe href', async () => {
@@ -138,13 +130,13 @@ test('html_export - XSS pseudo-protocols in markdown links are disarmed to safe 
         ]
     };
 
-    const res = await ChatFormatter.formatHtmlCanonical(attackChat);
-    const html = res.content;
+    const { document, resources } = await composeFixture(historicalFixture(attackChat).conversation);
+    const { html } = await renderDocumentHtml(document, resources);
     assert.ok(!html.includes('href="javascript:'), 'Must NOT contain javascript: in href');
     assert.ok(!html.includes('href="vbscript:'), 'Must NOT contain vbscript: in href');
     assert.ok(!html.includes('href="data:text/html'), 'Must NOT contain data:text/html in href');
     assert.ok(!html.includes('src="javascript:'), 'Must NOT contain javascript: in src');
-    assert.ok(html.includes('href="https://example.com"'), 'Valid https links must be preserved');
+    assert.ok(html.includes('href="https://example.com/"'), 'Valid https links must be preserved');
     // Canonical renderer is offline-first: remote asset bytes are never
     // embedded, so a remote image renders a visible missing-asset placeholder
     // (alt text kept) instead of a remote <img src>.

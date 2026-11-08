@@ -188,33 +188,24 @@ GOOGLE_INTERNAL_EXTS = {
 
 
 def get_extension_id(port=CDP_DEFAULT_PORT):
-    tabs = get_tabs(port)
-    # First look for service workers or pages belonging to Gemini Exporter
-    for t in tabs:
-        u = t.get("url", "")
-        if u.startswith("chrome-extension://"):
-            if "background/background.js" in u or "options.html" in u or "popup.html" in u:
-                return u.split("/")[2]
-
-    # Fallback: check chrome-extension tabs excluding internal google components
-    for t in tabs:
-        u = t.get("url", "")
-        if u.startswith("chrome-extension://"):
-            ext = u.split("/")[2]
-            if ext not in GOOGLE_INTERNAL_EXTS:
-                return ext
-
-    for t in tabs:
-        if t.get("type", "page") == "page" and is_gemini_url(t.get("url", "")):
-            cdp = CDPConnection(t["webSocketDebuggerUrl"])
-            try:
-                eid = cdp.eval("typeof chrome !== 'undefined' && chrome.runtime ? chrome.runtime.id : null")
-                if eid and eid not in GOOGLE_INTERNAL_EXTS:
-                    return eid
-            finally:
-                cdp.close()
-
-    return None
+    # Identify only exact Exporter entrypoints. Never uninstall an arbitrary
+    # extension merely because it happens to be the first non-Google worker.
+    paths = {
+        "/dist/background/background.js",
+        "/src/runtime/background/background.js",
+        "/runtime/background/background.js",
+        "/src/ui/options/options.html",
+        "/src/ui/popup/popup.html",
+    }
+    candidates = set()
+    for tab in get_tabs(port):
+        url = urllib.parse.urlsplit(tab.get("url", ""))
+        if (url.scheme == "chrome-extension" and url.netloc
+                and url.netloc not in GOOGLE_INTERNAL_EXTS and url.path in paths):
+            candidates.add(url.netloc)
+    if len(candidates) > 1:
+        raise RuntimeError("Multiple Gemini Exporter extensions found; refusing ambiguous extension selection")
+    return next(iter(candidates), None)
 
 
 def ensure_extension_loaded(port=CDP_DEFAULT_PORT, repo_path=None):

@@ -35,7 +35,7 @@ OUTPUT_PATH = os.path.join(REPO_DIR, "tests", "fixtures", "parser_migration_corp
 def extract_corpus():
     pool_path = os.path.join(REPO_DIR, "scripts", "test_scenario_pool.json")
     takeout_path = os.path.join(REPO_DIR, "tests", "fixtures", "gemini_takeout_clean.zip")
-    sample_path = os.path.join(REPO_DIR, "tests", "fixtures", "canonical", "gemini-normalizer-sample.json")
+    sample_path = os.path.join(REPO_DIR, "tests", "fixtures", "provider", "conversation-sample.json")
 
     # Math extraction regexes
     display_re = re.compile(r"\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]")

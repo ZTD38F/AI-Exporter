@@ -102,7 +102,7 @@ class ChatPlatformDriver(ABC):
         """Return platform DOM selector dictionary."""
         pass
 
-    def prepare_turn_environment(self, is_image: bool = False) -> bool:
+    def prepare_turn_environment(self) -> bool:
         """
         Hook executed before staging a turn, allowing the platform driver to setup
         streaming event listeners, verify active models, or reset session states.
@@ -114,7 +114,6 @@ class ChatPlatformDriver(ABC):
         self,
         prompt_text: str,
         max_wait: int = 300,
-        is_image: bool = False,
         cooldown_seconds: float = 6.0
     ) -> List[Any]:
         """
@@ -126,8 +125,7 @@ class ChatPlatformDriver(ABC):
     def extract_turn_result(
         self,
         prompt_text: str,
-        duration: float,
-        is_image: bool = False
+        duration: float
     ) -> TurnResult:
         """
         Extract the model's generated response, images, and telemetry data from the active DOM.

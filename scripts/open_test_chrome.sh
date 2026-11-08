@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
-# scripts/open_test_chrome.sh - 一键拉起携带固化登录态与自动加载插件的独立 Chrome 窗口
+# scripts/open_test_chrome.sh - 一键拉起携带固化登录态与自动加载插件的后台 Chrome
 
 set -e
 
-PROFILE_DIR="$HOME/.gemini-exporter-test-profile"
+PROFILE_DIR="${GEMINI_EXPORTER_TEST_PROFILE:-$HOME/.gemini-exporter-test-profile}"
+START_URL="https://gemini.google.com"
+CHROME_EXTRA_ARGS=()
+for arg in "$@"; do
+  if [ "$arg" = "--no-gemini" ]; then
+    START_URL="about:blank"
+  else
+    CHROME_EXTRA_ARGS+=("$arg")
+  fi
+done
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 跨平台自动探测 Google Chrome 路径
 CHROME_BIN=""
@@ -43,13 +52,9 @@ echo "📁 测试 Profile 目录: $PROFILE_DIR"
 echo "🧩 自动挂载扩展源码: $REPO_DIR"
 echo "🔨 确保扩展最新生产构建 (node build.js)..."
 (cd "$REPO_DIR" && node build.js)
-echo "💡 提示: 首次打开请在弹出的窗口中登录 Google 账号，后续将永远保持登录与插件就绪状态！"
+echo "💡 默认后台无窗口运行。首次登录请加 --headed；登录后关闭测试 Chrome，再按默认方式启动。"
 echo "=================================================="
 
-exec "$CHROME_BIN" \
-  --user-data-dir="$PROFILE_DIR" \
-  --load-extension="$REPO_DIR" \
-  --remote-debugging-port=9222 \
-  --no-first-run \
-  --no-default-browser-check \
-  "https://gemini.google.com" "$@"
+exec python3 "$REPO_DIR/scripts/launch_test_chrome.py" \
+  --chrome "$CHROME_BIN" --profile "$PROFILE_DIR" --repo "$REPO_DIR" -- \
+  "$START_URL" "${CHROME_EXTRA_ARGS[@]}"

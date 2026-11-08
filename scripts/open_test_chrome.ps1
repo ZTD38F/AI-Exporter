@@ -13,7 +13,7 @@ $ScriptDir = $PSScriptRoot
 $RepoDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 
 # 2. Dynamically resolve isolated test profile directory in user's home (outside the git repo)
-$ProfileDir = Join-Path $env:USERPROFILE ".gemini-exporter-test-profile"
+$ProfileDir = if ($env:GEMINI_EXPORTER_TEST_PROFILE) { $env:GEMINI_EXPORTER_TEST_PROFILE } else { Join-Path $env:USERPROFILE ".gemini-exporter-test-profile" }
 
 # 3. Search standard Chrome installation locations on Windows
 $CandidatePaths = @(
@@ -52,6 +52,7 @@ Write-Host "🔨 Building extension bundles (node build.js)..." -ForegroundColor
 Push-Location $RepoDir
 try {
     node build.js
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
     Pop-Location
 }
@@ -61,18 +62,9 @@ Write-Host "🚀 Launching Gemini Exporter Isolated Test Browser" -ForegroundCol
 Write-Host "📁 Profile Directory : $ProfileDir" -ForegroundColor Gray
 Write-Host "🧩 Extension Source  : $RepoDir" -ForegroundColor Gray
 Write-Host "🌐 Remote Debug Port : 9222" -ForegroundColor Gray
-Write-Host "💡 Hint: Please log in with a dedicated TEST account (avoid using your primary personal account)." -ForegroundColor Yellow
+Write-Host "💡 Default: background, no desktop windows. Use --headed for manual test-account login, quit Chrome, then relaunch normally." -ForegroundColor Yellow
 Write-Host "==================================================" -ForegroundColor Cyan
 
-# 5. Launch Chrome with isolated profile, loaded extension, and remote debugging enabled
-$ChromeArgs = @(
-    "--user-data-dir=$ProfileDir",
-    "--disable-extensions-except=$RepoDir",
-    "--load-extension=$RepoDir",
-    "--remote-debugging-port=9222",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "https://gemini.google.com"
-) + $args
-
-Start-Process -FilePath $ChromeBin -ArgumentList $ChromeArgs
+# Use the same diagnostic launcher as macOS/Linux. Do not kill existing Chrome.
+& python (Join-Path $ScriptDir "launch_test_chrome.py") --chrome $ChromeBin --profile $ProfileDir --repo $RepoDir -- "--disable-extensions-except=$RepoDir" "https://gemini.google.com" @args
+exit $LASTEXITCODE

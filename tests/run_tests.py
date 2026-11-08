@@ -10,7 +10,7 @@ except Exception:
     pass
 
 print("=" * 60)
-print(" AI Exporter - Comprehensive Test Suite")
+print(" Gemini Exporter - Comprehensive Test Suite")
 print("=" * 60)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,15 +28,14 @@ def test_manifest_structure():
         m = json.load(f)
         assert m["manifest_version"] == 3
         assert "storage" in m["permissions"]
-        assert "https://chatgpt.com/*" not in m.get("host_permissions", []), "ChatGPT must remain optional, not an install-time host permission"
-        assert "https://chatgpt.com/*" in m.get("optional_host_permissions", []), "ChatGPT host access must be optional"
-        assert "scripting" in m.get("optional_permissions", []), "ChatGPT runtime injection requires optional scripting permission"
-        assert not any("https://chatgpt.com/*" in c.get("matches", []) for c in m.get("content_scripts", [])), "ChatGPT bridge must not be statically injected"
         assert m["background"]["service_worker"] == "dist/background/background.js", "background service_worker must point to the esbuild dist output"
-        cs = m["content_scripts"]
-        assert cs[0]["js"] == ["dist/content/content.js"], "ISOLATED content script must load single bundled dist/content/content.js"
-        main_world = [c for c in cs if c.get("world") == "MAIN"]
-        assert len(main_world) == 1 and main_world[0]["js"] == ["dist/content/hook.js"], "MAIN world must load single bundled dist/content/hook.js"
+        assert not m.get("host_permissions"), "Platform origins must be optional"
+        assert not m.get("content_scripts"), "Source scripts must be permission-gated dynamic registrations"
+        assert "https://gemini.google.com/*" in m["optional_host_permissions"]
+        expected = {"https://gemini.google.com/*", "https://*.googleusercontent.com/*",
+                    "https://*.usercontent.google.com/*", "https://drive.google.com/*",
+                    "https://lh3.google.com/*", "https://*.gstatic.com/*"}
+        assert set(m["optional_host_permissions"]) == expected, "Gemini-only release must not grant other AI platforms"
         war = m["web_accessible_resources"][0]["resources"]
         assert "dist/content/hook.js" in war, "web_accessible_resources must expose dist/content/hook.js"
         print("  ✓ manifest.json scripts and permissions verified")
@@ -51,11 +50,10 @@ def test_build_pipeline():
         gi = f.read()
     assert re.search(r'^dist/?$', gi, re.MULTILINE), "dist/ build output must be gitignored"
 
-    # Verify all production bundle entrypoints configured in build.js
+    # Phase 5: verify all 5 bundle entrypoints configured in build.js
     with open(os.path.join(BASE_DIR, "build.js"), "r", encoding="utf-8") as f:
         build_content = f.read()
     assert "content/content" in build_content, "build.js must configure content/content bundle"
-    assert "content/chatgpt" in build_content, "build.js must configure optional ChatGPT bridge bundle"
     assert "content/hook" in build_content, "build.js must configure content/hook bundle"
     assert "background/background" in build_content, "build.js must configure background/background bundle"
     assert "ui/popup" in build_content, "build.js must configure ui/popup bundle"
@@ -66,7 +64,6 @@ def test_build_pipeline():
     if os.path.isdir(dist_dir):
         expected_bundles = [
             "dist/content/content.js",
-            "dist/content/chatgpt.js",
             "dist/content/hook.js",
             "dist/background/background.js",
             "dist/ui/popup.js",
@@ -99,95 +96,48 @@ def test_html_includes():
 
 
 def test_i18n_keys():
-    # Dictionaries live in locales/{zh,en}.js since Phase 2b (classic-script
-    # modules whose bodies are flat `key: "value"` object literals).
-    dicts = {"zh": {}, "en": {}}
-    for lang in ("zh", "en"):
-        loc_ts = os.path.join(BASE_DIR, "src/core/utils/locales", f"{lang}.ts")
-        loc_file = loc_ts if os.path.isfile(loc_ts) else os.path.join(BASE_DIR, "src/core/utils/locales", f"{lang}.js")
-        with open(loc_file, "r", encoding="utf-8") as f:
-            text = f.read()
-        in_dict = False
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped == "return {":
-                in_dict = True
-                continue
-            if in_dict:
-                if stripped.startswith("};"):
-                    break
-                if ":" in stripped:
-                    parts = stripped.split(":", 1)
-                    k = parts[0].strip().strip('"').strip("'")
-                    v = parts[1].strip().rstrip(",").strip().strip('"').strip("'")
-                    dicts[lang][k] = v
-
-    zh_dict = dicts["zh"]
-    en_dict = dicts["en"]
-    assert len(zh_dict) >= 100, f"zh locale should have 100+ keys, got {len(zh_dict)}"
-    assert len(en_dict) >= 100, f"en locale should have 100+ keys, got {len(en_dict)}"
-
+    # V2 UI supports two intentional static-label mechanisms:
+    #  1. data-en/data-zh (and data-ui-* pairs) for inline labels;
+    #  2. data-i18n, data-i18n-title, data-i18n-placeholder and aria labels for the
+    #     existing UI_COPY dictionary consumed by labelPage().
+    # Removing those active attributes would break language switching. Verify
+    # complete EN/ZH translations instead of banning one of the two mechanisms.
     from html.parser import HTMLParser
-    void_tags = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
-    zh_regex = re.compile(r'[\u4e00-\u9fa5]')
+    import json
+    labels_path = os.path.join(BASE_DIR, "src/ui/shared/legacyLabels.ts")
+    with open(labels_path, encoding="utf-8") as f:
+        source = f.read()
+    body = source.split(" = {", 1)[1].rsplit("};", 1)[0]
+    copy = json.loads("{" + body + "}")
+    assert set(copy) == {"en", "zh"}, "UI_COPY must declare both languages"
+    assert set(copy["en"]) == set(copy["zh"]), "UI_COPY keys must match across languages"
+    assert all(isinstance(value, str) and value.strip()
+               for language in ("en", "zh") for value in copy[language].values()), "Every UI_COPY translation must be nonempty"
 
-    class StrictHTMLChecker(HTMLParser):
-        def __init__(self, filepath):
+    class Labels(HTMLParser):
+        def __init__(self):
             super().__init__()
-            self.filepath = filepath
-            self.tag_stack = []
-            self.errors = []
-
+            self.count = 0
         def handle_starttag(self, tag, attrs):
-            attr_dict = dict(attrs)
-            has_i18n = any(k.startswith('data-i18n') for k in attr_dict.keys())
-            for k in ['title', 'placeholder']:
-                if k in attr_dict:
-                    v = attr_dict[k]
-                    if 'Switch Language' in v or 'Developer Mode' in v:
-                        continue
-                    if f'data-i18n-{k}' not in attr_dict:
-                        self.errors.append((self.getpos(), tag, f'attr {k}="{v}" missing data-i18n-{k}'))
-            if tag not in void_tags:
-                self.tag_stack.append((tag, attr_dict, has_i18n))
+            pairs = dict(attrs)
+            assert len(pairs) == len(attrs), f"Duplicate attributes on {tag}: {attrs}"
+            for en, zh in (("data-en", "data-zh"), ("data-ui-en", "data-ui-zh")):
+                if en in pairs or zh in pairs:
+                    assert pairs.get(en) and pairs.get(zh), f"Incomplete inline bilingual label: {attrs}"
+                    self.count += 1
+            for attr in ("data-i18n", "data-i18n-title", "data-i18n-placeholder", "data-i18n-aria-label"):
+                if attr not in pairs:
+                    continue
+                key = pairs[attr]
+                assert key and key in copy["en"] and key in copy["zh"], f"Unknown UI_COPY key for {attr}: {key}"
+                self.count += 1
 
-        def handle_endtag(self, tag):
-            if tag in void_tags:
-                return
-            for i in range(len(self.tag_stack) - 1, -1, -1):
-                if self.tag_stack[i][0] == tag:
-                    self.tag_stack = self.tag_stack[:i]
-                    break
-
-        def handle_data(self, data):
-            clean = data.strip()
-            if not clean or clean == '中':
-                return
-            if zh_regex.search(clean):
-                in_script = any(item[0] in ('script', 'style') for item in self.tag_stack)
-                if in_script:
-                    return
-                if self.tag_stack:
-                    curr_tag, curr_attrs, curr_has_i18n = self.tag_stack[-1]
-                    if not curr_has_i18n:
-                        has_parent_html = any(attrs.get('data-i18n-html') for _, attrs, _ in self.tag_stack)
-                        if not has_parent_html:
-                            self.errors.append((self.getpos(), curr_tag, f'text: "{clean[:40]}" missing data-i18n'))
-
-    for html_file in ["src/ui/options/options.html", "src/ui/popup/popup.html"]:
-        with open(os.path.join(BASE_DIR, html_file), "r", encoding="utf-8") as f:
-            content = f.read()
-        html_keys = set(re.findall(r'data-i18n(?:-title|-placeholder|-html)?=["\']([^"\']+)["\']', content))
-        missing_zh = html_keys - set(zh_dict.keys())
-        missing_en = html_keys - set(en_dict.keys())
-        assert not missing_zh, f"Missing in zh ({html_file}): {missing_zh}"
-        assert not missing_en, f"Missing in en ({html_file}): {missing_en}"
-
-        checker = StrictHTMLChecker(html_file)
-        checker.feed(content)
-        assert not checker.errors, f"HTML i18n coverage errors in {html_file}: {checker.errors}"
-
-    print("  ✓ i18n keys complete and matched across all HTML templates")
+    for filepath in ("src/ui/options/options.html", "src/ui/popup/popup.html"):
+        checker = Labels()
+        with open(os.path.join(BASE_DIR, filepath), encoding="utf-8") as f:
+            checker.feed(f.read())
+        assert checker.count > 0, f"No bilingual labels checked in {filepath}"
+    print("  ✓ Current UI static labels have complete EN/ZH translations")
 
 def test_javascript_syntax():
     import subprocess
@@ -217,16 +167,21 @@ def test_javascript_unit_tests(target_tests=None):
     import subprocess
     import glob
     import shutil
-    import tempfile
 
-    jsc_bin = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc"
-    node_bin = None
-    for cand in [shutil.which("node"), os.path.expanduser("~/.local/node/bin/node"), os.path.expanduser("~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe"), r"C:\Program Files\nodejs\node.exe"]:
-        if cand and os.path.exists(cand):
-            node_bin = cand
-            break
+    # npm test and the TypeScript require hook already require Node.
+    node_bin = next((candidate for candidate in [
+        shutil.which("node"),
+        os.path.expanduser("~/.local/node/bin/node"),
+        os.path.expanduser("~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe"),
+        r"C:\Program Files\nodejs\node.exe",
+    ] if candidate and os.path.exists(candidate)), None)
+    assert node_bin, "Node.js is required for the TypeScript unit test suite"
 
-    test_files = sorted(set(glob.glob(os.path.join(BASE_DIR, "tests", "*.test.js")) + glob.glob(os.path.join(BASE_DIR, "tests", "*.test.ts")) + glob.glob(os.path.join(BASE_DIR, "tests", "arch", "*.test.ts"))))
+    test_files = sorted(set(
+        glob.glob(os.path.join(BASE_DIR, "tests", "*.test.js"))
+        + glob.glob(os.path.join(BASE_DIR, "tests", "*.test.ts"))
+        + glob.glob(os.path.join(BASE_DIR, "tests", "arch", "*.test.ts"))
+    ))
     if target_tests is not None:
         norm_targets = {os.path.normpath(t).replace("\\", "/") for t in target_tests}
         norm_bases = {os.path.basename(t) for t in target_tests}
@@ -239,277 +194,56 @@ def test_javascript_unit_tests(target_tests=None):
             print("  ✓ 无受影响的 JavaScript/TypeScript 单元测试需要执行。")
             return
 
-
-    # Preload files for mock fs in JSC
-    file_map = {}
-    for root, dirs, files in os.walk(BASE_DIR):
-        # Prune build outputs, test results and artifacts
-        dirs[:] = [d for d in dirs if d not in ["node_modules", ".git", "playwright", "dist", "output", "test-results", "playwright-report"]]
-        if any(x in root for x in ["node_modules", ".git", "playwright", "dist", "tests/output", "tests\\output", "test-results", "playwright-report"]):
-            continue
-        for f in files:
-            if f.endswith((".js", ".html", ".json", ".md")):
-                p = os.path.join(root, f)
-                with open(p, "r", encoding="utf-8", errors="replace") as fp:
-                    content = fp.read()
-                    file_map[os.path.normpath(p)] = content
-
     register_hook = os.path.join(BASE_DIR, "tests", "ts_register.js")
-
     for tf in test_files:
         rel = os.path.relpath(tf, BASE_DIR)
-        if node_bin:
-            cmd = [node_bin, "-r", register_hook, "--test", tf] if os.path.exists(register_hook) else [node_bin, "--test", tf]
-            res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-            assert res.returncode == 0, f"Unit test failed in {rel}:\n{res.stdout}\n{res.stderr}"
-            print(f"  ✓ Unit test suite passed: {rel}")
-        elif os.path.exists(jsc_bin):
-            with open(tf, "r", encoding="utf-8") as f:
-                test_code = f.read()
-
-            harness = (
-                "const __fileMap = " + json.dumps(file_map) + ";\n"
-                "const __dirname = " + json.dumps(os.path.join(BASE_DIR, "tests")) + ";\n"
-                """
-            const modules = {};
-            const nodeTest = (name, fn) => {
-                try { fn(); }
-                catch(e) { throw new Error(name + ': ' + (e.stack || e.message || e)); }
-            };
-            nodeTest.test = nodeTest;
-            nodeTest.skip = (name) => { throw new Error('Skipping unit tests is strictly forbidden: ' + name); };
-            nodeTest.only = nodeTest;
-
-            function require(id) {
-                if (id === 'node:test' || id === 'test') return nodeTest;
-                if (id === 'node:assert' || id === 'assert') {
-                    return {
-                        strictEqual: (a, b) => { if (a !== b) throw new Error(a + ' !== ' + b); },
-                        deepStrictEqual: (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(JSON.stringify(a) + ' !== ' + JSON.stringify(b)); },
-                        ok: (a, msg) => { if (!a) throw new Error(msg || ('Expected truthy, got ' + a)); }
-                    };
-                }
-                if (id === 'node:path' || id === 'path') {
-                    return {
-                        join: (...parts) => {
-                            let p = parts.join('/').replace(/\\/+/g, '/');
-                            const segments = p.split('/');
-                            const resolved = [];
-                            for (const seg of segments) {
-                                if (seg === '..') resolved.pop();
-                                else if (seg && seg !== '.') resolved.push(seg);
-                            }
-                            return (p.startsWith('/') ? '/' : '') + resolved.join('/');
-                        }
-                    };
-                }
-                if (id === 'node:fs' || id === 'fs') {
-                    return {
-                        readFileSync: (p, enc) => {
-                            let norm = p.replace(/\\/+/g, '/');
-                            const segments = norm.split('/');
-                            const resolved = [];
-                            for (const seg of segments) {
-                                if (seg === '..') resolved.pop();
-                                else if (seg && seg !== '.') resolved.push(seg);
-                            }
-                            norm = (norm.startsWith('/') ? '/' : '') + resolved.join('/');
-                            if (__fileMap[norm]) return __fileMap[norm];
-                            for (const k in __fileMap) {
-                                if (k.endsWith(norm) || norm.endsWith(k)) return __fileMap[k];
-                            }
-                            throw new Error('File not found in mock fs: ' + p);
-                        }
-                    };
-                }
-                if (modules[id]) return modules[id];
-                throw new Error('Module not found: ' + id);
-            }
-            """
-            )
-
-            preload_js = []
-            for mod_path, mod_id in [
-                ("src/core/utils/utils.js", "../src/core/utils/utils.js"),
-                ("src/core/utils/utils.js", "./src/core/utils/utils.js"),
-                ("src/core/utils/utils.js", "./utils.js"),
-                ("src/core/utils/utils.js", "../utils.js"),
-                ("src/core/api/parser/extractors.js", "./parser/extractors.js"),
-                ("src/core/api/parser/extractors.js", "./extractors.js"),
-                ("src/core/api/parser/extractors.js", "../src/core/api/parser/extractors.js"),
-                ("src/core/api/parser/attachments.js", "./parser/attachments.js"),
-                ("src/core/api/parser/attachments.js", "./attachments.js"),
-                ("src/core/api/parser/attachments.js", "../src/core/api/parser/attachments.js"),
-                ("src/core/api/parser/parseList.js", "./parser/parseList.js"),
-                ("src/core/api/parser/parseList.js", "./parseList.js"),
-                ("src/core/api/parser/parseList.js", "../src/core/api/parser/parseList.js"),
-                ("src/core/api/parser/parseDetail.js", "./parser/parseDetail.js"),
-                ("src/core/api/parser/parseDetail.js", "./parseDetail.js"),
-                ("src/core/api/parser/parseDetail.js", "../src/core/api/parser/parseDetail.js"),
-                ("src/core/api/geminiParser.js", "../src/core/api/geminiParser.js"),
-                ("src/core/api/geminiParser.js", "./src/core/api/geminiParser.js"),
-                ("src/core/api/geminiParser.js", "./gemini_parser.js"),
-                ("src/core/api/geminiParser.js", "../gemini_parser.js"),
-                ("src/core/api/client/credentialManager.js", "./client/credentialManager.js"),
-                ("src/core/api/client/credentialManager.js", "./credentialManager.js"),
-                ("src/core/api/client/credentialManager.js", "../src/core/api/client/credentialManager.js"),
-                ("src/core/api/client/retryPolicy.js", "./client/retryPolicy.js"),
-                ("src/core/api/client/retryPolicy.js", "./retryPolicy.js"),
-                ("src/core/api/client/retryPolicy.js", "../src/core/api/client/retryPolicy.js"),
-                ("src/core/api/client/rpcClient.js", "./client/rpcClient.js"),
-                ("src/core/api/client/rpcClient.js", "./rpcClient.js"),
-                ("src/core/api/client/rpcClient.js", "../src/core/api/client/rpcClient.js"),
-                ("src/core/api/client/pagination.js", "./client/pagination.js"),
-                ("src/core/api/client/pagination.js", "./pagination.js"),
-                ("src/core/api/client/pagination.js", "../src/core/api/client/pagination.js"),
-                ("src/core/api/geminiClient.js", "../src/core/api/geminiClient.js"),
-                ("src/core/api/geminiClient.js", "./src/core/api/geminiClient.js"),
-                ("src/core/api/geminiClient.js", "./geminiClient.js"),
-                ("utils.js", "../utils.js"),
-                ("utils.js", "./utils.js"),
-                ("src/core/constants.js", "../src/core/constants.js"),
-                ("src/core/constants.js", "./constants.js"),
-                ("src/core/tabService.js", "../src/core/tabService.js"),
-                ("src/core/engine/writers/zipWriter.js", "../src/core/engine/writers/zipWriter.js"),
-                ("src/core/engine/writers/fsWriter.js", "../src/core/engine/writers/fsWriter.js"),
-                ("src/core/engine/writers/writerInterface.js", "../src/core/engine/writers/writerInterface.js"),
-                ("src/core/engine/chatFormatter.js", "../src/core/engine/chatFormatter.js"),
-                ("src/core/engine/takeout/zipBombGuard.js", "./takeout/zipBombGuard.js"),
-                ("src/core/engine/takeout/zipBombGuard.js", "./zipBombGuard.js"),
-                ("src/core/engine/takeout/zipBombGuard.js", "../src/core/engine/takeout/zipBombGuard.js"),
-                ("src/core/engine/takeout/mediaIndex.js", "./takeout/mediaIndex.js"),
-                ("src/core/engine/takeout/mediaIndex.js", "./mediaIndex.js"),
-                ("src/core/engine/takeout/mediaIndex.js", "../src/core/engine/takeout/mediaIndex.js"),
-                ("src/core/engine/takeout/takeoutHtmlParser.js", "./takeout/takeoutHtmlParser.js"),
-                ("src/core/engine/takeout/takeoutHtmlParser.js", "./takeoutHtmlParser.js"),
-                ("src/core/engine/takeout/takeoutHtmlParser.js", "../src/core/engine/takeout/takeoutHtmlParser.js"),
-                ("src/core/engine/takeout/takeoutParser.js", "./takeout/takeoutParser.js"),
-                ("src/core/engine/takeout/takeoutParser.js", "./takeoutParser.js"),
-                ("src/core/engine/takeout/takeoutParser.js", "../src/core/engine/takeout/takeoutParser.js"),
-                ("src/core/engine/takeoutEngine.js", "../src/core/engine/takeoutEngine.js"),
-                ("src/core/engine/takeoutEngine.js", "./src/core/engine/takeoutEngine.js"),
-                ("src/core/engine/takeoutEngine.js", "./takeoutEngine.js"),
-                ("src/core/engine/export/progressReporter.js", "./export/progressReporter.js"),
-                ("src/core/engine/export/progressReporter.js", "./progressReporter.js"),
-                ("src/core/engine/export/progressReporter.js", "../src/core/engine/export/progressReporter.js"),
-                ("src/core/engine/export/sessionRecovery.js", "./export/sessionRecovery.js"),
-                ("src/core/engine/export/sessionRecovery.js", "./sessionRecovery.js"),
-                ("src/core/engine/export/sessionRecovery.js", "../src/core/engine/export/sessionRecovery.js"),
-                ("src/core/engine/export/batchWorker.js", "./export/batchWorker.js"),
-                ("src/core/engine/export/batchWorker.js", "./batchWorker.js"),
-                ("src/core/engine/export/batchWorker.js", "../src/core/engine/export/batchWorker.js"),
-                ("src/core/engine/export/rateLimiter.js", "./export/rateLimiter.js"),
-                ("src/core/engine/export/rateLimiter.js", "./rateLimiter.js"),
-                ("src/core/engine/export/rateLimiter.js", "../src/core/engine/export/rateLimiter.js"),
-                ("src/core/engine/export/exportOrchestrator.js", "./export/exportOrchestrator.js"),
-                ("src/core/engine/export/exportOrchestrator.js", "./exportOrchestrator.js"),
-                ("src/core/engine/export/exportOrchestrator.js", "../src/core/engine/export/exportOrchestrator.js"),
-                ("src/core/engine/exportEngine.js", "../src/core/engine/exportEngine.js"),
-                ("src/core/engine/exportEngine.js", "./src/core/engine/exportEngine.js"),
-                ("src/core/engine/exportEngine.js", "./exportEngine.js"),
-                ("src/core/exporter/zipWriter.js", "../src/core/exporter/zipWriter.js"),
-                ("src/core/exporter/fsWriter.js", "../src/core/exporter/fsWriter.js"),
-                ("src/ui/state/conversationsStore.js", "../src/ui/state/conversationsStore.js"),
-                ("src/ui/views/listView.js", "../src/ui/views/listView.js"),
-                ("src/ui/views/logView.js", "../src/ui/views/logView.js"),
-                ("src/ui/views/accountView.js", "../src/ui/views/accountView.js"),
-                ("src/ui/views/dialogView.js", "../src/ui/views/dialogView.js"),
-                ("src/ui/controllers/dirHandleController.js", "../src/ui/controllers/dirHandleController.js"),
-                ("src/ui/controllers/takeoutController.js", "../src/ui/controllers/takeoutController.js"),
-                ("src/ui/controllers/syncController.js", "../src/ui/controllers/syncController.js"),
-                ("src/ui/controllers/exportController.js", "../src/ui/controllers/exportController.js"),
-                ("storage_service.js", "../storage_service.js"),
-                ("chat_formatter.js", "../chat_formatter.js"),
-                ("gemini_parser.js", "../gemini_parser.js"),
-                ("takeout_engine.js", "../takeout_engine.js"),
-                ("src/core/utils/locales/zh.js", "./locales/zh.js"),
-                ("src/core/utils/locales/en.js", "./locales/en.js"),
-                ("src/core/utils/locales/zh.js", "../src/core/utils/locales/zh.js"),
-                ("src/core/utils/locales/en.js", "../src/core/utils/locales/en.js"),
-                ("src/core/utils/i18n.js", "../src/core/utils/i18n.js"),
-                ("src/core/utils/i18n.js", "./i18n.js"),
-                ("i18n.js", "../i18n.js")
-            ]:
-                full_p = os.path.join(BASE_DIR, mod_path)
-                if not os.path.exists(full_p):
-                    if mod_path.startswith("src/"):
-                        dp = os.path.join(BASE_DIR, "dist", mod_path[4:])
-                        if os.path.exists(dp):
-                            full_p = dp
-                if not os.path.exists(full_p) and mod_path.endswith('.js'):
-                    tsp = full_p[:-3] + '.ts'
-                    if os.path.exists(tsp):
-                        full_p = tsp
-                if os.path.exists(full_p):
-                    with open(full_p, "r", encoding="utf-8") as mf:
-                        content = mf.read()
-                    preload_js.append(
-                        "(function() {\n"
-                        "  const module = { exports: {} };\n"
-                        "  const exports = module.exports;\n"
-                        + content + "\n"
-                        "  modules[" + json.dumps(mod_id) + "] = module.exports;\n"
-                        "})();\n"
-                    )
-
-            full_script = harness + "\n".join(preload_js) + "\n" + test_code
-            res = subprocess.run([jsc_bin, "-e", full_script], capture_output=True, text=True)
-            assert res.returncode == 0, f"Unit test failed in {rel}:\n{res.stderr or res.stdout}"
-            print(f"  ✓ Unit test suite passed: {rel}")
+        cmd = [node_bin, "-r", register_hook, "--test", tf] if os.path.exists(register_hook) else [node_bin, "--test", tf]
+        # L1's isolated unit fixtures need their frozen public-port mocks before production imports.
+        with open(tf, encoding="utf-8") as source:
+            isolated_l1 = "helpers/l1V2UnitMocks.js" in source.read()
+        if isolated_l1:
+            cmd = [node_bin, "-r", register_hook, "-r",
+                   os.path.join(BASE_DIR, "tests", "helpers", "l1V2UnitPreload.cjs"), "--test", tf]
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert res.returncode == 0, f"Unit test failed in {rel}:\n{res.stdout}\n{res.stderr}"
+        print(f"  ✓ Unit test suite passed: {rel}")
 
 def test_content_badge_flicker_prevention():
-    css_path = os.path.join(BASE_DIR, "src/content/content.css")
+    """Verify the actual v2 Badge owner, not removed SyncEngine/IndexCapture files."""
+    css_path = os.path.join(BASE_DIR, "src/ui/badge/content.css")
     with open(css_path, "r", encoding="utf-8") as f:
         css = f.read()
-    assert "white-space: nowrap" in css, "content.css should prevent badge text wrapping"
-    assert "min-width:" in css, "content.css should define min-width to avoid width jitter"
-    assert ".syncing .pulse" in css, "content.css should only pulse when syncing"
-    assert re.search(r'#geminiExportBadge\s+\.pulse\s*\{[^}]*background:\s*#06b6d4', css), "content.css idle pulse should define static background #06b6d4"
+    assert "white-space: nowrap" in css, "Badge must not wrap while its count changes"
+    assert "min-width:" in css, "Badge keeps a stable minimum width"
+    assert ".syncing .pulse" in css, "Badge retains its visual sync feedback"
+    assert re.search(r'#geminiExportBadge\s+\.pulse\s*\{[^}]*background:\s*#06b6d4', css), "Idle pulse must remain visually stable"
 
-    content_ts = os.path.join(BASE_DIR, "src/content/content.ts")
-    js_path = content_ts if os.path.isfile(content_ts) else os.path.join(BASE_DIR, "src/content/content.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        js = f.read()
-    badge_ts = os.path.join(BASE_DIR, "src/content/badgeView.ts")
-    badge_js_path = badge_ts if os.path.isfile(badge_ts) else os.path.join(BASE_DIR, "src/content/badgeView.js")
-    badge_js = ""
-    if os.path.exists(badge_js_path):
-        with open(badge_js_path, "r", encoding="utf-8") as f:
-            badge_js = f.read()
-    observer_ts = os.path.join(BASE_DIR, "src/content/pageObserver.ts")
-    observer_path = observer_ts if os.path.isfile(observer_ts) else os.path.join(BASE_DIR, "src/content/pageObserver.js")
-    with open(observer_path, "r", encoding="utf-8") as f:
-        observer_js = f.read()
-    sync_ts = os.path.join(BASE_DIR, "src/content/syncEngine.ts")
-    sync_path = sync_ts if os.path.isfile(sync_ts) else os.path.join(BASE_DIR, "src/content/syncEngine.js")
-    with open(sync_path, "r", encoding="utf-8") as f:
-        sync_js = f.read()
-    combined_js = js + badge_js
-    assert "debouncedSync" in observer_js, "pageObserver.js should debounce sync triggers"
-    assert re.search(r'changed\s*===?\s*0', sync_js), "syncEngine.js upsertConversations should skip writes when changed === 0"
-    assert "textContent" in combined_js and "targetText" in combined_js, "badgeView/content.js updateBadge should guard textContent updates"
-    assert "existing.isConnected" in combined_js or "isConnected" in combined_js, "badgeView/content.js ensureBadge should check isConnected"
-    print("  ✓ Content badge flicker prevention verified")
+    def read(path):
+        with open(os.path.join(BASE_DIR, path), encoding="utf-8") as f:
+            return f.read()
 
-def test_exported_history_and_slot_fallback():
-    storage_ts = os.path.join(BASE_DIR, "src/core/storage/storageService.ts")
-    storage_js = storage_ts if os.path.isfile(storage_ts) else os.path.join(BASE_DIR, "src/core/storage/storageService.js")
-    with open(storage_js, "r", encoding="utf-8") as f:
-        code = f.read()
-    assert re.search(r"updates(\['exportedIds'\]|\.exportedIds)\s*=", code), "saveExportRecordsBatch should maintain global exportedIds"
+    badge = read("src/ui/badge/badgeView.ts")
+    content = read("src/runtime/content/content.ts")
+    ingestion = read("src/l2/ingestion.ts")
 
-    migration_ts = os.path.join(BASE_DIR, "src/core/storage/schemaMigration.ts")
-    with open(migration_ts, "r", encoding="utf-8") as f:
-        mig_code = f.read()
-    assert "gemini_conversations_u0" in mig_code, "schemaMigration should handle legacy gemini_conversations_u0"
-    assert "migrateExportAliases" in mig_code, "schemaMigration should run migrateExportAliases"
+    assert "label.textContent" in badge and "count === null" in badge, "Badge must render local Index count safely"
+    assert "badge.isConnected" in badge, "Badge must reattach a detached node instead of duplicating it"
+    assert "getLocalIndexCount" in badge and "refreshIndexCount" in badge, "Only Badge owns the local count pull"
+    assert "accountId !== id" in badge or "id !== accountId" in badge, "Count replies must be account-scoped"
+    assert "stopCountPolling" in badge and "registerCleanup" in badge, "Badge must stop polling during cleanup"
+    assert "BadgeView.ensureBadge" in content and "BadgeView.refreshAccount" in content, "Content must delegate Badge lifecycle"
+    assert "hookHistoryEvents" in content, "Content handles location changes through PageObserver"
+    assert "MessageBridge.init" in content, "Passive Sniffer admission must remain separate from Badge"
+    assert "sameStoredFacts" in ingestion and "mergeIndexes" in ingestion, "L2 must skip unchanged Index facts"
+    assert "syncEngine" not in content and "geminiIndexCapture" not in content, "Removed scan facades must not return"
+    print("  ✓ V2 Badge lifetime, account isolation, stable CSS and passive Index separation verified")
 
-    store_ts = os.path.join(BASE_DIR, "src/ui/state/conversationsStore.ts")
-    store_js = store_ts if os.path.isfile(store_ts) else os.path.join(BASE_DIR, "src/ui/state/conversationsStore.js")
-    with open(store_js, "r", encoding="utf-8") as f:
-        store_code = f.read()
-    assert re.search(r"for\s*\(\s*(?:const|let|var)?\s*\w+\s+of\s+candidates\s*\)", store_code) or "candidates" in store_code, "conversationsStore should smartly fall back to slot with conversations"
-    print("  ✓ Exported history preservation & slot fallback verified")
+def test_account_uuid_storage_boundary():
+    with open(os.path.join(BASE_DIR, "src/l3a/storageService.ts"), encoding="utf-8") as f:
+        storage = f.read()
+    assert "gemini_account_slots" not in storage, "Storage must not maintain a second account registry"
+    assert "gemini_exported_u0" not in storage, "Current storage must not read legacy slot aliases"
+    print("  ✓ UUID storage boundary verified")
 
 def test_custom_dataset_loading():
     import tempfile
@@ -555,51 +289,71 @@ def test_scenario_pool_pipeline():
     scripts_dir = os.path.join(BASE_DIR, "scripts")
     if scripts_dir not in sys.path:
         sys.path.insert(0, scripts_dir)
-    from manage_scenario_pool import validate_pool, get_pool_status, consume_scenarios, topup_scenarios, DEFAULT_POOL_PATH
+    from manage_scenario_pool import validate_pool, consume_scenarios, topup_scenarios
 
-    # 1. Validate the default 20-scenario pool
-    ok, errs, status = validate_pool(DEFAULT_POOL_PATH, strict_count=True)
-    assert ok, f"Scenario pool validation failed: {errs}"
-    assert status["count"] == 20, f"Expected 20 scenarios, got {status['count']}"
-    assert status["has_imagen"] >= 2, f"Expected >= 2 imagen scenarios, got {status['has_imagen']}"
-    assert len(status["domains"]) >= 10, f"Expected >= 10 domains, got {len(status['domains'])}"
+    # Use an isolated corpus: Tier 2 may legitimately leave the real pool below 20/20.
+    scenarios = [
+        {
+            "id": f"unit_scenario_{i:02d}",
+            "title": f"Unit Scenario {i}",
+            "domain": f"unit_domain_{i % 10}",
+            "features": ["imagen", "creative"] if i < 2 else ["code"],
+            "turns": [f"prompt {i} turn 1", f"prompt {i} turn 2"],
+        }
+        for i in range(20)
+    ]
 
-    # 2. Dry-run consume
-    selected, pool_after = consume_scenarios(DEFAULT_POOL_PATH, count=2, dry_run=True, require_imagen=True)
-    assert len(selected) == 2, "Dry-run consume should return 2 scenarios"
-    assert any("imagen" in s.get("features", []) for s in selected), "One of the consumed scenarios must have 'imagen' feature"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        pool_path = os.path.join(tmp_dir, "pool.json")
+        archive_path = os.path.join(tmp_dir, "archive.json")
+        with open(pool_path, "w", encoding="utf-8") as f:
+            json.dump(scenarios, f, ensure_ascii=False)
 
-    # 3. Temp file consume and topup round-trip
-    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as f_pool:
-        json.dump(status["scenarios"][:], f_pool, ensure_ascii=False)
-        pool_tmp = f_pool.name
-    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as f_arch:
-        json.dump([], f_arch)
-        arch_tmp = f_arch.name
+        # Validate capacity and diversity without reading the real consumed.json.
+        ok, errs, status = validate_pool(pool_path, strict_count=True)
+        assert ok, f"Scenario pool validation failed: {errs}"
+        assert status["count"] == 20
+        assert status["has_imagen"] >= 2
+        assert len(status["domains"]) >= 10
 
-    try:
-        consumed, remaining = consume_scenarios(pool_tmp, count=2, archive_path=arch_tmp, dry_run=False, require_imagen=True)
-        assert len(consumed) == 2
+        # Dry-run selection must leave the fixture and archive untouched.
+        selected, pool_after = consume_scenarios(pool_path, count=2, dry_run=True, require_imagen=True)
+        assert len(selected) == 2
+        assert len(pool_after) == 18
+        assert any("imagen" in s.get("features", []) for s in selected)
+        with open(pool_path, "r", encoding="utf-8") as f:
+            assert len(json.load(f)) == 20
+        assert not os.path.exists(archive_path)
+
+        # Consume, archive, and top up entirely within the temporary directory.
+        consumed, remaining = consume_scenarios(
+            pool_path, count=2, archive_path=archive_path, dry_run=False, require_imagen=True
+        )
+        assert [s["id"] for s in consumed] == [s["id"] for s in selected]
         assert len(remaining) == 18
+        with open(pool_path, "r", encoding="utf-8") as f:
+            assert len(json.load(f)) == 18
+        with open(archive_path, "r", encoding="utf-8") as f:
+            archived = json.load(f)
+        assert len(archived) == 2
+        assert all("consumed_at" in item for item in archived)
 
-        with open(arch_tmp, "r", encoding="utf-8") as f:
-            arch_data = json.load(f)
-        assert len(arch_data) == 2
-        assert "consumed_at" in arch_data[0]
+        ok, errs, _ = validate_pool(pool_path, strict_count=True)
+        assert not ok and any("水位不足" in err for err in errs)
 
-        # Top up with the consumed items back to 20
-        added, restored_pool = topup_scenarios(consumed, pool_path=pool_tmp)
+        added, restored_pool = topup_scenarios(consumed, pool_path=pool_path)
         assert len(added) == 2
         assert len(restored_pool) == 20
-    finally:
-        for p in [pool_tmp, arch_tmp]:
-            if os.path.isfile(p):
-                os.remove(p)
+        ok, errs, restored_status = validate_pool(pool_path, strict_count=True)
+        assert ok, f"Restored scenario pool validation failed: {errs}"
+        assert restored_status["count"] == 20
 
     print("  ✓ Scenario pool pipeline, 20-scenario diversity, consume, archive & top-up verified")
 
 def test_online_scenario_provider_and_lifecycle_tracker():
     import tempfile
+    import contextlib
+    import io
     scripts_dir = os.path.join(BASE_DIR, "scripts")
     if scripts_dir not in sys.path:
         sys.path.insert(0, scripts_dir)
@@ -625,15 +379,17 @@ def test_online_scenario_provider_and_lifecycle_tracker():
         assert status["count"] == 2
         assert status["has_imagen"] == 1
 
-        # Pop imagen
-        sc1 = prov.pop_scenario(required_features=["imagen"])
-        assert sc1["id"] == "sc_img"
-        assert prov.get_status()["count"] == 1
+        # Suppress live-run messages emitted for synthetic fixture scenarios.
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Pop imagen
+            sc1 = prov.pop_scenario(required_features=["imagen"])
+            assert sc1["id"] == "sc_img"
+            assert prov.get_status()["count"] == 1
 
-        # Pop next
-        sc2 = prov.pop_scenario()
-        assert sc2["id"] == "sc_code"
-        assert prov.get_status()["count"] == 0
+            # Pop next
+            sc2 = prov.pop_scenario()
+            assert sc2["id"] == "sc_code"
+            assert prov.get_status()["count"] == 0
 
         # Archive check
         with open(a_path, "r", encoding="utf-8") as af:
@@ -659,9 +415,10 @@ def test_online_scenario_provider_and_lifecycle_tracker():
 
     # 2. Test SessionLifecycleTracker
     tracker = SessionLifecycleTracker()
-    tracker.track("chat_abc_1")
-    tracker.track("chat_abc_2")
-    tracker.track("chat_abc_1")  # duplicate
+    with contextlib.redirect_stdout(io.StringIO()):
+        tracker.track("chat_abc_1")
+        tracker.track("chat_abc_2")
+        tracker.track("chat_abc_1")  # duplicate
     assert len(tracker._tracked_chat_ids) == 2
 
     # mark one deleted (e.g. from ephemeral deletion test)
@@ -672,273 +429,166 @@ def test_online_scenario_provider_and_lifecycle_tracker():
     assert tracker.get_active_chats() == ["chat_abc_2"]
 
     # teardown retains active chats without deleting them
-    retained = tracker.teardown()
+    with contextlib.redirect_stdout(io.StringIO()):
+        retained = tracker.teardown()
     assert retained == 1
 
     print("  ✓ OnlineScenarioProvider & SessionLifecycleTracker unit tests passed")
 
 
 def test_tour_status_indicator_styling():
-    # 1. Ensure options.html does not define unscoped .ok { ... }
-    for html_file in ["src/ui/options/options.html"]:
-        with open(os.path.join(BASE_DIR, html_file), "r", encoding="utf-8") as f:
-            content = f.read()
-        assert not re.search(r'(?<!button)\.ok\s*\{', content), f"Unscoped .ok rule found in {html_file}"
+    # The current Spotlight uses a cutout and dialog, not old connection lamps.
+    with open(os.path.join(BASE_DIR, "src/ui/guidance/tourGuide.css"), encoding="utf-8") as f:
+        css = f.read()
+    # The final v2 cutout CSS rule overrides the earlier generic overlay rule.
+    # Inspect the effective cascade; popover attributes span two rule blocks.
+    containers = re.findall(r'\.tour-overlay-container\s*\{([^}]+)', css)
+    popovers = re.findall(r'\.tour-popover\s*\{([^}]+)', css)
+    assert containers and popovers, 'Tour overlay and popover CSS must exist'
+    container = containers[-1]
+    popover = ''.join(popovers)
+    assert "pointer-events:none" in container.replace(" ", ""), "Cutout must pass business clicks to its target"
+    assert "pointer-events:auto" in popover.replace(" ", ""), "Popover controls must stay operable"
+    assert "max-height:" in popover and "overflow:auto" in popover.replace(" ", ""), "Small viewports must retain all Tour actions"
+    with open(os.path.join(BASE_DIR, "src/ui/guidance/tourGuide.ts"), encoding="utf-8") as f:
+        guide = f.read()
+    assert "role', 'dialog'" in guide and "Escape" in guide, "Guidance must preserve dialog semantics and keyboard dismissal"
+    print("  ✓ Current Tour cutout, interaction and viewport styles verified")
 
-    # 2. Ensure tourGuide.css explicitly sets background: transparent and high-contrast color for ok/warn indicators
-    tour_css_path = os.path.join(BASE_DIR, "src/ui/tour/tourGuide.css")
-    with open(tour_css_path, "r", encoding="utf-8") as f:
-        tour_css = f.read()
-    assert ".tour-status-indicator.ok" in tour_css and ".tour-status-indicator.tour-status-ok" in tour_css, "tourGuide.css missing tour-status-ok"
-    assert "background: transparent" in tour_css, "tourGuide.css must ensure status indicators have transparent background"
-    assert "#34d399" in tour_css, "tourGuide.css should use crisp high-contrast emerald color (#34d399) for status ok"
-
-    # 3. Ensure tourGuide.js uses tour-status-ok and tour-status-warn
-    tour_ts = os.path.join(BASE_DIR, "src/ui/tour/tourGuide.ts")
-    tour_js_path = tour_ts if os.path.isfile(tour_ts) else os.path.join(BASE_DIR, "src/ui/tour/tourGuide.js")
-    with open(tour_js_path, "r", encoding="utf-8") as f:
-        tour_js = f.read()
-    assert "tour-status-indicator tour-status-ok" in tour_js, "tourGuide.js missing tour-status-ok class"
-    assert "tour-status-indicator tour-status-warn" in tour_js, "tourGuide.js missing tour-status-warn class"
-
-    print("  ✓ TourGuide status indicator styles and class scoping verified")
 
 def test_takeout_limit_modal_and_wall_detection():
-    # 1. Ensure src/ui/options/options.html contains takeoutLimitModal with required actions
-    for html_file in ["src/ui/options/options.html"]:
-        with open(os.path.join(BASE_DIR, html_file), "r", encoding="utf-8") as f:
-            content = f.read()
-        assert 'id="takeoutLimitModal"' in content, f"takeoutLimitModal missing in {html_file}"
-        assert 'id="btnModalImportTakeout"' in content, f"btnModalImportTakeout missing in {html_file}"
-        assert 'id="btnModalOpenTakeoutWeb"' in content, f"btnModalOpenTakeoutWeb missing in {html_file}"
+    with open(os.path.join(BASE_DIR, "src/ui/options/options.ts"), encoding="utf-8") as f:
+        options = f.read()
+    with open(os.path.join(BASE_DIR, "src/ui/guidance/tourGuide.ts"), encoding="utf-8") as f:
+        guide = f.read()
+    with open(os.path.join(BASE_DIR, "src/ui/options/controllers/syncController.ts"), encoding="utf-8") as f:
+        sync = f.read()
+    with open(os.path.join(BASE_DIR, "src/application/settings/index.ts"), encoding="utf-8") as f:
+        settings = f.read()
+    assert "takeoutFileInput" in options and "handleTakeoutImport" in options
+    assert "takeoutPromptCompleted" in settings and "takeoutPromptCompleted" in options
+    assert "showTakeoutPrompt" in guide and "importFile()" in guide
+    assert "scanAll" in sync and "AbortSignal" in sync, "Scan is a local typed Application invocation"
+    for old in ("deepScan", "hitGoogleLimit", "gemini_pending_takeout_prompt"):
+        assert old not in sync, f"UI must not reconstruct provider limits with {old}"
+    # Threshold, acknowledgement, import and cancellation behavior run against
+    # actual handlers in tour_guide.test.ts and takeout_limit_prompt.spec.ts.
+    print("  ✓ Takeout guidance uses Application counters, current Settings and File import")
 
-    # 2. Ensure geminiClient.js and syncController.js recognize Google 500+ sliding window limit & 429 errors
-    client_ts = os.path.join(BASE_DIR, "src/core/api/geminiClient.ts")
-    client_path = client_ts if os.path.isfile(client_ts) else os.path.join(BASE_DIR, "src/core/api/geminiClient.js")
-    with open(client_path, "r", encoding="utf-8") as f:
-        client_code = f.read()
-    assert re.search(r'all\.length\s*>=\s*500', client_code) or "hitGoogleLimit" in client_code, "geminiClient should flag hitGoogleLimit for full scans reaching 500+ chats"
-    assert "429" in client_code, "geminiClient should detect 429 rate limit wall"
-
-    sync_ts = os.path.join(BASE_DIR, "src/ui/controllers/syncController.ts")
-    sync_path = sync_ts if os.path.isfile(sync_ts) else os.path.join(BASE_DIR, "src/ui/controllers/syncController.js")
-    with open(sync_path, "r", encoding="utf-8") as f:
-        sync_code = f.read()
-    assert re.search(r'count\s*>=\s*500', sync_code) or "hitGoogleLimit" in sync_code, "syncController.js should treat full scan >= 500 as hitGoogleLimit"
-    assert "429" in sync_code, "syncController.js should treat 429 as hitGoogleLimit"
-
-    # 3. Ensure tabService.ts/js allocates at least 300000ms (5m) for deepScan
-    tab_service_ts = os.path.join(BASE_DIR, "src/core/utils/tabService.ts")
-    tab_service_path = tab_service_ts if os.path.isfile(tab_service_ts) else os.path.join(BASE_DIR, "src/core/utils/tabService.js")
-    with open(tab_service_path, "r", encoding="utf-8") as f:
-        tab_code = f.read()
-    assert re.search(r'(300000|5\s*\*\s*60\s*\*\s*1000)', tab_code) and "deepScan" in tab_code, "tabService.js should allow at least 300000ms timeout for deepScan"
-
-    # 4. Ensure options.js checks gemini_pending_takeout_prompt on store load
-    options_ts = os.path.join(BASE_DIR, "src/ui/options/options.ts")
-    options_js_path = options_ts if os.path.isfile(options_ts) else os.path.join(BASE_DIR, "src/ui/options/options.js")
-    with open(options_js_path, "r", encoding="utf-8") as f:
-        options_code = f.read()
-    assert "gemini_pending_takeout_prompt" in options_code, "options.js should check gemini_pending_takeout_prompt"
-    assert "checkPendingTakeoutPrompt" in options_code, "options.js should have checkPendingTakeoutPrompt"
-
-    # 5. Ensure syncEngine.js records gemini_pending_takeout_prompt when limit hit
-    sync_ts = os.path.join(BASE_DIR, "src/content/syncEngine.ts")
-    sync_js_path = sync_ts if os.path.isfile(sync_ts) else os.path.join(BASE_DIR, "src/content/syncEngine.js")
-    with open(sync_js_path, "r", encoding="utf-8") as f:
-        sync_code = f.read()
-    assert "gemini_pending_takeout_prompt" in sync_code or "STORAGE_KEYS.PENDING_TAKEOUT_PROMPT" in sync_code, "syncEngine.js should persist gemini_pending_takeout_prompt (literal or via STORAGE_KEYS)"
-
-    # 6. Ensure single-time tutorial prompt behavior (isTakeoutPromptCompleted & has_completed_takeout_prompt)
-    storage_ts = os.path.join(BASE_DIR, "src/core/storage/storageService.ts")
-    storage_path = storage_ts if os.path.isfile(storage_ts) else os.path.join(BASE_DIR, "src/core/storage/storageService.js")
-    with open(storage_path, "r", encoding="utf-8") as f:
-        storage_code = f.read()
-    user_prefs_path = os.path.join(BASE_DIR, "src/core/storage/userPreferences.ts")
-    if os.path.isfile(user_prefs_path):
-        with open(user_prefs_path, "r", encoding="utf-8") as f:
-            storage_code += "\n" + f.read()
-    assert "has_completed_takeout_prompt" in storage_code or "STORAGE_KEYS.HAS_COMPLETED_TAKEOUT_PROMPT" in storage_code, "storageService should track has_completed_takeout_prompt"
-    assert "isTakeoutPromptCompleted" in storage_code and "setTakeoutPromptCompleted" in storage_code, "storageService should export takeout prompt completion helpers"
-
-    dialog_ts = os.path.join(BASE_DIR, "src/ui/views/dialogView.ts")
-    dialog_js_path = dialog_ts if os.path.isfile(dialog_ts) else os.path.join(BASE_DIR, "src/ui/views/dialogView.js")
-    with open(dialog_js_path, "r", encoding="utf-8") as f:
-        dialog_code = f.read()
-    assert "isTakeoutPromptCompleted" in dialog_code and "setTakeoutPromptCompleted" in dialog_code, "dialogView.js should guard and mark takeout prompt completed"
-
-    assert "isTakeoutPromptCompleted" in options_code, "options.js should check isTakeoutPromptCompleted"
-
-    print("  ✓ Takeout limit modal & Google sliding window wall detection verified")
 
 def test_stage1_architecture_ssot_and_state_isolation():
-    # 1. Verify per-slot aborts in background.ts/js (or modular src/background/)
-    bg_dir = os.path.join(BASE_DIR, "src/background")
-    if os.path.isdir(bg_dir):
-        bg_code = ""
-        for bf_name in sorted(os.listdir(bg_dir)):
-            if bf_name.endswith(".ts") or bf_name.endswith(".js"):
-                with open(os.path.join(bg_dir, bf_name), "r", encoding="utf-8") as bf:
-                    bg_code += bf.read() + "\n"
-    else:
-        bg_ts = os.path.join(BASE_DIR, "src/background/background.ts")
-        bg_js_path = bg_ts if os.path.isfile(bg_ts) else os.path.join(BASE_DIR, "src/background/background.js")
-        with open(bg_js_path, "r", encoding="utf-8") as f:
-            bg_code = f.read()
-    assert "__bgAborts" in bg_code and "Map" in bg_code, "background.js must isolate abort flags per account slot using Map"
-    assert not re.search(r'let\s+__bgAborted\s*=\s*(?:false|true);', bg_code), "background.js must not contain mutable global __bgAborted"
-    assert "isSlotAborted" in bg_code and "setSlotAborted" in bg_code, "background.js must provide slot-aware abort helpers"
+    # The former Stage 1 implementation (per-slot __bgAborts, Takeout cache,
+    # Content syncEngine, Options-side merging and exportEngine) was removed
+    # by v2. Verify the *current* responsibility boundaries instead.
+    def read(path):
+        with open(os.path.join(BASE_DIR, path), encoding="utf-8") as source:
+            return source.read()
 
-    # 2. Verify per-slot Takeout cache in takeoutEngine
-    takeout_ts = os.path.join(BASE_DIR, "src/core/engine/takeoutEngine.ts")
-    takeout_path = takeout_ts if os.path.isfile(takeout_ts) else os.path.join(BASE_DIR, "src/core/engine/takeoutEngine.js")
-    with open(takeout_path, "r", encoding="utf-8") as f:
-        takeout_code = f.read()
-    assert "__slotTakeouts" in takeout_code and "Map" in takeout_code, "takeoutEngine must isolate takeout dictionaries per account slot"
-    assert "getStore" in takeout_code, "takeoutEngine must route through getStore(slot)"
+    # Scan cancellation and concurrent-run isolation belong to Application.
+    scan = read("src/application/sync/scanController.ts")
+    background = read("src/runtime/background/background.ts")
+    assert "signal?: AbortSignal" in scan and "options.signal?.throwIfAborted()" in scan, "Scan must respect its own AbortSignal"
+    assert "new Set<string>()" in scan and "active.has(accountId)" in scan and "active.delete(accountId)" in scan, "Active Scan runs must be account-scoped and released"
+    assert "__bgAborts" not in background and "__bgAborted" not in background, "Background must not restore parallel v1 abort flags"
 
-    # 3. Verify SSoT compareConversations in syncEngine.ts and options.js
-    sync_ts = os.path.join(BASE_DIR, "src/content/syncEngine.ts")
-    sync_js_path = sync_ts if os.path.isfile(sync_ts) else os.path.join(BASE_DIR, "src/content/syncEngine.js")
-    with open(sync_js_path, "r", encoding="utf-8") as f:
-        sync_code = f.read()
-    assert "compareConversations" in sync_code, "syncEngine.js upsertConversations must use compareConversations SSoT"
+    # Takeout is an explicit input + target Account, not an ambient per-slot cache.
+    takeout = read("src/l1/imports/takeout/importTakeout.ts")
+    assert "importTakeout(file: File, accountId:" in takeout and "getAccount(accountId)" in takeout, "Takeout must resolve its explicit trusted Account"
+    assert "ingestDetail(accountId, id," in takeout, "L1 Takeout must admit parsed facts through L2"
+    assert "resources.retainParsed" in takeout and "__accountTakeouts" not in takeout, "Takeout must not retain a global resource/Domain cache"
 
-    options_ts = os.path.join(BASE_DIR, "src/ui/options/options.ts")
-    options_js_path = options_ts if os.path.isfile(options_ts) else os.path.join(BASE_DIR, "src/ui/options/options.js")
-    with open(options_js_path, "r", encoding="utf-8") as f:
-        options_code = f.read()
-    assert "compareConversations" in options_code, "options.js loadStore must use compareConversations SSoT"
+    # L2 exclusively owns both Index and Detail selection; Options only reads
+    # the resulting facts for display.
+    index = read("src/l2/conversationIndex.ts")
+    detail = read("src/l2/conversationDetail.ts")
+    ingestion = read("src/l2/ingestion.ts")
+    options = read("src/ui/options/options.ts")
+    assert "mergeConversationIndex" in index and "resolveTitle" in index, "L2 must own Index/title arbitration"
+    assert "selectConversationDetail" in detail and "sameConversationKey" in detail, "L2 must select only same-key Detail"
+    assert "mergeConversationIndex" in ingestion and "selectConversationDetail" in ingestion, "L2 must reuse both domain selection contracts"
+    assert "ConversationViewState" in options and "renderList" in options, "Options must render a read-only Domain projection"
+    assert "compareConversations" not in options, "Options must not restore a competing conversation merge"
 
-    # 4. Verify SSoT sanitizeFileName and cleanTitle delegation in exportEngine
-    export_ts = os.path.join(BASE_DIR, "src/core/engine/exportEngine.ts")
-    export_path = export_ts if os.path.isfile(export_ts) else os.path.join(BASE_DIR, "src/core/engine/exportEngine.js")
-    with open(export_path, "r", encoding="utf-8") as f:
-        export_code = f.read()
-    assert "sanitizeFileName" in export_code, "exportEngine sanitizeFileName must delegate to GeminiUtils SSoT"
+    # Packaging owns *all* physical paths; Application never invents a second
+    # source-title/file-name or export-engine path policy.
+    packaging = read("src/l4/packaging/index.ts")
+    export = read("src/application/export/runExport.ts")
+    assert "buildExportFileName" in packaging and "sanitizeFileName" in packaging and "assertExportPath" in packaging, "L4 must own safe and unique export paths"
+    assert "createExportPathPlanner" in export and "packageExportFiles" in export, "Application must use L4 Packaging"
+    assert "sanitizeFileName" not in export, "Application must not independently name exported files"
 
-    print("  ✓ Stage 1 Architecture: SSoT consolidation and per-slot state isolation verified")
+    print("  ✓ V2 Stage 1: per-account Scan isolation, task-owned Takeout, L2 selection and L4 paths verified")
+
 
 def test_storage_keys_and_constants_ssot():
-    constants_path = os.path.join(BASE_DIR, "src/core/utils/constants.ts")
-    with open(constants_path, "r", encoding="utf-8") as f:
-        constants_code = f.read()
+    """V2 persistence must have one Storage owner; obsolete session keys are not contracts."""
+    def source(path):
+        with open(os.path.join(BASE_DIR, path), encoding="utf-8") as f:
+            return f.read()
 
-    # 1. Verify STORAGE_KEYS completeness in constants.ts
-    required_keys = [
-        "FORMAT", "ZIP", "DEV_MODE", "LANG", "PENDING_TAKEOUT_PROMPT",
-        "SUPPRESS_DIRECT_WRITE_PROMPT", "CREDENTIALS_MAP", "CREDENTIALS",
-        "ACCOUNT_SLOTS", "LAST_SYNC_DIAGNOSTICS", "LAST_EXPORT_SESSION",
-        "LIVE_SAVE_CONFIG", "HAS_COMPLETED_TOUR", "LAST_SEEN_FEATURE_VERSION",
-        "BADGE_POS", "HAS_COMPLETED_TAKEOUT_PROMPT", "HAS_IMPORTED_TAKEOUT"
-    ]
-    for k in required_keys:
-        assert f"{k}:" in constants_code, f"STORAGE_KEYS in constants.ts must define {k}"
+    storage = source("src/l3a/storageService.ts")
+    settings = source("src/application/settings/index.ts")
+    exporter = source("src/application/export/runExport.ts")
+    constants = source("src/shared/utils/constants.ts")
 
-    assert "DEFAULT_EXPORT_FOLDER_NAME" in constants_code, "constants.ts must define DEFAULT_EXPORT_FOLDER_NAME"
-    assert "IDB_DATABASES" in constants_code, "constants.ts must define IDB_DATABASES"
+    for name in ("getIndex", "getDetail", "updateConversationAtomically",
+                 "getCoverage", "updateCoverageAtomically",
+                 "getExportRecord", "putExportRecord", "getStoredSettings", "patchStoredSettings"):
+        assert name in storage, f"V2 Storage missing declared boundary: {name}"
+    for name in ("defaultFormat", "skipExported", "includeAssets", "enabledDisk",
+                 "developerMode", "lastSeenFeatureVersion", "takeoutPromptCompleted"):
+        assert name in settings, f"V2 Settings missing frozen field: {name}"
+    assert "putExportRecord" in exporter and "getExportRecord" in exporter
+    assert "LAST_EXPORT_SESSION" not in exporter, "Export must not use persistent V1 sessions"
+    idb = source("src/l3a/idb.ts")
+    assert "const DATABASE_NAME" in idb and "const DATABASE_VERSION" in idb, (
+        "L3a must own the active IndexedDB name and schema version")
+    assert "indexedDB.open(DATABASE_NAME, DATABASE_VERSION)" in idb, (
+        "IndexedDB must open with the canonical L3a configuration")
+    assert "IDB_DATABASES" not in constants, (
+        "Shared constants must not duplicate the actual L3a database configuration")
 
-    # 2. Verify build.js supports --pack and package script exists in package.json
-    build_path = os.path.join(BASE_DIR, "build.js")
-    with open(build_path, "r", encoding="utf-8") as f:
-        build_code = f.read()
-    assert "--pack" in build_code, "build.js must implement --pack packaging support"
+    build = source("build.js")
+    package = source("package.json")
+    assert "--pack" in build, "Build must support packaging"
+    assert '"package":' in package, "package.json must expose packaging"
+    print("  ✓ V2 Storage/Settings/ExportRecord contracts and build packaging verified")
 
-    pkg_path = os.path.join(BASE_DIR, "package.json")
-    with open(pkg_path, "r", encoding="utf-8") as f:
-        pkg_code = f.read()
-    assert '"package":' in pkg_code, 'package.json must declare "package" script'
-
-    # 3. Static Linter: ensure no raw string literals in src/ bypass STORAGE_KEYS
-    forbidden_literals = [
-        ("gemini_dev_mode", "STORAGE_KEYS.DEV_MODE"),
-        ("gemini_export_zip", "STORAGE_KEYS.ZIP"),
-        ("gemini_export_format", "STORAGE_KEYS.FORMAT"),
-        ("gemini_account_slots", "STORAGE_KEYS.ACCOUNT_SLOTS"),
-        ("gemini_last_sync_diagnostics", "STORAGE_KEYS.LAST_SYNC_DIAGNOSTICS"),
-        ("gemini_export_badge_pos", "STORAGE_KEYS.BADGE_POS"),
-        ("has_completed_tour", "STORAGE_KEYS.HAS_COMPLETED_TOUR"),
-        ("last_seen_feature_version", "STORAGE_KEYS.LAST_SEEN_FEATURE_VERSION"),
-        ("has_completed_takeout_prompt", "STORAGE_KEYS.HAS_COMPLETED_TAKEOUT_PROMPT"),
-        ("has_imported_takeout", "STORAGE_KEYS.HAS_IMPORTED_TAKEOUT")
-    ]
-
-    src_dir = os.path.join(BASE_DIR, "src")
-    violations = []
-    for root, _, files in os.walk(src_dir):
-        for f in files:
-            if f.endswith(".ts") and f != "constants.ts":
-                full_p = os.path.join(root, f)
-                with open(full_p, "r", encoding="utf-8") as fp:
-                    content = fp.read()
-                rel_p = os.path.relpath(full_p, BASE_DIR).replace("\\", "/")
-                for lit, s_key in forbidden_literals:
-                    if f"'{lit}'" in content or f'"{lit}"' in content:
-                        violations.append(f"{rel_p}: contains raw literal '{lit}', must use {s_key}")
-
-    assert not violations, "SSoT Storage Key Violations found:\n" + "\n".join(violations)
-    print("  ✓ Storage Keys and Constants SSoT integrity verified (0 raw literals in src/)")
 
 def test_stage2_architecture_improvements():
-    # 1. Verify sanitizeRelativePath in utils, zipWriter, fsWriter, and exportEngine
-    utils_ts = os.path.join(BASE_DIR, "src/core/utils/utils.ts")
-    utils_path = utils_ts if os.path.isfile(utils_ts) else os.path.join(BASE_DIR, "src/core/utils/utils.js")
-    with open(utils_path, "r", encoding="utf-8") as f:
-        utils_code = f.read()
-    assert "sanitizeRelativePath" in utils_code, "utils must implement and export sanitizeRelativePath"
+    """Retain valid path, Provider and sender-safety contracts across V2 modules."""
+    def source(path):
+        with open(os.path.join(BASE_DIR, path), encoding="utf-8") as f:
+            return f.read()
 
-    zip_writer_ts = os.path.join(BASE_DIR, "src/core/engine/writers/zipWriter.ts")
-    zip_writer_path = zip_writer_ts if os.path.isfile(zip_writer_ts) else os.path.join(BASE_DIR, "src/core/engine/writers/zipWriter.js")
-    with open(zip_writer_path, "r", encoding="utf-8") as f:
-        zip_code = f.read()
-    assert "sanitizeRelativePath" in zip_code or "sanitizePath" in zip_code, "zipWriter must use sanitizeRelativePath"
+    planner = source("src/l4/packaging/index.ts")
+    zip_writer = source("src/l4/packaging/writers/zipWriter.ts")
+    folder_writer = source("src/l4/delivery/writers/fsWriter.ts")
+    export = source("src/application/export/runExport.ts")
+    hook = source("src/l1/sniffer/gemini/hookCredentials.ts")
+    client = source("src/l1/client/gemini/geminiClient.ts")
+    background = source("src/runtime/background/background.ts")
 
-    fs_writer_ts = os.path.join(BASE_DIR, "src/core/engine/writers/fsWriter.ts")
-    fs_writer_path = fs_writer_ts if os.path.isfile(fs_writer_ts) else os.path.join(BASE_DIR, "src/core/engine/writers/fsWriter.js")
-    with open(fs_writer_path, "r", encoding="utf-8") as f:
-        fs_code = f.read()
-    assert "sanitizeRelativePath" in fs_code, "fsWriter must use sanitizeRelativePath"
-    assert "ensureSubDir" in fs_code and "writeFile" in fs_code, "fsWriter must support flexible path writing"
-
-    # 2. Verify export orchestrator AsyncQueue and elimination of busy-polling
-    export_ts = os.path.join(BASE_DIR, "src/core/engine/export/exportOrchestrator.ts")
-    if not os.path.isfile(export_ts):
-        export_ts = os.path.join(BASE_DIR, "src/core/engine/exportEngine.ts")
-    export_path = export_ts if os.path.isfile(export_ts) else os.path.join(BASE_DIR, "src/core/engine/exportEngine.js")
-    with open(export_path, "r", encoding="utf-8") as f:
-        export_code = f.read()
-    assert "AsyncQueue" in export_code, "exportEngine must implement event-driven AsyncQueue"
-    assert not re.search(r'setTimeout\s*\(\s*\w+\s*,\s*100\s*\)', export_code), "exportEngine must not use busy-polling setTimeout(r, 100)"
-    assert "attachmentQueue" in export_code, "exportEngine must properly manage attachmentQueue"
-    assert "writeFileDirect" in export_code, "exportEngine must have writeFileDirect"
-
-    # 3. Verify hookCredentials.js error sandboxing
-    hook_ts = os.path.join(BASE_DIR, "src/content/hookCredentials.ts")
-    hook_path = hook_ts if os.path.isfile(hook_ts) else os.path.join(BASE_DIR, "src/content/hookCredentials.js")
-    with open(hook_path, "r", encoding="utf-8") as f:
-        hook_code = f.read()
-    assert "origFetch" in hook_code, "hookCredentials.js must guard origFetch"
-    assert "origOpen" in hook_code and "origSend" in hook_code, "hookCredentials.js must guard origOpen and origSend"
-    assert "RegExp.$1" not in hook_code, "hookCredentials.js must not use deprecated RegExp.$1"
-
-    # 4. Verify geminiClient.js dynamic credential refresh on HTTP 400
-    client_ts = os.path.join(BASE_DIR, "src/core/api/geminiClient.ts")
-    client_path = client_ts if os.path.isfile(client_ts) else os.path.join(BASE_DIR, "src/core/api/geminiClient.js")
-    with open(client_path, "r", encoding="utf-8") as f:
-        client_code = f.read()
-    assert "cachedCredentials" not in client_code, "geminiClient must not reference undefined cachedCredentials"
-    assert "_retried" in client_code, "geminiClient must support automatic retry on 400 with fresh credentials"
-    assert re.search(r'async\s+function\s+resolveCred\s*\(', client_code) or "resolveCred" in client_code, "geminiClient resolveCred must accept credential overrides"
-
-    # 5. Verify background.ts/js MV3 keepalive
-    bg_ts = os.path.join(BASE_DIR, "src/background/background.ts")
-    bg_path = bg_ts if os.path.isfile(bg_ts) else os.path.join(BASE_DIR, "src/background/background.js")
-    with open(bg_path, "r", encoding="utf-8") as f:
-        bg_code = f.read()
-    assert re.search(r'function\s+startKeepAlive\s*\(', bg_code) or "startKeepAlive" in bg_code, "background.js must implement startKeepAlive"
-    assert "stopKeepAlive" in bg_code, "background.js must invoke and clean up keepalive in long-running jobs"
-
-    print("  ✓ Stage 2 Architecture: Pipeline decoupling, event-driven AsyncQueue, and path sanitization verified")
+    assert "sanitizeFileName" in planner and "assertExportPath" in planner, (
+        "L4 must sanitize and validate planned export names")
+    assert "assertExportPath" in zip_writer and "assertExportPath" in folder_writer, (
+        "ZIP and Folder writers must both reject unsafe relative paths")
+    assert "writeFile" in folder_writer and "ensureSubDir" in folder_writer, (
+        "Folder writer must support checked nested paths")
+    assert "createExportPathPlanner" in export and "packageExportFiles" in export, (
+        "Unified Export must use L4 Packaging rather than V1 per-format delivery")
+    assert "prepareExportResources" in export and "runExport" in export, (
+        "Resource acquisition and execution share the same Application task")
+    assert not re.search(r'setTimeout\s*\(\s*\w+\s*,\s*100\s*\)', export), (
+        "Unified Export must not busy-poll")
+    for name in ("origFetch", "origOpen", "origSend"):
+        assert name in hook, f"Sniffer must preserve and wrap native {name}"
+    assert "RegExp.$1" not in hook, "Do not restore legacy RegExp static captures"
+    assert "resolveCred" in client and "postBatchexecute" in client, (
+        "Gemini Client owns credential resolution and source RPC")
+    assert "assertExtensionSender" in background and "assertContentSender" in background, (
+        "Runtime must verify sender before cross-context operations")
+    print("  ✓ V2 path safety, unified Export, Provider capture and Runtime sender guards verified")
 
 def test_serial_pipeline_suite():
     import subprocess
@@ -988,6 +638,17 @@ def test_framework_environment_suite():
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"test_framework_environment.py failed: {res.stderr or res.stdout}"
     print("  ✓ Tier 2 TestEnvironment & Unified Lifecycle test suite passed")
+    res = subprocess.run([sys.executable, "-m", "unittest", "tests.test_chrome_diagnostics"],
+                         cwd=BASE_DIR, capture_output=True, text=True)
+    assert res.returncode == 0, f"Chrome launch/diagnostics regression checks failed: {res.stderr or res.stdout}"
+    print("  ✓ Background Chrome launcher & diagnostics regression checks passed")
+
+def test_tier2_platforms_suite():
+    import subprocess
+    res = subprocess.run([sys.executable, os.path.join(BASE_DIR, "tests", "test_tier2_platforms.py")],
+                         capture_output=True, text=True)
+    assert res.returncode == 0, f"test_tier2_platforms.py failed: {res.stderr or res.stdout}"
+    print("  ✓ Platform-independent Tier 2 plugin orchestration passed")
 
 def test_dag_subgraph_suite():
     import subprocess
@@ -995,6 +656,25 @@ def test_dag_subgraph_suite():
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"test_dag_subgraph.py failed: {res.stderr or res.stdout}"
     print("  ✓ Tier 2 Declarative DAG Scheduling & Subgraph Pruning test suite passed")
+
+def test_tier2_assertions_suite():
+    import subprocess
+    res = subprocess.run([sys.executable, os.path.join(BASE_DIR, "tests", "test_integrity_model.py")], capture_output=True, text=True)
+    assert res.returncode == 0, f"Frozen evidence validation failed: {res.stderr or res.stdout}"
+    res = subprocess.run([sys.executable, os.path.join(BASE_DIR, "tests", "test_tier2_assertions.py")], capture_output=True, text=True)
+    assert res.returncode == 0, f"Tier 2 assertion counterexamples failed: {res.stderr or res.stdout}"
+    print("  ✓ Tier 2 content/completeness assertions and fault counterexamples passed")
+    res = subprocess.run([sys.executable, os.path.join(BASE_DIR, "tests", "test_html_evidence.py")], capture_output=True, text=True)
+    assert res.returncode == 0, f"HTML disk content assertions failed: {res.stderr or res.stdout}"
+    print("  ✓ Tier 2 physical HTML content counterexamples passed")
+
+    res = subprocess.run([sys.executable, os.path.join(BASE_DIR, "tests", "test_pdf_evidence.py")], capture_output=True, text=True)
+    assert res.returncode == 0, f"PDF complete content assertions failed: {res.stderr or res.stdout}"
+    print("  ✓ Tier 2 PDF complete content counterexamples passed")
+    res = subprocess.run([sys.executable, os.path.join(BASE_DIR, "tests", "test_upgrade_profile.py")], capture_output=True, text=True)
+    assert res.returncode == 0, f"Real profile upgrade harness guards failed: {res.stderr or res.stdout}"
+    print("  ✓ Real profile upgrade harness package/profile guards passed")
+
 
 def test_impact_analyzer_suite():
     import subprocess
@@ -1066,7 +746,7 @@ def run_all():
                 if any(x in f for f in affected for x in ["badgeView", "content.css", "pageObserver", "syncEngine"]):
                     test_content_badge_flicker_prevention()
                 if any(x in f for f in affected for x in ["storageService", "conversationsStore"]):
-                    test_exported_history_and_slot_fallback()
+                    test_account_uuid_storage_boundary()
                 if any("test_live_chat_and_export.py" in f for f in affected):
                     test_custom_dataset_loading()
                 if any("scenario" in f for f in affected):
@@ -1090,7 +770,9 @@ def run_all():
                 if any("env" in f for f in affected):
                     test_framework_environment_suite()
                 if any(x in f for f in affected for x in ["framework", "dag", "cases"]):
+                    test_tier2_platforms_suite()
                     test_dag_subgraph_suite()
+                    test_tier2_assertions_suite()
                 if any("impact_analyzer" in f for f in affected):
                     test_impact_analyzer_suite()
 
@@ -1110,7 +792,7 @@ def run_all():
     test_html_includes()
     test_i18n_keys()
     test_content_badge_flicker_prevention()
-    test_exported_history_and_slot_fallback()
+    test_account_uuid_storage_boundary()
     test_custom_dataset_loading()
     test_scenario_pool_pipeline()
     test_online_scenario_provider_and_lifecycle_tracker()
@@ -1126,7 +808,9 @@ def run_all():
     test_pipeline_decoupling_suite()
     test_visual_sandbox_suite()
     test_framework_environment_suite()
+    test_tier2_platforms_suite()
     test_dag_subgraph_suite()
+    test_tier2_assertions_suite()
     test_impact_analyzer_suite()
     test_javascript_syntax()
     test_javascript_unit_tests()
@@ -1138,5 +822,3 @@ def run_all():
 
 if __name__ == "__main__":
     run_all()
-
-

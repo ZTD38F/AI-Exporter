@@ -1,182 +1,74 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { v2ExportHost, exportRequest, exportKey, seedExportConversation } from './helpers/v2ExportHost.js';
+import { runExport } from '../src/application/export/runExport.js';
+import { getExportRecord, listExportRecords } from '../src/l3a/storageService.js';
 
-const { SessionStore, EXPORT_SESSION_KEY } = require('../src/core/storage/sessionStore.js');
+// v2 deliberately has no persistent SessionStore. Restart behavior belongs to
+// runExport + minimal ExportRecords; requests supply their own selection again.
+const sessionKey = 'gemini_last_export_session';
+async function assertNoSession() {
+    const local = await chrome.storage.local.get(null);
+    assert.equal(Object.hasOwn(local, sessionKey), false);
+}
 
-test('sessionStore - getSession returns null when empty', async () => {
-    const memoryStorage: Record<string, any> = {};
-    (globalThis as any).chrome = {
-        storage: {
-            local: {
-                get: async (keys: string[]) => {
-                    const res: Record<string, any> = {};
-                    for (const k of keys) {
-                        if (k in memoryStorage) res[k] = memoryStorage[k];
-                    }
-                    return res;
-                },
-                set: async (obj: Record<string, any>) => {
-                    Object.assign(memoryStorage, obj);
-                },
-                remove: async (keys: string[]) => {
-                    for (const k of keys) delete memoryStorage[k];
-                }
-            }
-        }
-    };
-
-    const session = await SessionStore.getSession();
-    assert.strictEqual(session, null);
+test('restart state is empty before any delivery, without creating a session', async t => {
+    v2ExportHost(t);
+    assert.deepEqual(await listExportRecords(exportKey('empty').accountId), {});
+    assert.deepEqual(await runExport(exportRequest([])), { exported: 0, skipped: 0, partial: 0, failed: [], aborted: false });
+    await assertNoSession();
 });
 
-test('sessionStore - setSession stores session snapshot with updatedAt', async () => {
-    const memoryStorage: Record<string, any> = {};
-    (globalThis as any).chrome = {
-        storage: {
-            local: {
-                get: async (keys: string[]) => {
-                    const res: Record<string, any> = {};
-                    for (const k of keys) {
-                        if (k in memoryStorage) res[k] = memoryStorage[k];
-                    }
-                    return res;
-                },
-                set: async (obj: Record<string, any>) => {
-                    Object.assign(memoryStorage, obj);
-                },
-                remove: async (keys: string[]) => {
-                    for (const k of keys) delete memoryStorage[k];
-                }
-            }
-        }
-    };
+test('a new execution rebuilds its pending selection from committed source versions', async t => {
+    const host = v2ExportHost(t);
+    await seedExportConversation('first');
+    await seedExportConversation('second');
+    assert.equal((await runExport(exportRequest(['first']))).exported, 1);
+    // New request supplies selection; neither original run ID nor queue is resumed.
+    const result = await runExport(exportRequest(['first', 'second'], { skipUnchanged: true }));
+    assert.equal(result.skipped, 1);
+    assert.equal(result.exported, 1);
+    assert.equal(host.clicks(), 2);
+    assert.deepEqual(Object.keys(await listExportRecords(exportKey('first').accountId)).sort(), ['first', 'second']);
+    await assertNoSession();
+});
 
-    await SessionStore.setSession({
-        status: 'running',
-        slot: 'u0',
-        total: 10,
-        current: 2,
-        lastChatId: 'c_abc123'
+test('cancellation before delivery stores no checkpoint or success record', async t => {
+    const host = v2ExportHost(t);
+    await seedExportConversation('cancelled');
+    const controller = new AbortController();
+    const result = await runExport(exportRequest(['cancelled']), {
+        signal: controller.signal, onProgress: () => controller.abort(),
     });
-
-    const stored = await SessionStore.getSession();
-    assert.ok(stored);
-    assert.strictEqual(stored.status, 'running');
-    assert.strictEqual(stored.total, 10);
-    assert.strictEqual(stored.current, 2);
-    assert.strictEqual(stored.lastChatId, 'c_abc123');
-    assert.ok(typeof stored.updatedAt === 'number' && stored.updatedAt > 0);
+    assert.equal(result.aborted, true);
+    assert.equal(result.exported, 0);
+    assert.equal(host.clicks(), 0);
+    assert.equal(await getExportRecord(exportKey('cancelled')), null);
+    await assertNoSession();
 });
 
-test('sessionStore - updateSession merges patch and updates timestamp', async () => {
-    const memoryStorage: Record<string, any> = {
-        [EXPORT_SESSION_KEY]: {
-            status: 'running',
-            slot: 'u0',
-            total: 20,
-            current: 5,
-            updatedAt: 1000
-        }
-    };
-    (globalThis as any).chrome = {
-        storage: {
-            local: {
-                get: async (keys: string[]) => {
-                    const res: Record<string, any> = {};
-                    for (const k of keys) {
-                        if (k in memoryStorage) res[k] = memoryStorage[k];
-                    }
-                    return res;
-                },
-                set: async (obj: Record<string, any>) => {
-                    Object.assign(memoryStorage, obj);
-                },
-                remove: async (keys: string[]) => {
-                    for (const k of keys) delete memoryStorage[k];
-                }
-            }
-        }
-    };
-
-    await SessionStore.updateSession({
-        current: 6,
-        lastChatTitle: 'Quantum Mechanics'
-    });
-
-    const stored = await SessionStore.getSession();
-    assert.ok(stored);
-    assert.strictEqual(stored.status, 'running');
-    assert.strictEqual(stored.total, 20);
-    assert.strictEqual(stored.current, 6);
-    assert.strictEqual(stored.lastChatTitle, 'Quantum Mechanics');
-    assert.ok(stored.updatedAt > 1000);
+test('cancelling a later run preserves prior delivery facts', async t => {
+    v2ExportHost(t);
+    await seedExportConversation('prior');
+    await runExport(exportRequest(['prior']));
+    const record = await getExportRecord(exportKey('prior'));
+    const controller = new AbortController(); controller.abort();
+    const result = await runExport(exportRequest(['prior']), { signal: controller.signal });
+    assert.equal(result.aborted, true);
+    assert.deepEqual(await getExportRecord(exportKey('prior')), record);
+    await assertNoSession();
 });
 
-test('sessionStore - clearSession deletes session key', async () => {
-    const memoryStorage: Record<string, any> = {
-        [EXPORT_SESSION_KEY]: { status: 'interrupted' }
-    };
-    (globalThis as any).chrome = {
-        storage: {
-            local: {
-                get: async (keys: string[]) => {
-                    const res: Record<string, any> = {};
-                    for (const k of keys) {
-                        if (k in memoryStorage) res[k] = memoryStorage[k];
-                    }
-                    return res;
-                },
-                set: async (obj: Record<string, any>) => {
-                    Object.assign(memoryStorage, obj);
-                },
-                remove: async (keys: string[]) => {
-                    for (const k of keys) delete memoryStorage[k];
-                }
-            }
-        }
-    };
-
-    await SessionStore.clearSession();
-    assert.strictEqual(memoryStorage[EXPORT_SESSION_KEY], undefined);
-    assert.strictEqual(await SessionStore.getSession(), null);
-});
-
-test('sessionStore serializes set, update, and clear against each other', async () => {
-    const memoryStorage: Record<string, any> = {};
-    let releaseFirstSet!: () => void;
-    let enteredFirstSet!: () => void;
-    const firstSetEntered = new Promise<void>(resolve => { enteredFirstSet = resolve; });
-    const firstSetGate = new Promise<void>(resolve => { releaseFirstSet = resolve; });
-    let sets = 0;
-    (globalThis as any).chrome = { storage: { local: {
-        get: async (keys: string[]) => Object.fromEntries(keys.filter(k => k in memoryStorage).map(k => [k, memoryStorage[k]])),
-        set: async (obj: Record<string, any>) => {
-            if (++sets === 1) { enteredFirstSet(); await firstSetGate; }
-            Object.assign(memoryStorage, obj);
-        },
-        remove: async (keys: string[]) => { for (const k of keys) delete memoryStorage[k]; }
-    } } };
-    const set = SessionStore.setSession({ status: 'running', current: 1 });
-    await firstSetEntered;
-    const update = SessionStore.updateSession({ current: 2 });
-    releaseFirstSet();
-    await Promise.all([set, update]);
-    assert.strictEqual(memoryStorage[EXPORT_SESSION_KEY].current, 2);
-    assert.strictEqual(memoryStorage[EXPORT_SESSION_KEY].status, 'running');
-
-    let releaseRemove!: () => void;
-    let enteredRemove!: () => void;
-    const removeEntered = new Promise<void>(resolve => { enteredRemove = resolve; });
-    const removeGate = new Promise<void>(resolve => { releaseRemove = resolve; });
-    (globalThis as any).chrome.storage.local.remove = async (keys: string[]) => {
-        enteredRemove(); await removeGate;
-        for (const k of keys) delete memoryStorage[k];
-    };
-    const clear = SessionStore.clearSession();
-    await removeEntered;
-    const afterClear = SessionStore.setSession({ status: 'running', current: 3 });
-    releaseRemove();
-    await Promise.all([clear, afterClear]);
-    assert.strictEqual(memoryStorage[EXPORT_SESSION_KEY].current, 3);
+test('subsequent delivery replaces the latest record without persistent queue metadata', async t => {
+    const host = v2ExportHost(t);
+    await seedExportConversation('replace', 100);
+    await runExport(exportRequest(['replace']));
+    await seedExportConversation('replace', 200);
+    await runExport(exportRequest(['replace'], { format: 'json' }));
+    const record = await getExportRecord(exportKey('replace'));
+    assert.equal(record?.format, 'json');
+    assert.equal(record?.chatTime, 200);
+    assert.deepEqual(Object.keys(record!).sort(), ['chatTime', 'exportedAt', 'format', 'status']);
+    assert.equal(host.clicks(), 2);
+    await assertNoSession();
 });

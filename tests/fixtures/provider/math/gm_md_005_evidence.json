@@ -1,0 +1,26 @@
+{
+  "rule": "GM-MD-005",
+  "observedAt": "2026-10-21",
+  "provenance": "Tier 2 captured raw RPC, conversation 9a2ca9c2d08dd4a9, reply rc_c51db10eb1d5c295; minimal unmodified paragraph",
+  "markdown": "理论期望利润最大化的最优订货决策为 **$Q^* = 30$ 件**。",
+  "structured": {
+    "children": [
+      {
+        "nodeType": 18,
+        "text": "理论期望利润最大化的最优订货决策为 $Q^ = 30$ 件*。",
+        "annotations": [
+          {
+            "start": 18,
+            "end": 21,
+            "type": 5
+          },
+          {
+            "start": 18,
+            "end": 29,
+            "type": 5
+          }
+        ]
+      }
+    ]
+  }
+}

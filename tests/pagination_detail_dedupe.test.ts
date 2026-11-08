@@ -13,14 +13,21 @@ export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const Pagination = require('../src/core/api/client/pagination.js');
+const Pagination = require('../src/l1/client/gemini/api/pagination.js');
 
 function makeClient(pages: any[]): any {
     let calls = 0;
     return {
         fetchConversationPage: async (_cid: string, _token: string | null) => {
             const p = pages[Math.min(calls++, pages.length - 1)];
-            return p;
+            return { conversationId: _cid.replace(/^c_/, ''),
+                conversation: { index: { title: p.title, titleSource: 'provider' }, detail: {
+                    quality: { status: 'unknown' }, assets: [], messages: p.messages.map((message: any) => ({
+                        ...(message.id ? { id: message.id } : {}), role: message.role === 'model' ? 'assistant' : message.role || 'unknown',
+                        content: message.content ? [{ type: 'paragraph', children: [{ type: 'text', text: message.content }] }] : []
+                    })) } },
+                resourceHints: {}, acquisitionHints: {}, diagnostics: [], transport: { nextPageToken: p.nextPageToken } };
+
         },
     };
 }
@@ -33,7 +40,7 @@ test('W3-case1: message id equal to conversation id is deduped across pages (app
         { messages: [{ id: convId, role: 'user', content: 'q' }, { id: 'rc_b', role: 'model', content: 'b' }], nextPageToken: null, title: 'T' },
     ]);
     const res = await Pagination.getConversationDetail(client, convId);
-    const ids = (res.messages as any[]).map((m: any) => m.id);
+    const ids = (res.conversation.detail.messages as any[]).map((m: any) => m.id);
     assert.deepStrictEqual(ids, ['rc_b', convId, 'rc_a'], `convId message leaked a duplicate: ${JSON.stringify(ids)}`);
 });
 
@@ -43,7 +50,7 @@ test('W3-case2: ordinary repeated message ids appear exactly once', async () => 
         { messages: [{ id: 'm2' }, { id: 'm3' }], nextPageToken: null, title: 'T' },
     ]);
     const res = await Pagination.getConversationDetail(client, 'c_det2');
-    const ids = (res.messages as any[]).map((m: any) => m.id);
+    const ids = (res.conversation.detail.messages as any[]).map((m: any) => m.id);
     assert.deepStrictEqual(ids, ['m3', 'm1', 'm2'], `duplicate message leaked: ${JSON.stringify(ids)}`);
 });
 
@@ -53,5 +60,5 @@ test('W3-case3: id-less messages are kept, never content-deduped', async () => {
         { messages: [{ role: 'user', content: 'same text' }], nextPageToken: null, title: 'T' },
     ]);
     const res = await Pagination.getConversationDetail(client, 'c_det3');
-    assert.strictEqual((res.messages as any[]).length, 3, 'id-less messages must be preserved');
+    assert.strictEqual((res.conversation.detail.messages as any[]).length, 3, 'id-less messages must be preserved');
 });

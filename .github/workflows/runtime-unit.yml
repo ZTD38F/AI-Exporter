@@ -1,0 +1,44 @@
+name: Runtime Unit Tests
+
+on:
+  pull_request:
+    branches: [dev/v2]
+    paths:
+      - '.github/workflows/runtime-unit.yml'
+      - 'tests/browser_runtime_v2.test.ts'
+      - 'tests/helpers/runtimeV2ContractMocks.ts'
+      - 'tests/background_modules.test.ts'
+      - 'tests/tab_service.test.ts'
+      - 'tests/asset_fetcher_cors_fallback.test.ts'
+      - 'tests/content_leak_fix.test.ts'
+      - 'tests/seam_s1_content_router.test.ts'
+      - 'tests/seam_s2_background_router.test.ts'
+      - 'src/runtime/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-unit:
+    name: Runtime Frozen Unit Suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Runtime-owned suites independently of other modules' transition errors
+        run: |
+          node scripts/test-unit.cjs \
+            tests/browser_runtime_v2.test.ts \
+            tests/background_modules.test.ts \
+            tests/tab_service.test.ts \
+            tests/asset_fetcher_cors_fallback.test.ts \
+            tests/content_leak_fix.test.ts \
+            tests/seam_s1_content_router.test.ts \
+            tests/seam_s2_background_router.test.ts

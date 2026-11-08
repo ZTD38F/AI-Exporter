@@ -1,10 +1,12 @@
+from .gemini_dual_parse import GeminiDualParseCase
 from .base import TestContext, FeatureTestCase, DAGRunner
 from .tour import TourGuideCase
-from .chat import InpageBadgeCase, ChatGenerationCase, ImagenMultimodalCase
+from .chat import InpageBadgeCase, ChatGenerationCase
 from .lifecycle import ContinuedChatPromotionCase, UpdatedBadgeDisplayCase, EphemeralChatPruningCase
 from .takeout import TakeoutZipImportCase, DeepScanPaginationCase, AuthoritativeTitleUpgradeCase
 from .workbench import SearchKeywordCase, SearchIdCase, SearchClearCase, SelectionControlsCase, LanguageToggleCase
 from .export import (
+    ImagenMultimodalCase,
     LiveSaveNewChatCase,
     LiveDiskAutoSaveCase,
     ZipExportDownloadCase,
@@ -18,6 +20,7 @@ from .export import (
 from .test_uninstall_lifecycle import UninstallLifecycleCase
 
 __all__ = [
+    "GeminiDualParseCase",
     "TestContext",
     "FeatureTestCase",
     "DAGRunner",

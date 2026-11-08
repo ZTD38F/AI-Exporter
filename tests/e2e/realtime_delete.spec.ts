@@ -1,97 +1,94 @@
-import { test, expect } from './fixtures';
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { openOptions, seedConversations, accountId } from './uiFixture';
+import { deleteGen as geminiDeleteGen } from '../fixtures/providers/geminiDelete.js';
+import { deleteRequestGen as geminiDeleteRequestGen } from '../fixtures/providers/geminiDeleteRequest.js';
 
-test.describe('Real-Time Conversation Deletion & Live Storage Pruning', () => {
-  test('should prune deleted conversation from storage and update options workbench in real time upon deletion event', async ({ context, extensionId }) => {
-    // 1. 打开扩展 Options 工作台页面并预置 3 条会话
-    const optionsPage = await context.newPage();
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await optionsPage.waitForLoadState('domcontentloaded');
+// Actual v2 deletion semantics: a confirmed provider deletion removes the
+// conversation's Index, Detail and ExportRecord together. No archive shadow.
+test.beforeEach(async ({ context }) => { await seedRegistryAccounts(context); });
 
-    const targetId = '8888abcd1234ef01';
-    const initialConversations = [
-      { id: targetId, title: '待实时删除的目标会话', timestamp: 1700000000000, source: 'batchexecute' },
-      { id: 'keep_chat_1111', title: '保持留存的有效会话 1', timestamp: 1699990000000, source: 'batchexecute' },
-      { id: 'keep_chat_2222', title: '保持留存的有效会话 2', timestamp: 1699980000000, source: 'batchexecute' }
-    ];
+const targetId = '8888abcd1234ef01';
+const key = { accountId, conversationId: targetId };
 
-    await optionsPage.evaluate(async (convs) => {
-      await chrome.storage.local.set({
-        gemini_conversations: convs,
-        gemini_conversations_count_u0: convs.length
-      });
-      if (typeof (window as any).__workbenchLoadStore === 'function') {
-        await (window as any).__workbenchLoadStore(true);
-      }
-    }, initialConversations);
-
-    // 验证初始状态：DOM 列表中有 3 条，且目标待删会话清晰可见
-    await expect(optionsPage.locator('#list .item')).toHaveCount(3);
-    await expect(optionsPage.locator(`#list .item[data-chat-id="${targetId}"]`)).toBeVisible();
-    await expect(optionsPage.locator('#list .item[data-chat-id="keep_chat_1111"]')).toBeVisible();
-
-    // 2. 打开模拟的 Gemini 标签页，并提供触发真实删除网络 RPC 的交互按钮
-    const geminiPage = await context.newPage();
-
-    await geminiPage.route('https://gemini.google.com/app/**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html; charset=utf-8',
-        body: `<!DOCTYPE html>
-        <html>
-        <head><title>Gemini Live Chat</title></head>
-        <body>
-          <div id="app">Gemini Mock Chat Window</div>
-          <button id="btnDeleteChat" onclick="fetch('/_/BardChatUi/data/batchexecute?rpcids=GzXR5e', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: 'f.req=' + encodeURIComponent('[[[\x22GzXR5e\x22,\x22[null, \\\x22c_8888abcd1234ef01\\\x22]\x22,null,\x22generic\x22]]]') })">Delete Conversation</button>
-        </body>
-        </html>`
-      });
-    });
-
-    await geminiPage.route('**/batchexecute*', async (route) => {
-      const detailCheck = route.request().url().includes('rpcids=hNvQHb');
-      await route.fulfill({
-        status: detailCheck ? 404 : 200,
-        contentType: 'application/json',
-        body: detailCheck
-          ? '["BardErrorInfo", 1167]'
-          : `)]}'\n\n[["wrb.fr","GzXR5e","[null, \\"c_8888abcd1234ef01\\"]"]]`
-      });
-    });
-
-    await geminiPage.goto('https://gemini.google.com/app/c_8888abcd1234ef01');
-    await geminiPage.waitForLoadState('domcontentloaded');
-
-    // 3. 在 Gemini 页面中调用 fetch 请求删除 RPC，由 hookCredentials MAIN world 真实拦截
-    await geminiPage.evaluate(async () => {
-      await fetch('/_/BardChatUi/data/batchexecute?rpcids=GzXR5e', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body: 'f.req=' + encodeURIComponent('[[["GzXR5e","[null, \\"c_8888abcd1234ef01\\"]",null,"generic"]]]')
-      });
-    });
-
-    // 4. 断言 Options 工作台：无需用户手动刷新，通过 syncUpdate 广播列表自动实时由 3 项变为 2 项
-    await expect(optionsPage.locator('#list .item')).toHaveCount(2);
-    await expect(optionsPage.locator(`#list .item[data-chat-id="${targetId}"]`)).toHaveCount(0);
-    await expect(optionsPage.locator('#list .item[data-chat-id="keep_chat_1111"]')).toBeVisible();
-    await expect(optionsPage.locator('#list .item[data-chat-id="keep_chat_2222"]')).toBeVisible();
-
-    // 5. 断言 Storage 底层数据：目标会话已被彻底剥离，留存会话完好
-    const storageState = await optionsPage.evaluate(async () => {
-      return new Promise<{ list: any[]; count: number }>((resolve) => {
-        chrome.storage.local.get(['gemini_conversations', 'gemini_conversations_count_u0'], (data: any) => {
-          resolve({
-            list: (data && data.gemini_conversations) || [],
-            count: (data && data.gemini_conversations_count_u0) || 0
-          });
+async function read(page: import('@playwright/test').Page) {
+    return page.evaluate(async ({ accountId, conversationId }) => {
+        const api = Reflect.get(globalThis, 'uiFixture');
+        const key = { accountId, conversationId };
+        return {
+            targetIndex: await api.getIndex(key),
+            targetDetail: await api.getDetail(key),
+            targetRecord: await api.getExportRecord(key),
+            indexes: await api.listIndexes(accountId),
+            records: await api.listExportRecords(accountId),
+            other: await api.readConversation({ accountId, conversationId: 'keep_chat_1111' }),
+        };
+    }, key);
+}
+async function geminiSource(context: import('@playwright/test').BrowserContext) {
+    const source = await context.newPage();
+    await source.route('https://gemini.google.com/**', route => route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><title>Google Gemini</title><script>window.WIZ_global_data={qDCSke:"10000000001",SNlM0e:"token",cfb2h:"build"}</script><main>Source</main>',
+    }));
+    await source.goto('https://gemini.google.com/app/c_' + targetId);
+    await source.waitForFunction(() => Boolean(Reflect.get(window, '__gemExporterHookInstalled')));
+    return source;
+}
+async function remoteDelete(source: import('@playwright/test').Page, responseKey: Parameters<typeof geminiDeleteGen>[0]) {
+    await source.route('**/batchexecute*', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: geminiDeleteGen(responseKey),
+    }));
+    await source.evaluate(async body => {
+        await fetch('/_/BardChatUi/data/batchexecute?rpcids=GzXR5e', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: new URLSearchParams(body),
         });
-      });
-    });
+    }, geminiDeleteRequestGen('G_E2E_REALTIME_DELETE_REQUEST_01'));
+}
 
-    expect(storageState.list.some((c: any) => c.id === targetId)).toBe(false);
-    expect(storageState.list.length).toBe(2);
-    expect(storageState.list.map((c: any) => c.id)).toEqual(
-      expect.arrayContaining(['keep_chat_1111', 'keep_chat_2222'])
-    );
-  });
+for (const nativeVoid of [false, true]) test(`real MAIN ${nativeVoid ? 'native void' : 'echoed'} deletion RPC -> isolated L1 -> Background L2 atomically removes only confirmed v2 conversation facts`, async ({ context, extensionId }) => {
+    const options = await openOptions(context, extensionId);
+    await seedConversations(options, [
+        { id: targetId, title: 'Delete target', body: 'Durable target body' },
+        { id: 'keep_chat_1111', title: 'Keep original', body: 'Keep body unchanged' },
+        { id: 'keep_chat_2222', title: 'Keep second' },
+    ], { [targetId]: { format: 'markdown', status: 'ok', exportedAt: 1700000000000 } });
+    await expect(options.locator('#list .item')).toHaveCount(3);
+    const before = await read(options);
+    expect(before.targetIndex?.title).toBe('Delete target');
+    expect(JSON.stringify(before.targetDetail)).toContain('Durable target body');
+    expect(before.targetRecord?.status).toBe('ok');
+
+    const source = await geminiSource(context);
+    await remoteDelete(source, nativeVoid ? 'G_DYNAMIC_DELETE_VOID_01' : 'G_DYNAMIC_DELETE_ECHO_01');
+    await expect.poll(async () => (await read(options)).targetIndex).toBeNull();
+    const after = await read(options);
+    expect(after.targetDetail).toBeNull();
+    expect(after.targetRecord).toBeNull();
+    expect(after.records[targetId]).toBeUndefined();
+    expect(after.indexes).toHaveLength(2);
+    expect(JSON.stringify(after.other)).toContain('Keep body unchanged');
+
+    // The UI is a projection of the same v2 L3a Index store, not chrome.storage.local.
+    // The open Options view updates from the committed Runtime notification, without reload or focus.
+    await expect(options.locator('#list .item')).toHaveCount(2);
+    await expect(options.locator('[data-chat-id="' + targetId + '"]')).toHaveCount(0);
+    await expect(options.locator('[data-chat-id="keep_chat_1111"]')).toBeVisible();
+    await expect(options.locator('[data-chat-id="keep_chat_2222"]')).toBeVisible();
+});
+
+test('an unmatched Gemini deletion reply cannot remove a different v2 Domain', async ({ context, extensionId }) => {
+    const options = await openOptions(context, extensionId);
+    await seedConversations(options, [{ id: targetId, title: 'Must stay' }],
+        { [targetId]: { format: 'markdown', status: 'ok', exportedAt: 100 } });
+    const source = await geminiSource(context);
+    await remoteDelete(source, 'G_DYNAMIC_DELETE_UNMATCHED_01');
+    await expect.poll(async () => (await read(options)).targetIndex?.title).toBe('Must stay');
+    const after = await read(options);
+    expect(after.targetDetail).not.toBeNull();
+    expect(after.targetRecord?.status).toBe('ok');
+    await options.reload();
+    await expect(options.locator('[data-chat-id="' + targetId + '"]')).toBeVisible();
 });

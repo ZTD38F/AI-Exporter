@@ -1,0 +1,50 @@
+{
+  "suites": [
+    "tests/domain_admission_rules.test.ts",
+    "tests/domain_runtime_validation.test.ts",
+    "tests/stream_coverage.test.ts",
+    "tests/l2-v2-unit-mocked.test.ts"
+  ],
+  "integrationSuites": [
+    "tests/l2_account_registry.test.ts",
+    "tests/domain_admission_storage.test.ts",
+    "tests/conversation_index_storage.test.ts",
+    "tests/conversation_repository.test.ts",
+    "tests/coverage_atomic_admission.test.ts",
+    "tests/account_registry.test.ts",
+    "tests/domain_trust_counts.test.ts",
+    "tests/domain_conversation_detail.test.ts",
+    "tests/account_identity_isolation.test.ts",
+    "tests/domain-ast-projection.test.ts",
+    "tests/domain-contract.test.ts",
+    "tests/domain-json-contract.test.ts",
+    "tests/domain-parsing.test.ts",
+    "tests/domain-storage.test.ts",
+    "tests/domain_attachment_cleanup.test.ts",
+    "tests/domain_closure.test.ts",
+    "tests/domain_contract_final.test.ts",
+    "tests/domain_document_direct.test.ts",
+    "tests/domain_downstream_boundaries.test.ts",
+    "tests/domain_generated_media_reconciliation.test.ts",
+    "tests/domain_provider_parity.test.ts",
+    "tests/domain_resource_metadata_contract.test.ts",
+    "tests/domain_resource_sources.test.ts",
+    "tests/domain_timestamp_contract.test.ts",
+    "tests/l1_l2_verified_deletion.test.ts",
+    "tests/l1_l2_frozen_contract.test.ts",
+    "tests/watermark_checkpoint.test.ts",
+    "tests/rpc_list_ingest.test.ts",
+    "tests/sync_provider_contract.test.ts",
+    "tests/conversation_version.test.ts",
+    "tests/p1_archive_retention.test.ts",
+    "tests/provider-native-callers.test.ts",
+    "tests/media-identity-source.test.ts",
+    "tests/media-identity-persistence.test.ts"
+  ],
+  "typeTests": [
+    "tests/domain_conversation_detail.types.ts",
+    "tests/domain_trust.types.ts",
+    "tests/conversation_index.types.ts",
+    "tests/l1_l2_frozen_contract.types.ts"
+  ]
+}

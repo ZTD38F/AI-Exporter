@@ -1,15 +1,9 @@
 /**
- * tests/pdf-visual-corpus.test.ts
- *
- * Item 7 — fixed 12-item PDF visual corpus + programmatic layout checks.
- *
  * The corpus lives in tests/fixtures/visual-corpus/ (12 JSON fixtures). Each
- * fixture carries a canonical bundle, base64 binaries, and an `expect` block.
+ * fixture carries a neutral Document AST, base64 binaries, and an `expect` block.
  * This test compiles every fixture with the REAL vendored Typst WASM
  * (TypstSandboxCompiler + RealWasmSandboxHost, no mocks) and runs
  * programmatic checks instead of pixel diffs:
- *
- *   - PDF magic + zero error diagnostics
  *   - page count >= expect.minPages (catches broken pagination)
  *   - key phrases present, exactlyOnce phrases appear exactly once
  *     (catches duplicated / dropped content)
@@ -22,12 +16,9 @@
  *   - table cell text presence (catches unreadable tables)
  *   - CJK + math needles (catches font/coverage regressions)
  *   - missing-asset warning diagnostics (catches crash-on-missing)
- *
  * If PDF_VISUAL_REVIEW_DIR is set, the test additionally writes the 12 PDFs
  * plus a Markdown review report there (durable review package). The review
  * package is never committed to Git.
- *
- * Verification level: 本机真实 Typst WASM 编译 + 程序化检查.
  * This is NOT a human visual sign-off; the PDFs are kept for real review.
  */
 export {};
@@ -36,9 +27,10 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
-const { convertMath } = require('../src/core/export/typst/mathConverter.js');
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
+const { assertDocumentAsts } = require('./helpers/assertDocumentAst.js');
+const { convertMathForTest: convertMath } = require('./helpers/mathConversion.js');
 const {
     RealWasmSandboxHost,
     repoRoot,
@@ -79,10 +71,12 @@ interface CorpusEntry {
 
 function loadCorpus(): CorpusEntry[] {
     const files = fs.readdirSync(CORPUS_DIR).filter((f: string) => f.endsWith('.json')).sort();
-    return files.map((f: string) => ({
+    const entries = files.map((f: string) => ({
         file: f,
         item: JSON.parse(fs.readFileSync(path.join(CORPUS_DIR, f), 'utf8')),
     }));
+    assertDocumentAsts(entries.map((entry: CorpusEntry) => ({ value: entry.item.document, context: entry.file })));
+    return entries;
 }
 
 test('visual corpus manifest: exactly the 12 fixed fixtures with stable ids', () => {
@@ -93,7 +87,7 @@ test('visual corpus manifest: exactly the 12 fixed fixtures with stable ids', ()
         EXPECTED_IDS,
     );
     for (const { item } of entries) {
-        assert.ok(item.bundle && item.bundle.conversation, `${item.id}: missing bundle.conversation`);
+        assert.ok(item.document && typeof item.document.title === 'string', `${item.id}: missing Document AST`);
         assert.ok(item.expect && typeof item.expect.minPages === 'number', `${item.id}: missing expect.minPages`);
     }
 });
@@ -145,15 +139,15 @@ async function checkOneFixture(compiler: any, entry: CorpusEntry): Promise<Fixtu
     for (const [aid, b64] of Object.entries(item.binaries ?? {})) {
         store[aid] = new Uint8Array(Buffer.from(b64 as string, 'base64'));
     }
-    const bundle = item.bundle;
-    const { payload: document, diagnostics: payloadDiagnostics } = toTypstPayload(bundle, {
-        assetPath: (a: any) => `/assets/${a.id}`,
+    const display = item.document;
+    assert.strictEqual(typeof display.title, 'string', `${item.id}: fixture titles follow the current semantic contract`);
+    const { payload: document, diagnostics: payloadDiagnostics } = renderTypstFixture(display, Object.fromEntries(item.resourceIds.map((id: string) => [id, `assets/${id}`])), {
         convertMath,
         locale: 'zh',
     });
-    const assetIds: string[] = (bundle.assets ?? []).map((a: any) => a.id);
+    const assetIds: string[] = item.resourceIds;
     const context = {
-        bundle,
+
         assets: {
             resolve: async (id: string) => (store[id] ? { bytes: store[id] } : null),
         },
@@ -164,28 +158,24 @@ async function checkOneFixture(compiler: any, entry: CorpusEntry): Promise<Fixtu
     const result = await compiler.compile(
         {
             rendererSchemaVersion: 1,
-            sourceSchemaVersion: 1,
-            bundle,
+
             document,
-            assetPaths: new Map(assetIds.map((id: string) => [id, `/assets/${id}`])),
+            assetPaths: new Map(assetIds.map((id: string) => [id, `assets/${id}`])),
         } as never,
         context as never,
     );
     const pdfBytes: Uint8Array = result.pdfBytes;
 
-    // 1. PDF magic.
     assert.strictEqual(
         Buffer.from(pdfBytes.slice(0, 5)).toString('latin1'),
         '%PDF-',
         `${item.id}: not a PDF`,
     );
 
-    // 2. Zero error diagnostics (payload + compiler).
     const allDiagnostics = [...payloadDiagnostics, ...result.diagnostics];
     const errors = allDiagnostics.filter((d: any) => d.severity === 'error');
     assert.strictEqual(errors.length, 0, `${item.id}: compile errors: ${JSON.stringify(errors).slice(0, 500)}`);
 
-    // 3. Expected warning diagnostics (e.g. missing asset).
     for (const code of item.expect.warnCodes ?? []) {
         assert.ok(
             allDiagnostics.some((d: any) => d.code === code),
@@ -194,7 +184,6 @@ async function checkOneFixture(compiler: any, entry: CorpusEntry): Promise<Fixtu
         notes.push(`expected warning emitted: ${code}`);
     }
 
-    // 4. Text extraction + phrase integrity.
     const extracted = extractPdfText(pdfBytes);
     const norm = normalizeText(extracted.text);
     assert.ok(
@@ -209,10 +198,8 @@ async function checkOneFixture(compiler: any, entry: CorpusEntry): Promise<Fixtu
         assert.strictEqual(n, 1, `${item.id}: phrase expected exactly once, found ${n}x: ${JSON.stringify(phrase)}`);
     }
 
-    // 5. No tofu.
     assert.ok(!extracted.text.includes('�'), `${item.id}: U+FFFD tofu found in extracted text`);
 
-    // 6. Layout probe: bounds / blank pages / duplicated runs.
     const layout = probePdfLayout(pdfBytes);
     assert.strictEqual(layout.pages.length, extracted.pageCount, `${item.id}: probe page count mismatch`);
     const layoutIssues = [
@@ -226,7 +213,6 @@ async function checkOneFixture(compiler: any, entry: CorpusEntry): Promise<Fixtu
         `${item.id}: layout issues: ${layoutIssues.map((i: any) => `[${i.check}] ${i.message}`).join(' | ').slice(0, 600)}`,
     );
 
-    // 7. Images: XObject count + draw rects inside page bounds.
     if (typeof item.expect.imageCount === 'number') {
         assert.strictEqual(
             extracted.imageXObjectCount,
@@ -252,7 +238,6 @@ async function checkOneFixture(compiler: any, entry: CorpusEntry): Promise<Fixtu
         );
     }
 
-    // 8. CJK + math needles.
     for (const needle of item.expect.mathNeedles ?? []) {
         assert.ok(norm.includes(normalizeText(needle)), `${item.id}: math needle missing: ${JSON.stringify(needle)}`);
     }
@@ -324,7 +309,7 @@ test('visual corpus: real Typst WASM compile + programmatic checks (all 12)', as
     const host = new RealWasmSandboxHost(repoRoot());
     const compiler = new TypstSandboxCompiler({
         host,
-        fontPaths: ['src/ui/sandbox/fonts/NewCMMath-Regular.otf', cjkFont],
+        fontPaths: ['src/l4/format/pdf/sandbox/fonts/NewCMMath-Regular.otf', cjkFont],
     });
     const reviewDir = process.env.PDF_VISUAL_REVIEW_DIR;
     const results: FixtureResult[] = [];

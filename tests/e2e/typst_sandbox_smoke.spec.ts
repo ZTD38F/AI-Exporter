@@ -1,7 +1,4 @@
 /**
- * tests/e2e/typst_sandbox_smoke.spec.ts
- *
- * Tier 1 Playwright smoke test for the P1b sandbox compile container:
  * drives the REAL typst.ts 0.7.0 WASM compiler inside the MV3 sandbox page
  * (init + font install + compile of a minimal v8-template document) and
  * asserts:
@@ -85,7 +82,6 @@ test.describe('Typst sandbox compile container (P1b smoke)', () => {
           return res.arrayBuffer();
         };
 
-        // 1. Init with the vendored WASM module bytes.
         const wasm = await fetchBytes(urls.wasm);
         const initJob = nextJob();
         const inited = await post<{ type: string; ok: boolean; initMs: number }>(
@@ -94,21 +90,26 @@ test.describe('Typst sandbox compile container (P1b smoke)', () => {
         );
         if (!inited.ok) throw new Error('sandbox init reported ok=false');
 
-        // 2. Compile a minimal document through the real v8 templates.
         const font = await fetchBytes(urls.font);
         const payload = {
           schemaVersion: 1,
           title: 'P1b sandbox smoke',
-          provider: 'gemini',
-          date: '2026-09-26',
-          messageCount: 1,
+          profile: { id: 'pdf', version: 1 },
+          metadata: 'gemini · 2026-09-26 · 1 messages',
+          layout: {
+            page: { widthMm: 210, heightMm: 297, topMm: 18.5, bottomMm: 18, sideMm: 22, contentWidthMm: 166, proseWidthMm: 166 * 720 / 880 },
+            bubble: { maxWidthRatio: 0.85, compactHeightPt: 120, minInnerWidthPt: 28, paddingXPt: 12.5, paddingYPt: 8.4 },
+            figure: { maxPageHeightRatio: 0.6, captionMaxWidthMm: 115 },
+            textLanguage: 'zh', headerGapPt: 4.5, bodyGapPt: 22.5,
+          },
           messages: [
             {
               id: 'm1',
-              role: 'user',
+              variant: 'bubble', minWidthCards: [], gapAfterPt: 0,
               blocks: [
                 {
                   type: 'paragraph',
+                  layout: { gapBeforePt: 0, keepWithNext: false, width: 'container' },
                   children: [{ type: 'text', text: 'hello from the sandbox smoke test' }],
                 },
               ],
@@ -145,9 +146,9 @@ test.describe('Typst sandbox compile container (P1b smoke)', () => {
         };
       },
       {
-        sandbox: `${extOrigin}/src/ui/sandbox/typst-compile.html`,
-        wasm: `${extOrigin}/src/ui/sandbox/vendor/typst_ts_web_compiler_bg.wasm`,
-        font: `${extOrigin}/src/ui/sandbox/fonts/NewCMMath-Regular.otf`,
+        sandbox: `${extOrigin}/src/l4/format/pdf/sandbox/typst-compile.html`,
+        wasm: `${extOrigin}/src/l4/format/pdf/sandbox/vendor/typst_ts_web_compiler_bg.wasm`,
+        font: `${extOrigin}/src/l4/format/pdf/sandbox/fonts/NewCMMath-Regular.otf`,
       },
     );
 
