@@ -75,12 +75,14 @@ test('format Spotlight dismissal restores focus without initiating PDF/HTML expo
 for (const language of ['en', 'zh']) test(`2.1 highlights authorize sites and resume at the account switcher (${language})`, async () => {
     page = await browser.newPage();
     await mount(page, 'options', { manifestVersion: '2.1.0', geminiAccess: false, settings: { language, lastSeenFeatureVersion: '2.0.0' } });
-    // Dormant future-provider tour is testable explicitly, never auto-shown to Gemini-only users.
+    // Gemini-only users must never be interrupted by a multi-provider promotion.
+    assert.equal(await page.locator('.tour-popover').count(), 0);
+    // Dormant future-provider tour remains independently testable without an automatic announcement.
     await page.evaluate(() => Reflect.get(window, 'testUi').tour.showPlatformHighlights());
     const heading = language === 'en' ? 'Multi-platform support (Beta)' : '多平台支持（测试版）';
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     assert.deepEqual((await read(page, 'patches')).filter((patch: { lastSeenFeatureVersion?: string }) =>
-        patch.lastSeenFeatureVersion), [{ lastSeenFeatureVersion: '2.1.0' }]);
+        patch.lastSeenFeatureVersion), [], 'manual dormant tour must not mark a retired release as shown');
     await page.locator('#tourNextBtn').click();
     await page.locator('#btnPlatformPermissions').click();
     await page.locator('#platformAuthorizationDone').waitFor();
