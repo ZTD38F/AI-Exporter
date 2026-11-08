@@ -1,10 +1,10 @@
 /** Syntax only: archive URL/path semantics remain in the Python resolver. */
 import { readFileSync } from 'node:fs';
 import type { Root, RootContent } from 'mdast';
-import { parseMarkdownAst } from '../src/core/export/canonical/markdown/parseMarkdown.js';
-import { collectDefinitions } from '../src/core/export/canonical/markdown/mdastToCanonical.js';
+import { parseMarkdownAst } from '../src/l1/parsers/shared/markdown/parseMarkdown.js';
+import { collectDefinitions } from '../src/l1/parsers/shared/markdown/mdastToContent.js';
 
-export interface MarkdownResourceReference {
+interface MarkdownResourceReference {
     kind: 'image' | 'link';
     reference: string;
 }

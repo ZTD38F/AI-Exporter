@@ -1,236 +1,70 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { indexStorage } from './helpers/indexStorage.js';
+import { ACCOUNT_UUID } from './helpers/accountRuntime.js';
+import { importTakeout } from '../src/l1/imports/takeout/importTakeout.js';
+import { createSourceResourceContext } from '../src/l1/resources/sourceResources.js';
+import { getDetail, listIndexes } from '../src/l3a/storageService.js';
+import { sourceList, sourceDetail, takeoutArchive, activityHtml } from './helpers/l1SourceFixture.js';
+import { GeminiProvider } from '../src/l1/client/gemini/geminiProvider.js';
+import { parseList } from '../src/l1/parsers/gemini/rpc/parseList.js';
+import { listGen as geminiListGen } from './fixtures/providers/gemini.js';
+import { mount, read } from './helpers/uiPortHarness.js';
 
-const TakeoutEngine = require('../src/core/engine/takeoutEngine.js');
-const { GeminiAPIClient } = require('../src/core/api/geminiClient.js');
-const I18n = require('../src/core/utils/i18n.js');
-const DialogView = require('../src/ui/views/dialogView.js');
-
-
-test('takeout_engine - C2PA regex parses years beyond 2029', () => {
-    // 2032-11-15 12:30:00 UTC
-    // NOTE (P1-117): a bare 15-digit run with no trust context is now rejected
-    // by design (it was the false-positive class). The sample carries a real
-    // C2PA trust marker; the test intent — years beyond 2029 still parse —
-    // is unchanged.
-    const rawString = "c2pa:claim_generator=\"Google\" date=\"20321115123000Z\"";
-    const ts = TakeoutEngine.extractC2PATimestamp(rawString);
-    assert.ok(ts !== null, 'C2PA timestamp in 2032 should be parsed');
-    const d = new Date(ts);
-    assert.strictEqual(d.getUTCFullYear(), 2032);
-    assert.strictEqual(d.getUTCMonth(), 10); // November is 0-indexed: 10
-    assert.strictEqual(d.getUTCDate(), 15);
+test('Takeout generic filenames cannot transfer bytes to another conversation',async()=>{
+    const env=indexStorage(),resources=createSourceResourceContext();
+    const html=activityHtml('<p>Response B</p><img src="image_01.png"/>','chat_B_123456')+activityHtml('<p>No image</p>','chat_A_123456');
+    const bytes=Uint8Array.of(137,80,78,71,13,10,26,10);
+    try{
+        await importTakeout(takeoutArchive(html,{'Takeout/Gemini/image_01.png':{async:async()=>bytes,_data:{uncompressedSize:bytes.length}}}),ACCOUNT_UUID,undefined,resources);
+        const key={accountId:ACCOUNT_UUID,conversationId:'chat_B_123456'},detail=await getDetail(key);assert.ok(detail);assert.equal(detail.assets.length,1);
+        assert.deepEqual((await resources.acquire(key,detail.assets[0])).bytes,bytes);
+        const other={...key,conversationId:'chat_A_123456'};assert.equal((await getDetail(other))?.assets.length,0);
+        await assert.rejects(resources.acquire(other,detail.assets[0]),/No supported source locator/);
+        await assert.rejects(resources.acquire(other,{id:'',kind:'image',sourceUri:'image.png'}),/No supported source locator/);
+    }finally{resources.release();env.restore();}
 });
-
-test('takeout_engine - prevents cross-chat media hijacking for generic image names', async () => {
-    (global as any).JSZip = require('../lib/jszip.min.js');
-    const zip = new (global as any).JSZip();
-
-    // HTML only mentions chat_B_123456 having image_01.png
-    const htmlContent = `
-    <html><body>
-      <div class="outer-cell">
-        <a href="https://gemini.google.com/app/chat_B_123456">Chat B Link</a>
-        Prompted Chat B message<br>
-        <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">
-          <p>Response B</p>
-          <img src="image_01.png" />
-        </div>
-      </div>
-      <div class="outer-cell">
-        <a href="https://gemini.google.com/app/chat_A_123456">Chat A Link</a>
-        Prompted Chat A message<br>
-        <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">
-          <p>Response A without images</p>
-        </div>
-      </div>
-    </body></html>
-    `;
-
-    zip.file('Takeout/Gemini/MyActivity.html', htmlContent);
-    const imgData = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]); // PNG magic bytes
-    zip.file('Takeout/Gemini/image_01.png', imgData);
-
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-    TakeoutEngine.clearTakeoutData();
-    await TakeoutEngine.parseTakeoutZip(zipBuffer);
-
-    // Chat B owns image_01.png -> should find it
-    const mediaB = await TakeoutEngine.getTakeoutFallbackMedia('chat_B_123456', 'image_01.png');
-    assert.ok(mediaB && mediaB.length > 0, 'Chat B should retrieve its own image');
-
-    // Chat A does NOT own image_01.png -> generic name should NOT be hijacked from globalMedia!
-    const mediaA = await TakeoutEngine.getTakeoutFallbackMedia('chat_A_123456', 'image_01.png');
-    assert.strictEqual(mediaA, null, 'Chat A must NOT hijack Chat B image with generic name');
-
-    // Another generic attempt 'image.png'
-    const mediaAGeneric = await TakeoutEngine.getTakeoutFallbackMedia('chat_A_123456', 'image.png');
-    assert.strictEqual(mediaAGeneric, null, 'Chat A must NOT match image.png against Chat B image');
+test('releasing task resources drops readers while leaving admitted Domain intact',async()=>{
+    const env=indexStorage(),resources=createSourceResourceContext();let reads=0;
+    try{
+        const id='chat_slot_123';await importTakeout(takeoutArchive(activityHtml('<img src="image.png"/>',id),{'Takeout/Gemini/image.png':{async:async()=>{reads++;return Uint8Array.of(1,2,3);},_data:{uncompressedSize:3}}}),ACCOUNT_UUID,undefined,resources);
+        const key={accountId:ACCOUNT_UUID,conversationId:id},detail=await getDetail(key);assert.ok(detail);assert.equal(detail.assets.length,1);
+        await resources.acquire(key,detail.assets[0]);const before=reads;resources.release();
+        await assert.rejects(resources.acquire(key,detail.assets[0]),/released/);assert.equal(reads,before);assert.deepEqual(await getDetail(key),detail);
+    }finally{resources.release();env.restore();}
 });
-
-test('takeout_engine - clearTakeoutData thoroughly cleans slot and global caches', async () => {
-    (global as any).JSZip = require('../lib/jszip.min.js');
-    const zip = new (global as any).JSZip();
-    zip.file('Takeout/Gemini/MyActivity.html', `<html><body><div class="outer-cell"><a href="https://gemini.google.com/app/chat_slot_123">Link</a>Prompted hi<br><div class="content-cell">hello</div></div></body></html>`);
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-
-    TakeoutEngine.clearTakeoutData();
-    await TakeoutEngine.parseTakeoutZip(zipBuffer, null, 'u1');
-
-    const chatBefore = TakeoutEngine.getTakeoutOfflineChat('chat_slot_123', 'u1');
-    assert.ok(chatBefore, 'Should exist before clear');
-
-    TakeoutEngine.clearTakeoutData('u1');
-    const chatAfter = TakeoutEngine.getTakeoutOfflineChat('chat_slot_123', 'u1');
-    assert.strictEqual(chatAfter, null, 'Should be cleared after clearTakeoutData');
+test('550 source rows ending naturally never imply a provider limit',async()=>{
+    const env=indexStorage();let page=0;
+    try{const provider=new GeminiProvider({getConversationList:async()=>{page++;return sourceList(`G_SOURCE_550_PAGE_${page}`);},getConversationDetail:async()=>sourceDetail()},async()=> 'u0');
+        assert.equal(await provider.listConversations({accountId:ACCOUNT_UUID,streamId:'recent'}),'source_end');assert.equal((await listIndexes(ACCOUNT_UUID)).length,550);
+    }finally{env.restore();}
 });
-
-test('geminiClient - normal pagination to completion does not flag hitGoogleLimit', async () => {
-    const client = new GeminiAPIClient();
-    let pageCount = 0;
-
-    // Mock getConversationList to simulate 11 pages of 50 conversations (550 total), last page has no nextPageToken
-    (client as any).getConversationList = async (token?: any) => {
-        pageCount++;
-        const pageConvs = [];
-        for (let j = 0; j < 50; j++) {
-            pageConvs.push({ id: `conv_${pageCount}_${j}`, title: `Title ${pageCount}_${j}` });
-        }
-        return {
-            conversations: pageConvs,
-            nextPageToken: pageCount < 11 ? `token_page_${pageCount + 1}` : null
-        };
-    };
-
-    const res = await client.getAllConversations({
-        maxPages: 20,
-        incremental: false
-    });
-
-    assert.strictEqual(res.conversations.length, 550);
-    assert.strictEqual(res.hitGoogleLimit, false, 'Normal completion with 550 items must NOT flag hitGoogleLimit');
+test('only request-bound structured 1096 is a provider limit; ambiguous thrown text is an error',async()=>{
+    const env=indexStorage();let page=0;
+    const terminal=parseList(geminiListGen('G_TAKEOUT_LIMIT_01'));
+    try{assert.equal(terminal.failure,'hit_google_limit');
+        const provider=new GeminiProvider({getConversationList:async()=>++page<3?sourceList(`G_SOURCE_LIMIT_BOUND_PAGE_${page}`):terminal,getConversationDetail:async()=>sourceDetail()},async()=> 'u0');
+        assert.equal(await provider.listConversations({accountId:ACCOUNT_UUID,streamId:'recent'}),'provider_limit');assert.equal((await listIndexes(ACCOUNT_UUID)).length,2);
+        const ambiguous=new GeminiProvider({getConversationList:async()=>{throw Error('1096 BardErrorInfo');},getConversationDetail:async()=>sourceDetail()},async()=> 'u0');
+        await assert.rejects(ambiguous.listConversations({accountId:ACCOUNT_UUID,streamId:'recent'}),/1096/);
+    }finally{env.restore();}
 });
-
-test('geminiClient - error with 1096 or BardErrorInfo flags hitGoogleLimit', async () => {
-    const client = new GeminiAPIClient();
-    let pageCount = 0;
-
-    (client as any).getConversationList = async () => {
-        pageCount++;
-        if (pageCount === 3) {
-            throw new Error('rpc error: code = 1096, BardErrorInfo: cursor expired');
-        }
-        return {
-            conversations: [{ id: `conv_${pageCount}`, title: `Chat ${pageCount}` }],
-            nextPageToken: `token_${pageCount + 1}`
-        };
-    };
-
-    const res = await client.getAllConversations({
-        maxPages: 10,
-        incremental: false
-    });
-
-    assert.strictEqual(res.conversations.length, 2);
-    assert.strictEqual(res.hitGoogleLimit, true, 'Cursor expired 1096 error must flag hitGoogleLimit');
+test('scan UI reports source end, provider limit and local budget as distinct reasons',async()=>{
+    const {chromium}=await import('@playwright/test');const browser=await chromium.launch({chromiumSandbox: true, headless:true});
+    try{for(const [reason,label] of [['complete','Sync complete'],['provider_limit','Source online access limit'],['max_pages','Local page budget reached']]){
+        const page=await browser.newPage();await mount(page,'options',{scanResult:{status:reason==='complete'?'complete':'partial_limit',reason,pagesFetched:11,conversationsFetched:550},settings:{takeoutPromptCompleted:true}});
+        await page.locator('#btnSyncAll').click();await page.waitForFunction(()=>document.body.dataset.busy!=='true');
+        const text=await page.locator('#scanStatus').textContent();assert.ok(text?.includes(label));if(reason==='complete')assert.doesNotMatch(text??'',/11 \/ 550/);else assert.ok(text?.includes('550'));await page.close();
+    }}finally{await browser.close();}
 });
-
-test('dialogView - showTakeoutLimitPrompt differentiates between server limit and browsing window guidance', async () => {
-    const mockElements: Record<string, any> = {
-        takeoutLimitModal: { style: { display: 'none' } },
-        takeoutLimitPromptTitle: { textContent: '' },
-        takeoutLimitPromptText: { textContent: '' },
-        btnModalImportTakeout: {},
-        btnModalOpenTakeoutWeb: {},
-        btnModalDismissTakeout: {},
-        btnTakeoutLimitClose: {}
-    };
-
-    (global as any).document = {
-        getElementById: (id: string) => mockElements[id] || null,
-        querySelectorAll: () => []
-    };
-
-    if (I18n && typeof I18n.setLang === 'function') {
-        await I18n.setLang('zh');
-    }
-
-    // Case 1: True server limit (hitGoogleLimit = true) in Chinese
-    await DialogView.showTakeoutLimitPrompt({
-        force: true,
-        count: 620,
-        hitGoogleLimit: true
-    });
-    assert.strictEqual(mockElements.takeoutLimitModal.style.display, 'flex');
-    assert.ok(mockElements.takeoutLimitPromptTitle.textContent.includes('Google 云端拉取上限'));
-    assert.ok(mockElements.takeoutLimitPromptText.textContent.includes('620'));
-
-    // Case 2: Browsing window fallback (hitGoogleLimit = false, count >= 500) in Chinese
-    await DialogView.showTakeoutLimitPrompt({
-        force: true,
-        count: 550,
-        hitGoogleLimit: false
-    });
-    assert.ok(mockElements.takeoutLimitPromptTitle.textContent.includes('超出网页浏览上限'));
-    assert.ok(mockElements.takeoutLimitPromptText.textContent.includes('550'));
-
-    // Case 3: In English
-    if (I18n && typeof I18n.setLang === 'function') {
-        await I18n.setLang('en');
-    }
-    await DialogView.showTakeoutLimitPrompt({
-        force: true,
-        count: 600,
-        hitGoogleLimit: true
-    });
-    assert.ok(mockElements.takeoutLimitPromptTitle.textContent.includes('Reached Google Cloud History Limit'));
-
-    await DialogView.showTakeoutLimitPrompt({
-        force: true,
-        count: 500,
-        hitGoogleLimit: false
-    });
-    assert.ok(mockElements.takeoutLimitPromptTitle.textContent.includes('History Exceeds Web Browsing Window'));
+test('Options blocks a concurrent import and releases its busy state after completion',async()=>{
+    const {chromium}=await import('@playwright/test');const browser=await chromium.launch({chromiumSandbox: true, headless:true});
+    try{const page=await browser.newPage();await mount(page,'options',{holdImport:true});
+        const file={name:'test.zip',mimeType:'application/zip',buffer:Buffer.from('fixture')};
+        await page.locator('#takeoutFileInput').setInputFiles(file);await page.waitForFunction(()=>typeof Reflect.get(window,'harness').finishImport==='function');
+        assert.equal(await page.locator('#btnImportTakeout').isDisabled(),true);
+        await page.locator('#takeoutFileInput').setInputFiles(file);assert.equal((await read(page,'imports')).length,1);
+        await page.evaluate(()=>Reflect.get(window,'harness').finishImport());await page.waitForFunction(()=>document.body.dataset.busy!=='true');
+        assert.equal(await page.locator('#btnImportTakeout').isEnabled(),true);
+    }finally{await browser.close();}
 });
-
-test('optionsTakeout - processTakeoutImport blocks concurrent imports with _isImporting lock', async () => {
-    const OptionsTakeout = require('../src/ui/options/modules/optionsTakeout.js');
-    const { __setModuleOverride, __clearModuleOverrides } = require('../src/core/utils/moduleOverrides.js');
-
-    assert.strictEqual(OptionsTakeout.isImporting(), false, 'Initially not importing');
-
-    let importCalls = 0;
-    let finishDeferred: () => void;
-    const waitPromise = new Promise<void>((res) => { finishDeferred = res; });
-
-    __setModuleOverride('TakeoutController', {
-        handleTakeoutImport: async (_f: any, callbacks: any) => {
-            importCalls++;
-            await waitPromise;
-            if (callbacks.onFinished) callbacks.onFinished({ message: 'done' });
-        }
-    });
-
-    const mockFile = { name: 'test.zip', size: 1024 } as any;
-
-    try {
-        // Trigger first import
-        OptionsTakeout.processTakeoutImport(mockFile, null);
-        assert.strictEqual(OptionsTakeout.isImporting(), true, 'isImporting must be true during import');
-        assert.strictEqual(importCalls, 1, 'First import must have started');
-
-        // Trigger second concurrent import
-        OptionsTakeout.processTakeoutImport(mockFile, null);
-        assert.strictEqual(importCalls, 1, 'Second concurrent import must be blocked by lock');
-
-        // Finish first import
-        finishDeferred!();
-        await new Promise(r => setTimeout(r, 10));
-
-        assert.strictEqual(OptionsTakeout.isImporting(), false, 'isImporting must reset to false after completion');
-    } finally {
-        __clearModuleOverrides();
-    }
-});
-

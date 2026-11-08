@@ -94,7 +94,7 @@ class OnlineScenarioProvider:
         """
         pool = self._read_pool()
         if not pool:
-            raise RuntimeError("❌ [场景池安全门禁拦截] 场景池已枯竭 (0 个可用场景)！请先运行 `npm run pool:status` 并补充场景！")
+            raise RuntimeError("❌ [场景池安全门禁拦截] 场景池已枯竭 (0 个可用场景)！请先运行 `python3 scripts/manage_scenario_pool.py status` 并补充场景！")
 
         target_idx = None
 
@@ -106,16 +106,15 @@ class OnlineScenarioProvider:
                     target_idx = idx
                     break
 
-        if target_idx is None:
-            # 若无特定特征或未匹配到，默认按 turns 长度就绪出队
+        if target_idx is None and not required_features:
+            # 无特定特征时按轮次长度就绪出队；必测特性不得降级。
             for idx, s in enumerate(pool):
                 if len(s.get("turns", [])) >= min_turns:
                     target_idx = idx
                     break
 
         if target_idx is None:
-            # 兜底选择第一个
-            target_idx = 0
+            raise RuntimeError(f"场景池缺少符合要求的场景: features={required_features or []}, min_turns={min_turns}")
 
         selected = pool.pop(target_idx)
 

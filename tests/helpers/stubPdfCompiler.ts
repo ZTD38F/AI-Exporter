@@ -1,18 +1,14 @@
 /**
  * tests/helpers/stubPdfCompiler.ts
  *
- * Test-only PDF compiler stub. Moved out of src/core/export/pdf/pdfCompiler.ts
+ * Test-only PDF compiler stub. Moved out of src/l4/format/pdf/pdfCompiler.ts
  * by the Maintenance Convergence iteration (PR4): production source must never
  * import this file. Tests inject it through the IPdfCompiler contract; the
  * production PdfExporter default remains the real TypstSandboxCompiler.
  */
-import type {
-    RenderContext,
-    TypstRenderPayload,
-} from '../../src/core/export/canonical/rendering.js';
-import type { IPdfCompiler, PdfCompileResult } from '../../src/core/export/pdf/pdfCompiler.js';
+import type { IPdfCompiler, PdfCompileResult, PdfCompileContext, TypstRenderPayload } from '../../src/l4/format/pdf/pdfCompiler.js';
 
-export const STUB_PDF_COMPILER_NAME = 'stub-pdf-compiler';
+const STUB_PDF_COMPILER_NAME = 'stub-pdf-compiler';
 
 /** Computes real xref byte offsets so the output passes structural PDF verification. */
 export function buildMinimalValidPdf(): Uint8Array {
@@ -61,7 +57,7 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
     });
 }
 
-export interface StubPdfCompilerOptions {
+interface StubPdfCompilerOptions {
     failWith?: string;
     delayMs?: number;
 }
@@ -71,7 +67,7 @@ export class StubPdfCompiler implements IPdfCompiler {
 
     constructor(private readonly options: StubPdfCompilerOptions = {}) {}
 
-    async compile(payload: TypstRenderPayload, context: RenderContext): Promise<PdfCompileResult> {
+    async compile(payload: TypstRenderPayload, context: PdfCompileContext): Promise<PdfCompileResult> {
         context.reportProgress('stub-compile-start', 0, 1);
         await abortableSleep(this.options.delayMs ?? 0, context.signal);
         if (context.signal.aborted) {
@@ -80,7 +76,7 @@ export class StubPdfCompiler implements IPdfCompiler {
         if (this.options.failWith) {
             throw new Error(this.options.failWith);
         }
-        const messageCount = payload.bundle.conversation.messages.length;
+        const messageCount = payload.document.messages.length;
         context.reportProgress('stub-compile-done', 1, 1);
         return {
             pdfBytes: minimalPdfBytes(),

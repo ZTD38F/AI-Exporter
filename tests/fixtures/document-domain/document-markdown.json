@@ -1,0 +1,151 @@
+{
+  "index": {
+    "key": {
+      "accountId": "10000000-0000-4000-8000-000000000008",
+      "conversationId": "c"
+    },
+    "title": "Title",
+    "titleSource": "derived"
+  },
+  "detail": {
+    "assets": [
+      {
+        "id": "a",
+        "kind": "image",
+        "name": "asset_987654.png"
+      },
+      {
+        "id": "missing",
+        "kind": "file"
+      }
+    ],
+    "messages": [
+      {
+        "id": "m",
+        "role": "system",
+        "content": [
+          {
+            "type": "table",
+            "columns": [
+              {
+                "align": "left"
+              },
+              {
+                "align": "right"
+              },
+              {
+                "align": "center"
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "A"
+                      }
+                    ],
+                    "colSpan": 2,
+                    "rowSpan": 2
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "B"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Second header"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Body"
+                      }
+                    ],
+                    "colSpan": 3
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "image",
+            "assetId": "a",
+            "caption": [
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "123"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "image",
+            "assetId": "a",
+            "alt": "Again"
+          },
+          {
+            "type": "file",
+            "assetId": "missing",
+            "description": [
+              {
+                "type": "text",
+                "text": "Preserved description"
+              }
+            ]
+          }
+        ],
+        "citations": [
+          {
+            "id": "c",
+            "title": "Source",
+            "url": "https://example.com"
+          }
+        ],
+        "reasoning": [
+          {
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "reason"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "quality": {
+      "status": "unknown"
+    },
+    "key": {
+      "accountId": "10000000-0000-4000-8000-000000000008",
+      "conversationId": "c"
+    }
+  }
+}

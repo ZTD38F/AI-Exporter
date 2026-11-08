@@ -1,4 +1,3 @@
-# scripts/framework/driver/gemini_driver.py
 """
 High-Level Gemini Automation Driver and Chat Session Abstractions.
 Encapsulates all low-level CDP interactions, DOM selectors, atomic pipelines,
@@ -9,12 +8,16 @@ import os
 import time
 import base64
 import mimetypes
+import json
+from pathlib import Path
 from typing import Optional, Dict, Any, List, Union, Callable, Tuple
 
 from scripts.framework.actions import CDPActions
 from scripts.framework.selectors import GeminiSelectors
 from scripts.framework.gateway import get_gateway
 from .platform_driver import ChatPlatformDriver, TurnResult, PlatformCapabilities, PlatformRegistry
+
+_AUTHORED_RESPONSE = Path(__file__).with_name('authored_response.js').read_text()
 
 
 class GeminiChatSession:
@@ -47,21 +50,13 @@ class GeminiChatSession:
         else:
             prompt_text = str(prompt)
 
-        # 若指定了待上传文件，在发帖前先将其注入输入框并等待卡片挂载
         if file_attachment:
             print(f"      📎 正在向输入框上传并挂载文件附件: {os.path.basename(file_attachment)}...")
             self.driver.upload_file(file_attachment)
             time.sleep(1.0)
 
-        p_lower = prompt_text.lower()
-        is_image_turn = (
-            ("生成" in prompt_text and "图" in prompt_text) or
-            any(kw in p_lower for kw in ["画", "生图", "图片", "image", "draw", "imagen", "photo", "picture", "illustration"])
-        )
-        wait_timeout = max(max_wait, 240) if is_image_turn else max_wait
-
         # 通过 Driver 单飞原子流水线发帖 (受网关速率控制与主动熔断保护)
-        ok, msg = self.driver.execute_turn_pipeline(prompt_text, max_wait=wait_timeout, is_image=is_image_turn)
+        ok, msg = self.driver.execute_turn_pipeline(prompt_text, max_wait=max_wait)
         duration = time.time() - t0
 
         if not ok:
@@ -75,13 +70,11 @@ class GeminiChatSession:
             self.turns.append(err_res)
             return err_res
 
-        # 刷新/补全会话 ID
         curr_id = self.driver.get_current_chat_id()
         if curr_id:
             self.chat_id = curr_id
 
-        # 通过 Driver 提取最新回复文本与生图实体
-        turn_res = self.driver.extract_turn_result(prompt_text, duration=duration, is_image=is_image_turn)
+        turn_res = self.driver.extract_turn_result(prompt_text, duration=duration)
         turn_res.chat_id = self.chat_id
         self.turns.append(turn_res)
         return turn_res
@@ -132,11 +125,45 @@ class GeminiPlatformDriver(ChatPlatformDriver):
         """等待 Gemini 页面核心输入框与 DOM 挂载就绪"""
         return CDPActions.wait_for_gemini_ready(self.cdp, max_wait=int(timeout))
 
+    def _open_thinking_submenu(self):
+        """Expand the thinking picker when Gemini uses a nested menu."""
+        return self.cdp.eval(f"""
+        (() => {{
+            const menu = document.querySelector('{GeminiSelectors.MODE_MENU}');
+            if (!menu) return false;
+            const item = menu.querySelector('[value="thinking_level"]') ||
+                Array.from(menu.querySelectorAll('{GeminiSelectors.MODE_MENU_ITEM}'))
+                    .find(el => (el.textContent || '').trim().toLowerCase() === 'thinking level');
+            if (!item) return false;
+            if (item.getAttribute('aria-expanded') !== 'true') item.click();
+            return true;
+        }})()
+        """)
+
+    def _read_model_menu(self):
+        return self.cdp.eval(f"""
+        (() => {{
+            const menu = document.querySelector('{GeminiSelectors.MODE_MENU}');
+            if (!menu) return null;
+            // Submenus may be nested or rendered in a separate overlay.
+            const thinking = menu.querySelector('[value="thinking_level"]');
+            const submenu = thinking && document.getElementById(thinking.getAttribute('aria-controls'));
+            const items = Array.from(new Set([
+                ...menu.querySelectorAll('{GeminiSelectors.MODE_MENU_ITEM}'),
+                ...(submenu ? submenu.querySelectorAll('{GeminiSelectors.MODE_MENU_ITEM}') : [])
+            ])).filter(el => el.getClientRects().length > 0);
+            return items.map(el => ({{
+                text: (el.textContent || '').trim().replace(/\\s+/g, ' '),
+                isSelected: el.classList.contains('selected') || el.getAttribute('aria-checked') === 'true'
+            }}));
+        }})()
+        """)
+
     def ensure_model(self, target_model: str = "3.8 Flash", target_thinking: bool = True, force_menu_check: bool = False, **kwargs) -> bool:
         """
         严格校验并锁定 Gemini 模型与思考模式。
         如果 target_model="3.8 Flash"，严格检查菜单中是否存在 3.8 Flash 选项。
-        如果 target_thinking=True，严格检查菜单中是否存在 Extended thinking (深度思考) 选项。
+        如果 target_thinking=True，严格检查菜单中是否存在 Medium (中等强度思考) 选项。
         若任一能力在当前账号/界面中不存在，立即主动抛出致命异常中断测试，绝不隐式降级或盲跑。
         """
         cdp = self.cdp
@@ -145,6 +172,9 @@ class GeminiPlatformDriver(ChatPlatformDriver):
         while time.time() - wait_btn_start < 15.0:
             btn_info = cdp.eval(f"""
             (() => {{
+                if (/^(www\\.)?google\\.com$/.test(location.hostname) && location.pathname.startsWith('/sorry')) {{
+                    return {{ blocked: true }};
+                }}
                 const btn = document.querySelector('{GeminiSelectors.MODE_MENU_BTN}');
                 if (!btn) return null;
                 const text = (btn.textContent || '').trim();
@@ -155,10 +185,13 @@ class GeminiPlatformDriver(ChatPlatformDriver):
                 return null;
             }})()
             """)
+            if btn_info and btn_info.get('blocked'):
+                raise RuntimeError('Google 人机验证拦截：请在测试 Chrome 完成验证后重新运行；未继续发帖')
             if btn_info:
                 break
             time.sleep(0.5)
 
+        saw_menu = False
         for pass_idx in range(5):
             status = cdp.eval(f"""
             (() => {{
@@ -173,19 +206,13 @@ class GeminiPlatformDriver(ChatPlatformDriver):
                 time.sleep(0.5)
                 continue
 
-            full_desc = f"{status.get('label', '')} {status.get('text', '')}".lower()
-            is_lite = "flash-lite" in full_desc or "lite" in full_desc
-            has_model = ("flash" in full_desc and not is_lite) if "flash" in target_model.lower() else (target_model.lower() in full_desc)
-            has_thinking = ("extended" in full_desc or "thinking" in full_desc) if target_thinking else True
-
-            if has_model and has_thinking and not force_menu_check:
-                return True
-
+            # The picker button only says "Flash"; verify version and thinking
+            # level from the selected menu items on every check.
             opened = cdp.eval(f"""
             (() => {{
                 const btn = document.querySelector('{GeminiSelectors.MODE_MENU_BTN}');
                 if (btn && !btn.disabled) {{
-                    btn.click();
+                    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
                     return true;
                 }}
                 return false;
@@ -197,22 +224,30 @@ class GeminiPlatformDriver(ChatPlatformDriver):
 
             time.sleep(0.5)
 
-            menu_info = cdp.eval(f"""
-            (() => {{
-                const menu = document.querySelector('{GeminiSelectors.MODE_MENU}');
-                if (!menu) return null;
-                const items = Array.from(menu.querySelectorAll('{GeminiSelectors.MODE_MENU_ITEM}'));
-                return items.map(el => ({{
-                    text: (el.textContent || '').trim().replace(/\\s+/g, ' '),
-                    isSelected: el.classList.contains('selected') || el.getAttribute('aria-checked') === 'true'
-                }}));
-            }})()
-            """)
+            menu_info = None
+            menu_deadline = time.monotonic() + 5.0
+            while time.monotonic() < menu_deadline:
+                menu_info = self._read_model_menu()
+                if menu_info:
+                    break
+                time.sleep(0.25)
 
             if not menu_info:
                 cdp.call("Input.dispatchKeyEvent", {"type": "rawKeyDown", "windowsVirtualKeyCode": 27, "key": "Escape", "code": "Escape"})
                 cdp.call("Input.dispatchKeyEvent", {"type": "keyUp", "windowsVirtualKeyCode": 27, "key": "Escape", "code": "Escape"})
-                raise RuntimeError("❌【测试安全门禁拦截】无法打开 Gemini 模型切换菜单，测试已主动终止！")
+                continue
+            saw_menu = True
+
+            if target_thinking and any(it["text"].lower() == "thinking level" for it in menu_info):
+                self._open_thinking_submenu()
+                submenu_deadline = time.monotonic() + 5.0
+                while time.monotonic() < submenu_deadline:
+                    expanded_info = self._read_model_menu()
+                    if expanded_info:
+                        menu_info = expanded_info
+                        if any(it["text"].lower().split(" ", 1)[0] == "medium" for it in menu_info):
+                            break
+                    time.sleep(0.25)
 
             if "3.8" in target_model.lower() and "flash" in target_model.lower():
                 has_target_model_opt = any(
@@ -231,7 +266,7 @@ class GeminiPlatformDriver(ChatPlatformDriver):
                 target_model_label = target_model
 
             has_thinking_opt = any(
-                ("extended" in it["text"].lower() and "thinking" in it["text"].lower())
+                (it["text"].lower().split(" ", 1)[0] == "medium")
                 for it in menu_info
             )
 
@@ -239,7 +274,7 @@ class GeminiPlatformDriver(ChatPlatformDriver):
             if not has_target_model_opt:
                 missing.append(f"{target_model_label} 模型选项")
             if target_thinking and not has_thinking_opt:
-                missing.append("Extended thinking (深度思考) 选项")
+                missing.append("Medium (中等强度思考) 选项")
 
             if missing:
                 cdp.call("Input.dispatchKeyEvent", {"type": "rawKeyDown", "windowsVirtualKeyCode": 27, "key": "Escape", "code": "Escape"})
@@ -253,8 +288,8 @@ class GeminiPlatformDriver(ChatPlatformDriver):
                 ("3.8" in it["text"].lower() and "flash" in it["text"].lower() and "lite" not in it["text"].lower() and it["isSelected"])
                 for it in menu_info
             )
-            is_thinking_selected = any(
-                ("extended" in it["text"].lower() and "thinking" in it["text"].lower() and it["isSelected"])
+            is_thinking_selected = not target_thinking or any(
+                (it["text"].lower().split(" ", 1)[0] == "medium" and it["isSelected"])
                 for it in menu_info
             )
 
@@ -272,7 +307,7 @@ class GeminiPlatformDriver(ChatPlatformDriver):
                     const items = Array.from(menu.querySelectorAll('{GeminiSelectors.MODE_MENU_ITEM}'));
                     for (const el of items) {{
                         const t = (el.textContent || '').trim().toLowerCase();
-                        if (t.includes('3.8 flash') || (t.includes('3.8') && t.includes('flash'))) {{
+                        if (t.includes('3.8') && t.includes('flash') && !t.includes('lite')) {{
                             el.click();
                             return;
                         }}
@@ -292,14 +327,21 @@ class GeminiPlatformDriver(ChatPlatformDriver):
                     """)
                     time.sleep(0.5)
 
+                if any(it["text"].lower() == "thinking level" for it in menu_info):
+                    self._open_thinking_submenu()
+                    time.sleep(0.5)
+
                 cdp.eval(f"""
                 (() => {{
                     const menu = document.querySelector('{GeminiSelectors.MODE_MENU}');
                     if (!menu) return;
-                    const items = Array.from(menu.querySelectorAll('{GeminiSelectors.MODE_MENU_ITEM}'));
+                    const thinking = menu.querySelector('[value="thinking_level"]');
+                    const submenu = thinking && document.getElementById(thinking.getAttribute('aria-controls'));
+                    const scope = submenu || menu;
+                    const items = Array.from(scope.querySelectorAll('{GeminiSelectors.MODE_MENU_ITEM}'));
                     for (const el of items) {{
                         const t = (el.textContent || '').trim().toLowerCase();
-                        if (t.includes('extended thinking') || (t.includes('extended') && t.includes('thinking'))) {{
+                        if (/^medium(?:\\s|$)/.test(t)) {{
                             el.click();
                             return;
                         }}
@@ -311,28 +353,21 @@ class GeminiPlatformDriver(ChatPlatformDriver):
             cdp.call("Input.dispatchKeyEvent", {"type": "rawKeyDown", "windowsVirtualKeyCode": 27, "key": "Escape", "code": "Escape"})
             cdp.call("Input.dispatchKeyEvent", {"type": "keyUp", "windowsVirtualKeyCode": 27, "key": "Escape", "code": "Escape"})
             time.sleep(0.4)
-            force_menu_check = False
 
-        final_status = ""
-        check_final_start = time.time()
-        while time.time() - check_final_start < 5.0:
-            final_status = cdp.eval(f"""
-            (() => {{
-                const btn = document.querySelector('{GeminiSelectors.MODE_MENU_BTN}');
-                return btn ? ((btn.getAttribute('aria-label') || '') + ' ' + (btn.textContent || '')).toLowerCase() : '';
-            }})()
-            """) or ""
-            if "flash" in final_status and ("extended" in final_status or "thinking" in final_status):
-                return True
-            time.sleep(0.5)
-
-        raise RuntimeError(f"❌【测试安全门禁拦截】无法将模型切换至 3.8 Flash + Extended thinking！当前状态: '{final_status}'。测试已被主动终止。")
+        if not saw_menu:
+            raise RuntimeError("❌【测试安全门禁拦截】模型菜单在有界重试内未挂载，未继续发帖")
+        final_status = cdp.eval(f"""
+        (() => {{
+            const btn = document.querySelector('{GeminiSelectors.MODE_MENU_BTN}');
+            return btn ? ((btn.getAttribute('aria-label') || '') + ' ' + (btn.textContent || '')) : '';
+        }})()
+        """) or ""
+        raise RuntimeError(f"❌【测试安全门禁拦截】无法将模型切换至 3.8 Flash + Medium！当前状态: '{final_status}'。测试已被主动终止。")
 
     def execute_turn_pipeline(
         self,
         prompt_text: str,
-        max_wait: int = 300,
-        is_image: bool = False
+        max_wait: int = 300
     ) -> Tuple[bool, str]:
         """通过单飞串行流水线执行发帖，全程受安全网关监控与主动熔断保护"""
         from scripts.framework.pipeline.executor import SerialActionExecutor
@@ -345,7 +380,6 @@ class GeminiPlatformDriver(ChatPlatformDriver):
                 driver=self,
                 prompt_text=p_text,
                 max_wait=max_wait,
-                is_image=is_image,
                 cooldown_seconds=0.0
             )
             if result.success:
@@ -421,7 +455,6 @@ class GeminiPlatformDriver(ChatPlatformDriver):
             err = res.get("error", "未知错误") if isinstance(res, dict) else "CDP eval 失败"
             raise RuntimeError(f"文件注入粘贴事件失败: {err}")
 
-        # 等待页面渲染出附件预览卡片
         t0 = time.time()
         while time.time() - t0 < timeout:
             mounted = self.cdp.eval(f"""
@@ -454,50 +487,15 @@ class GeminiPlatformDriver(ChatPlatformDriver):
             "wait_ready": CDPActions.wait_for_gemini_ready,
         }
 
-    def prepare_turn_environment(self, is_image: bool = False) -> bool:
-        """
-        发帖前环境准备：
-        1. 确保模型为 3.8 Flash + Extended thinking
-        2. 挂载网络流式完成事件监听器
-        """
+    def prepare_turn_environment(self) -> bool:
+        """Verify the selected model; page completion is observed independently of the extension."""
         self.ensure_model(target_model="3.8 Flash", target_thinking=True, force_menu_check=False)
-        self.cdp.eval("""
-        (() => {
-            window.__testStreamState = {
-                started: false,
-                completed: false,
-                convId: null,
-                startedAt: 0,
-                completedAt: 0
-            };
-            if (!window.__testStreamListenerAttached) {
-                window.addEventListener('message', (e) => {
-                    if (!e.data || typeof e.data !== 'object') return;
-                    if (e.data.type === 'GEMINI_STREAM_GENERATE_START') {
-                        window.__testStreamState.started = true;
-                        window.__testStreamState.startedAt = Date.now();
-                        if (e.data.payload && e.data.payload.id) {
-                            window.__testStreamState.convId = e.data.payload.id;
-                        }
-                    } else if (e.data.type === 'GEMINI_STREAM_GENERATE_COMPLETE') {
-                        window.__testStreamState.completed = true;
-                        window.__testStreamState.completedAt = Date.now();
-                        if (e.data.payload && e.data.payload.id) {
-                            window.__testStreamState.convId = e.data.payload.id;
-                        }
-                    }
-                });
-                window.__testStreamListenerAttached = true;
-            }
-        })()
-        """)
         return True
 
     def build_turn_pipeline(
         self,
         prompt_text: str,
         max_wait: int = 300,
-        is_image: bool = False,
         cooldown_seconds: float = 6.0
     ) -> List[Any]:
         """构建 Gemini 平台的单轮发帖原子动作序列"""
@@ -508,12 +506,11 @@ class GeminiPlatformDriver(ChatPlatformDriver):
             AwaitStreamSettledAction,
             HumanCooldownAction
         )
-        turn_start_time = time.time()
         pipeline = [
             AssertIdleAction(max_wait=45),
             StagePromptAction(prompt_text),
             SingleClickSendAction(),
-            AwaitStreamSettledAction(timeout=max_wait, require_image=is_image, turn_start_time=turn_start_time)
+            AwaitStreamSettledAction(timeout=max_wait)
         ]
         if cooldown_seconds > 0:
             pipeline.append(HumanCooldownAction(seconds=cooldown_seconds))
@@ -522,8 +519,7 @@ class GeminiPlatformDriver(ChatPlatformDriver):
     def extract_turn_result(
         self,
         prompt_text: str,
-        duration: float,
-        is_image: bool = False
+        duration: float
     ) -> TurnResult:
         """从页面 DOM 提取 Gemini 最新回复文本与生图实体"""
         resp_data = self.cdp.eval(f"""
@@ -531,31 +527,22 @@ class GeminiPlatformDriver(ChatPlatformDriver):
             const models = Array.from(document.querySelectorAll('{GeminiSelectors.MODEL_RESPONSE}'));
             if (models.length === 0) return {{ text: '', hasImages: false, modelCount: 0 }};
             const last = models[models.length - 1];
-            const text = (last.textContent || '').trim();
-            const imgs = last.querySelectorAll('{GeminiSelectors.IMAGES}');
+            // Read authored content, excluding the screen-reader "Gemini said"
+            // label. A short real answer cannot match if UI chrome is captured.
+            const body = last.querySelector('{GeminiSelectors.MODEL_RESPONSE_BODY}');
+            if (!body) return {{ text: '', hasImages: false, modelCount: models.length }};
+            const authored = ({_AUTHORED_RESPONSE})(last);
             return {{
-                text: text,
-                hasImages: imgs.length > 0,
+                text: authored.text,
+                hasImages: authored.hasImages,
+                codeBlocks: authored.codeBlocks,
+                executionBlocks: authored.executionBlocks,
                 modelCount: models.length
             }};
         }})()
         """) or {}
 
         has_images = bool(resp_data.get("hasImages", False))
-        if is_image and not has_images:
-            for _ in range(5):
-                time.sleep(2.0)
-                img_check = self.cdp.eval(f"""
-                (() => {{
-                    const models = Array.from(document.querySelectorAll('{GeminiSelectors.MODEL_RESPONSE}'));
-                    const root = models.length > 0 ? models[models.length - 1] : document;
-                    const imgs = root.querySelectorAll('{GeminiSelectors.IMAGES}');
-                    return imgs.length > 0;
-                }})()
-                """)
-                if img_check:
-                    has_images = True
-                    break
 
         curr_id = self.get_current_chat_id()
         return TurnResult(
@@ -565,8 +552,84 @@ class GeminiPlatformDriver(ChatPlatformDriver):
             has_images=has_images,
             duration=duration,
             chat_id=curr_id,
-            metadata={"model_count": resp_data.get("modelCount", 1)}
+            metadata={"model_count": resp_data.get("modelCount", 1), "code_blocks": resp_data.get("codeBlocks", []),
+                      "execution_blocks": resp_data.get("executionBlocks", [])}
         )
+
+    def settled_conversation_evidence(self, chat_id: str, prompts: List[str], timeout: float = 60.0) -> List[Dict[str, Any]]:
+        """Read final webpage turns independently, then verify a fresh page hydration.
+
+        Earlier bubbles can finish math/Markdown rendering after their stream
+        settles. Freeze the complete conversation before comparing disk output.
+        """
+        if not chat_id or not prompts:
+            raise ValueError('Conversation identity and sent prompts are required')
+        deadline = time.monotonic() + timeout
+        previous = None
+        stable = 0
+        hydrated = False
+        self.last_in_place_evidence = None
+        while time.monotonic() < deadline:
+            state = self.cdp.eval(f"""
+            (() => {{
+                const read = (\n{_AUTHORED_RESPONSE}\n);
+                const users = [...document.querySelectorAll('user-query')];
+                const models = [...document.querySelectorAll('model-response')];
+                return {{
+                    chat_id: location.pathname.split('/app/')[1]?.split('/')[0] || '',
+                    streaming: !!document.querySelector({json.dumps(GeminiSelectors.STREAMING_INDICATORS)}),
+                    turns: users.length !== models.length ? [] : models.map((model, index) => {{
+                        const answer = read(model);
+                        return {{
+                            prompt: read(users[index].querySelector('.query-text') || users[index]).text,
+                            response: answer.text, has_images: answer.hasImages, code_blocks: answer.codeBlocks,
+                            execution_blocks: answer.executionBlocks, pdf_segments: answer.pdfSegments,
+                        }};
+                    }}),
+                }};
+            }})()
+            """) or {}
+            if state.get('chat_id') and state['chat_id'] != chat_id.removeprefix('c_'):
+                raise RuntimeError('Final webpage evidence belongs to a different conversation')
+            turns = state.get('turns', [])
+            valid = (state.get('chat_id') == chat_id.removeprefix('c_') and state.get('streaming') is False
+                     and len(turns) == len(prompts)
+                     and all(' '.join(turn.get('prompt', '').split()) == ' '.join(prompt.split())
+                             and isinstance(turn.get('response'), str) and isinstance(turn.get('code_blocks'), list)
+                             and (turn['response'] or turn.get('has_images'))
+                             for turn, prompt in zip(turns, prompts)))
+            if valid:
+                snapshot = json.dumps(turns, sort_keys=True, ensure_ascii=False)
+                stable = stable + 1 if snapshot == previous else 1
+                previous = snapshot
+                if stable >= 3:
+                    if not hydrated:
+                        # Gemini can retain a previous data-math value in a
+                        # completed streaming bubble. A fresh genuine webpage
+                        # renders persisted history without consulting exports.
+                        self.last_in_place_evidence = turns
+                        self.cdp.call('Page.reload', {'ignoreCache': True})
+                        hydrated = True
+                        previous, stable = None, 0
+                        time.sleep(0.5)
+                        continue
+                    if any(turn.get('has_images') for turn in turns):
+                        from scripts.framework.image_evidence import capture_webpage_images
+                        try:
+                            images = capture_webpage_images(self.cdp, chat_id)
+                            for index, turn in enumerate(turns):
+                                turn['images'] = [image for image in images if image['turn'] == index]
+                        except (ValueError, OSError, RuntimeError, KeyError) as exc:
+                            # Still perform the export. Missing comparison evidence fails
+                            # artifact acceptance, rather than blocking generation upstream.
+                            for turn in turns:
+                                if turn.get('has_images'):
+                                    turn['image_evidence_error'] = str(exc)
+                    return turns
+            else:
+                previous, stable = None, 0
+            time.sleep(0.5)
+        raise RuntimeError('Complete final webpage evidence did not settle with the sent prompts')
 
     def new_chat(self, timeout: float = 20.0) -> GeminiChatSession:
         """
@@ -640,5 +703,4 @@ class GeminiPlatformDriver(ChatPlatformDriver):
 # 保持 100% 向后兼容别名
 GeminiDriver = GeminiPlatformDriver
 
-# 自动注册至平台驱动注册中心
 PlatformRegistry.register("gemini", GeminiPlatformDriver)

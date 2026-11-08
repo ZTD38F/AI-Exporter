@@ -7,6 +7,7 @@ for %%I in ("%SCRIPT_DIR%..") do set "REPO_DIR=%%~fI"
 
 rem Dynamically resolve isolated test profile directory in user's profile (outside repo)
 set "PROFILE_DIR=%USERPROFILE%\.gemini-exporter-test-profile"
+if defined GEMINI_EXPORTER_TEST_PROFILE set "PROFILE_DIR=%GEMINI_EXPORTER_TEST_PROFILE%"
 
 rem Search standard Chrome installation locations on Windows
 set "CHROME_BIN="
@@ -31,6 +32,7 @@ if not exist "%PROFILE_DIR%" mkdir "%PROFILE_DIR%"
 
 pushd "%REPO_DIR%"
 node build.js
+if errorlevel 1 exit /b 1
 popd
 
 echo ==================================================
@@ -38,7 +40,8 @@ echo [Launch] Gemini Exporter Isolated Test Browser
 echo [Profile] %PROFILE_DIR%
 echo [ExtDir]  %REPO_DIR%
 echo [Port]    9222
-echo [Notice]  Please log in with a dedicated TEST account.
+echo [Notice]  Background by default. Use --headed for manual test-account login, quit Chrome, then relaunch normally.
 echo ==================================================
 
-start "" "%CHROME_BIN%" --user-data-dir="%PROFILE_DIR%" --disable-extensions-except="%REPO_DIR%" --load-extension="%REPO_DIR%" --remote-debugging-port=9222 --no-first-run --no-default-browser-check "https://gemini.google.com" %*
+python "%SCRIPT_DIR%launch_test_chrome.py" --chrome "%CHROME_BIN%" --profile "%PROFILE_DIR%" --repo "%REPO_DIR%" -- "--disable-extensions-except=%REPO_DIR%" "https://gemini.google.com" %*
+exit /b %errorlevel%

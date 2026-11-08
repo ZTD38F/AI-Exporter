@@ -1,122 +1,41 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-const {
-    IDB_NAME,
-    IDB_VERSION,
-    IDB_STORE,
-    IDB_KEY,
-    getStoredDirHandle,
-    saveStoredDirHandle,
-    clearStoredDirHandle
-} = require('../src/core/storage/idbHandleStore.js');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as storage from '../src/l3a/storageService.js';
+import { useStorageUnitEnvironment as useIndexStorage } from './helpers/l3aStorageUnitEnvironment.js';
+import { fixtureKey } from './helpers/domainFixture.js';
 
-test('idbHandleStore - constants integrity', () => {
-    assert.strictEqual(IDB_NAME, 'gemini_exporter_idb');
-    assert.strictEqual(IDB_VERSION, 1);
-    assert.strictEqual(IDB_STORE, 'handles');
-    assert.strictEqual(IDB_KEY, 'export_dir_handle');
+import { openStorageDB } from '../src/l3a/idb.js';
+import { isDirectoryHandle } from '../src/runtime/capabilities/directoryHandle.js';
+useIndexStorage();
+test('directory selection uses the single default key in the shared v2 DB', async () => {
+    assert.equal(await storage.getDirectoryHandle(), null);
+    const first = { name: 'First', kind: 'directory' } as FileSystemDirectoryHandle;
+    const second = { name: 'Second', kind: 'directory' } as FileSystemDirectoryHandle;
+    await storage.setDirectoryHandle(first); await storage.setDirectoryHandle(second);
+    assert.deepEqual(await storage.getDirectoryHandle(), second);
+    const db = await openStorageDB();
+    try {
+        const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+            const request = db.transaction('directoryHandles').objectStore('directoryHandles').getAllKeys();
+            request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+        });
+        assert.deepEqual(keys, ['default']);
+    } finally { db.close(); }
+});
+test('directory IO fails visibly when IndexedDB is unavailable, without memory fallback', async () => {
+    const previous = globalThis.indexedDB;
+    try {
+        Object.assign(globalThis, { indexedDB: undefined });
+        await assert.rejects(storage.getDirectoryHandle());
+        await assert.rejects(storage.setDirectoryHandle({ name: 'Fake' } as FileSystemDirectoryHandle));
+    } finally { globalThis.indexedDB = previous; }
 });
 
-test('idbHandleStore - environment with no indexedDB returns safe defaults', async () => {
-    const origIdb = (global as any).indexedDB;
-    (global as any).indexedDB = undefined;
-    try {
-        const handle = await getStoredDirHandle();
-        assert.strictEqual(handle, null);
-        const saveRes = await saveStoredDirHandle({ name: 'test' });
-        assert.strictEqual(saveRes, false);
-        const clearRes = await clearStoredDirHandle();
-        assert.strictEqual(clearRes, false);
-    } finally {
-        (global as any).indexedDB = origIdb;
-    }
-});
-
-test('idbHandleStore - save, get, and clear handle in mock IndexedDB', async () => {
-    const memoryStores: Record<string, Map<any, any>> = {};
-
-    const mockIdb = {
-        open: (name: string, version: number) => {
-            const req: any = {
-                result: {
-                    name,
-                    version,
-                    objectStoreNames: {
-                        contains: (n: string) => n in memoryStores
-                    },
-                    createObjectStore: (n: string) => {
-                        memoryStores[n] = new Map();
-                    },
-                    transaction: (storeName: string, mode: string) => {
-                        const store = memoryStores[storeName] || new Map();
-                        const tx: any = {
-                            objectStore: () => ({
-                                put: (val: any, key?: any) => {
-                                    store.set(key, val);
-                                },
-                                get: (key: any) => {
-                                    const reqGet: any = { result: store.get(key) };
-                                    setTimeout(() => reqGet.onsuccess && reqGet.onsuccess(), 0);
-                                    return reqGet;
-                                },
-                                delete: (key: any) => {
-                                    store.delete(key);
-                                }
-                            }),
-                            oncomplete: null as any,
-                            onerror: null as any
-                        };
-                        setTimeout(() => {
-                            if (typeof tx.oncomplete === 'function') tx.oncomplete();
-                        }, 1);
-                        return tx;
-                    }
-                },
-                onsuccess: null as any,
-                onerror: null as any,
-                onupgradeneeded: null as any
-            };
-
-            setTimeout(() => {
-                if (typeof req.onupgradeneeded === 'function') {
-                    req.onupgradeneeded();
-                }
-                if (typeof req.onsuccess === 'function') {
-                    req.onsuccess();
-                }
-            }, 0);
-
-            return req;
-        }
-    };
-
-    const origIdb = (global as any).indexedDB;
-    (global as any).indexedDB = mockIdb;
-
-    try {
-        // Initial state: empty
-        const initial = await getStoredDirHandle();
-        assert.strictEqual(initial, null);
-
-        // Store handle
-        const mockHandle = { name: 'Vault_Obsidian', kind: 'directory' };
-        const saved = await saveStoredDirHandle(mockHandle);
-        assert.strictEqual(saved, true);
-
-        // Retrieve handle
-        const retrieved = await getStoredDirHandle();
-        assert.ok(retrieved);
-        assert.strictEqual(retrieved.name, 'Vault_Obsidian');
-
-        // Clear handle
-        const cleared = await clearStoredDirHandle();
-        assert.strictEqual(cleared, true);
-
-        // Retrieve after clear
-        const afterClear = await getStoredDirHandle();
-        assert.strictEqual(afterClear, null);
-    } finally {
-        (global as any).indexedDB = origIdb;
-    }
+test('restored directory permission methods must be present before use', () => {
+    const legacy = { name: 'Legacy', kind: 'directory' } as FileSystemDirectoryHandle;
+    assert.equal(isDirectoryHandle(legacy), false);
+    const missingRequest = { ...legacy, queryPermission: async () => 'granted' };
+    assert.equal(isDirectoryHandle(missingRequest), false);
+    const ready = { ...missingRequest, requestPermission: async () => 'granted' };
+    assert.equal(isDirectoryHandle(ready), true);
 });

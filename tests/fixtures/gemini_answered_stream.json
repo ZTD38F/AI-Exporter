@@ -1,0 +1,12 @@
+{
+  "description": "Sanitized answered-candidate structure from live Tier 2 StreamGenerate, 2026-10-20. No persistence field; lengths include surrounding LF bytes.",
+  "frames": [
+    [
+      [
+        "wrb.fr",
+        null,
+        "[null,[\"c_abcdef123456\",\"r_abc123\"],null,null,[[\"rc_abc123\",[\"sanitized reply\"],null,null,null,null,null,null,[2]]]]"
+      ]
+    ]
+  ]
+}

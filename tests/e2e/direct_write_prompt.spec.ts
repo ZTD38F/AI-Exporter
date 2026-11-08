@@ -1,75 +1,73 @@
-import { test, expect } from './fixtures';
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { exposeUIStorage, openOptions, seedConversations, storedSettings } from './uiFixture';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
-test.describe('E2E: Direct Write Suggestion Prompt for Large Bulk Exports', () => {
-  test('should show suggestion modal only once when exporting > 20 conversations and never prompt again', async ({ context, extensionId }) => {
-    const page = await context.newPage();
+test('55-conversation browser delivery suggests folder once, then ZIP remains available and suppression survives reload', async ({ context, extensionId }) => {
+    await seedRegistryAccounts(context);
+    const page = await openOptions(context, extensionId);
+    await seedConversations(page, Array.from({ length: 55 }, (_, i) => ({
+        id: `bulk_${i}`, title: `Bulk ${i}`, body: `Bulk answer ${i}`,
+    })));
+    await page.locator('#btnSelectAll').click();
+    await page.locator('#btnExport').click();
 
-    // 1. Navigate to options page
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 2. Seed 55 mock conversations into chrome.storage.local
-    await page.evaluate(async () => {
-      const mockConvs = [];
-      for (let i = 1; i <= 55; i++) {
-        mockConvs.push({
-          id: `chat_bulk_${String(i).padStart(3, '0')}`,
-          title: `大批量测试会话 ${i}`,
-          timestamp: 1700000000000 + i * 1000
-        });
-      }
-      await chrome.storage.local.set({
-        gemini_conversations: mockConvs,
-        exportedIds: {},
-        gemini_suppress_direct_write_prompt: false,
-        has_completed_tour: true,
-        last_seen_feature_version: '999.0.0'
-      });
-      if (typeof window.__workbenchLoadStore === 'function') {
-        await window.__workbenchLoadStore(true);
-      }
-    });
-
-    // Verify 55 items rendered
-    const listItems = page.locator('#list .item');
-    await expect(listItems).toHaveCount(55);
-
-    // 3. Select all items (55 items > 20 threshold)
-    await page.click('#btnSelectAll');
-    await expect(page.locator('#selectedStat')).toHaveText(/\b55\b/);
-
-    // Ensure modal is initially hidden
     const modal = page.locator('#directWriteModal');
-    await expect(modal).toBeHidden();
-
-    // 4. Click Export button (in ZIP mode)
-    await page.click('#btnExport');
-
-    // 5. Verify modal appears with correct conversation count and buttons
-    await expect(modal).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('#directWritePromptText')).toHaveText(/\b55\b/);
+    await expect(modal).toBeVisible();
+    await expect(page.locator('#directWritePromptText')).toContainText('55 conversations');
     await expect(page.locator('#btnModalSwitchFolder')).toBeVisible();
     await expect(page.locator('#btnModalContinueZip')).toBeVisible();
+    await expect.poll(async () => (await storedSettings(page)).directWritePromptCompleted).toBe(true);
 
-    // 6. Click "Continue with ZIP"
-    await page.click('#btnModalContinueZip');
-
-    // Modal should close immediately
+    const pending = page.waitForEvent('download');
+    await page.locator('#btnModalContinueZip').click();
     await expect(modal).toBeHidden();
+    const file = await pending;
+    expect(file.suggestedFilename()).toMatch(/\.zip$/);
+    const JSZip = require(path.resolve(__dirname, '../../lib/jszip.min.js'));
+    const zip = await JSZip.loadAsync(await readFile((await file.path())!));
+    const files = Object.keys(zip.files).filter(x => x.endsWith('.md'));
+    expect(files).toHaveLength(55);
+    expect((await Promise.all(files.map(x => zip.file(x).async('string')))).join('\n')).toContain('Bulk answer 54');
 
-    // 7. Verify suppression flag is automatically persisted in storage
-    const isSuppressed = await page.evaluate(async () => {
-      const d = await chrome.storage.local.get('gemini_suppress_direct_write_prompt');
-      return !!d.gemini_suppress_direct_write_prompt;
-    });
-    expect(isSuppressed).toBe(true);
+    // Browser download precedes the final export record commits; do not reload until they settle.
+    await expect(page.locator('#status')).toContainText('Successfully downloaded: 55', { timeout: 30000 });
+    await expect.poll(async () => page.evaluate(async () =>
+        Object.keys(await Reflect.get(globalThis, 'uiFixture')
+            .listExportRecords('10000000-0000-4000-8000-000000000001')).length),
+        { timeout: 30000 }).toBe(55);
 
-    // Wait for first export to settle before triggering second export
-    await expect(page.locator('#btnCancel')).toBeHidden({ timeout: 10000 });
-
-    // 8. Next time exporting >= 50 items, modal should NEVER appear again
-    await page.click('#btnExport');
-    await expect(page.locator('#btnCancel')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('#list .item')).toHaveCount(55);
+    await page.locator('#btnSelectAll').click();
+    await page.locator('#btnExport').click();
+    await expect(page.locator('#status')).toContainText('Skipped: 55');
     await expect(modal).toBeHidden();
-  });
+});
+
+test('closing a displayed batch suggestion permanently dismisses it without starting an export', async ({ context, extensionId }) => {
+    await seedRegistryAccounts(context);
+    const page = await openOptions(context, extensionId);
+    await seedConversations(page, Array.from({ length: 21 }, (_, i) => ({ id: `tip_${i}` })));
+    await page.locator('#btnSelectAll').click();
+    await page.locator('#btnExport').click();
+    await expect(page.locator('#directWriteModal')).toBeVisible();
+    await page.locator('#btnDirectWriteClose').click();
+    await expect(page.locator('#directWriteModal')).toBeHidden();
+    await expect.poll(async () => (await storedSettings(page)).directWritePromptCompleted).toBe(true);
+
+    await page.reload();
+    await expect(page.locator('#list .item')).toHaveCount(21);
+    await exposeUIStorage(page);
+    await page.locator('#btnSelectAll').click();
+    const pending = page.waitForEvent('download');
+    await page.locator('#btnExport').click();
+    await pending;
+    await expect(page.locator('#directWriteModal')).toBeHidden();
+    // A download starts before the export records commit; await the completed task before teardown.
+    await expect(page.locator('#status')).toContainText('Successfully downloaded: 21', { timeout: 30000 });
+    await expect.poll(async () => page.evaluate(async () =>
+        Object.keys(await Reflect.get(globalThis, 'uiFixture')
+            .listExportRecords('10000000-0000-4000-8000-000000000001')).length),
+        { timeout: 30000 }).toBe(21);
 });

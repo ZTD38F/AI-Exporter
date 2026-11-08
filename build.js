@@ -1,12 +1,3 @@
-// build.js — esbuild pure bundle build pipeline for AI Exporter.
-//
-// Modern Architecture (Pure Bundle Pipeline):
-// Directly builds the 5 self-contained production IIFE bundles loaded by Chrome MV3:
-//   1. content/content    -> dist/content/content.js   (ISOLATED world content script)
-//   2. content/hook       -> dist/content/hook.js      (MAIN world network interceptor)
-//   3. background/background -> dist/background/background.js (Service Worker bundle)
-//   4. ui/popup          -> dist/ui/popup.js          (Popup modal coordinator)
-//   5. ui/options        -> dist/ui/options.js        (Options workbench coordinator)
 
 const esbuild = require('esbuild');
 const fs = require('fs');
@@ -31,7 +22,7 @@ const EXT_VERSION = (() => {
 })();
 
 // NOTE: package.json / README version-badge syncing used to live here. It now
-// lives in scripts/release-prepare.js (`npm run release:prepare`) so that
+// lives in scripts/release-prepare.js (`node scripts/release-prepare.js`) so that
 // `node build.js` is pure and never mutates the tracked source tree.
 
 const DEFINE_VERSION = {
@@ -40,27 +31,40 @@ const DEFINE_VERSION = {
 };
 
 const BUNDLE_ENTRIES = {
-    'content/content': path.join(SRC, 'content', 'content.ts'),
-    'content/chatgpt': path.join(SRC, 'content', 'chatgpt.ts'),
-    'content/hook': path.join(SRC, 'content', 'hookCredentials.ts'),
-    'background/background': path.join(SRC, 'background', 'background.ts'),
+    'content/content': path.join(SRC, 'runtime', 'content', 'content.ts'),
+    'content/hook': path.join(SRC, 'l1', 'sniffer', 'gemini', 'hookCredentials.ts'),
+    'content/chatgpt-hook': path.join(SRC, 'l1', 'sniffer', 'chatgpt', 'hook.ts'),
+    'content/chatgpt-content': path.join(SRC, 'runtime', 'content', 'chatgptContent.ts'),
+    'content/grok-hook': path.join(SRC, 'l1', 'sniffer', 'grok', 'hook.ts'),
+    'content/grok-content': path.join(SRC, 'runtime', 'content', 'grokContent.ts'),
+    'content/claude-hook': path.join(SRC, 'l1', 'sniffer', 'claude', 'hook.ts'),
+    'content/claude-content': path.join(SRC, 'runtime', 'content', 'claudeContent.ts'),
+    'background/background': path.join(SRC, 'runtime', 'background', 'background.ts'),
     'ui/popup': path.join(SRC, 'ui', 'popup', 'popup.ts'),
     'ui/options': path.join(SRC, 'ui', 'options', 'options.ts'),
 };
 
 const SANDBOX_ENTRIES = {
-    'ui/sandbox/typst-compile': path.join(SRC, 'ui', 'sandbox', 'typstCompileEntry.ts'),
+    'ui/sandbox/typst-compile': path.join(SRC, 'l4', 'format', 'pdf', 'sandbox', 'typstCompileEntry.ts'),
 };
 
 const EXPECTED_BUNDLES = [
     'dist/content/content.js',
-    'dist/content/chatgpt.js',
     'dist/content/hook.js',
+    'dist/content/chatgpt-hook.js',
+    'dist/content/chatgpt-content.js',
+    'dist/content/grok-hook.js',
+    'dist/content/grok-content.js',
+    'dist/content/claude-hook.js',
+    'dist/content/claude-content.js',
     'dist/background/background.js',
     'dist/ui/popup.js',
     'dist/ui/options.js',
     'dist/ui/sandbox/typst-compile.js',
 ];
+
+const PRODUCTION_BUNDLES = EXPECTED_BUNDLES.filter(file =>
+    !/^dist\/content\/(chatgpt|grok|claude)-/.test(file));
 
 async function build() {
     const t0 = Date.now();
@@ -68,17 +72,14 @@ async function build() {
         throw new Error('src/ directory not found');
     }
 
-    // Clean dist to ensure zero stale files
     fs.rmSync(DIST, { recursive: true, force: true });
 
-    // Validate that all 5 bundle entrypoint source files exist
     for (const [entryName, entryFile] of Object.entries(BUNDLE_ENTRIES)) {
         if (!fs.existsSync(entryFile)) {
             throw new Error(`Bundle entrypoint source missing for ${entryName}: ${entryFile}`);
         }
     }
 
-    // 1. Build all 5 production IIFE bundles in parallel
     const bundleResult = await esbuild.build({
         entryPoints: BUNDLE_ENTRIES,
         outdir: DIST,
@@ -130,7 +131,6 @@ async function build() {
         throw new Error(`esbuild sandbox build failed with ${sandboxResult.errors.length} error(s)`);
     }
 
-    // 2. Verify all expected production bundles exist
     for (const bundle of EXPECTED_BUNDLES) {
         const fullPath = path.join(ROOT, bundle);
         if (!fs.existsSync(fullPath)) {
@@ -165,8 +165,8 @@ function packageExtension() {
 
     const { execSync } = require('child_process');
     execSync(`zip -r "${zipName}" manifest.json _locales icons lib LICENSE THIRD_PARTY_NOTICES.md README.md README_zh.md`, { cwd: ROOT, stdio: 'ignore' });
-    execSync(`zip -r "${zipName}" src -x 'src/*.ts' 'src/*/*.ts' 'src/*/*/*.ts' 'src/*/*/*/*.ts' 'src/README.md'`, { cwd: ROOT, stdio: 'ignore' });
-    execSync(`zip -r "${zipName}" dist -i 'dist/background/background.js' 'dist/content/content.js' 'dist/content/chatgpt.js' 'dist/content/hook.js' 'dist/ui/options.js' 'dist/ui/popup.js' 'dist/ui/sandbox/typst-compile.js'`, { cwd: ROOT, stdio: 'ignore' });
+    execSync(`zip -r "${zipName}" src -x 'src/*.ts' 'src/*/*.ts' 'src/*/*/*.ts' 'src/*/*/*/*.ts' 'src/*.tsx' 'src/*/*.tsx' 'src/*/*/*.tsx' 'src/*/*/*/*.tsx' 'src/README.md'`, { cwd: ROOT, stdio: 'ignore' });
+    execSync(`zip -r "${zipName}" dist -i ${PRODUCTION_BUNDLES.map(file => `'${file}'`).join(' ')}`, { cwd: ROOT, stdio: 'ignore' });
 
     const stats = fs.statSync(zipPath);
     const kb = (stats.size / 1024).toFixed(1);

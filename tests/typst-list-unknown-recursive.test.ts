@@ -1,11 +1,13 @@
+import { fixtureKey, fixtureAccountFor } from './helpers/domainFixture.js';
+import { restoreDomainSnapshot } from '../src/l2/runtimeValidation.js';
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
-const { convertMath: convertLatex } = require('../src/core/export/typst/mathConverter.js');
-const convertMath = (source: string, display: boolean) => convertLatex(source, 'latex', display);
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
+const { composeDomainDocument } = require('../src/l3b/compose/composeDomainDocument.js');
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
+const { convertMathForTest: convertMath } = require('./helpers/mathConversion.js');
 const { extractPdfText } = require('./helpers/pdfTextExtract.js');
 const {
     RealWasmSandboxHost,
@@ -14,31 +16,20 @@ const {
 
 const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-function bundle(messages: any[], extra: any = {}) {
-    return {
-        schemaVersion: 1,
-        conversation: {
-            key: { providerId: 'gemini', accountId: 'test-account', conversationId: 'c1' },
-            title: 'Nested list and unknown text',
-            createdAt: '2026-09-26T10:00:00Z',
-            messages,
-        },
-        assets: [],
-        citations: [],
-        ...extra,
-    };
+function domainFixture(messages: any[], assets: any[] = []) {
+    return restoreDomainSnapshot({ index: { key: fixtureKey(String('c1'), 'gemini'),   titleSource: "derived",   title: 'Fixture', createdAt: Date.parse('2026-09-26T10:00:00Z') }, detail: { key: fixtureKey(String('c1'), 'gemini'), quality: { status: 'unknown' }, assets, messages: messages } });
 }
 
 function msg(id: string, role: string, blocks: any[], extra: any = {}) {
-    return { id, role, blocks, ...extra };
+    return { id, role, content: blocks, ...extra };
 }
 
-const opts = { assetPath: (a: any) => `assets/${a.id}.png` };
+const opts = {};
 
-const imgAsset = { id: 'list-img', kind: 'image', name: 'dot.png', mimeType: 'image/png', status: 'available', sizeBytes: 70 };
+const imgAsset = { id: 'list-img', kind: 'image', name: 'dot.png', mediaType: 'image/png', byteLength: 70 };
 
-function listBundle(blocks: any[], assets: any[] = []) {
-    return bundle([msg('m1', 'user', blocks)], { assets });
+function listBundle(blocks: any[], assets: any[] = [], reasoning: any[] = []) {
+    return domainFixture([msg('m1', 'user', blocks, reasoning.length ? { reasoning } : {})], assets);
 }
 
 test('list item keeps inline image as a node, not flattened text', async () => {
@@ -46,7 +37,7 @@ test('list item keeps inline image as a node, not flattened text', async () => {
         type: 'list', ordered: false,
         items: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text: 'see ' }, { type: 'image', assetId: 'list-img', alt: 'dot' }] }] }],
     }], [imgAsset]);
-    const { payload, diagnostics } = toTypstPayload(b, opts);
+    const { payload, diagnostics } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.type, 'list');
     assert.deepStrictEqual(node.items[0].blocks[0].children.map((c: any) => c.type), ['text', 'image']);
@@ -68,7 +59,7 @@ test('list item keeps block image, nested list, code, math and multi-paragraph',
             ] },
         ],
     }], [imgAsset]);
-    const { payload, diagnostics } = toTypstPayload(b, opts);
+    const { payload, diagnostics } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.items[0].blocks[0].type, 'image');
     assert.strictEqual(node.items[0].blocks[0].asset, 'assets/list-img.png');
@@ -88,7 +79,7 @@ test('ordered list keeps start; absent start stays absent', async () => {
         { type: 'list', ordered: true, items: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text: 'one' }] }] }] },
         { type: 'list', ordered: false, items: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text: 'bullet' }] }] }] },
     ]);
-    const { payload } = toTypstPayload(b, opts);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const blocks: any[] = payload.messages[0].blocks;
     assert.strictEqual(blocks[0].start, 3);
     assert.ok(!('start' in blocks[1]));
@@ -99,7 +90,7 @@ test('ordered list keeps start; absent start stays absent', async () => {
 
 test('unknown text remains visible without nested render blocks', async () => {
     const b = listBundle([{ type: 'unknown', sourceType: 'weird-widget', text: 'kept-para\ndot\nkept-code\nkept-list' }]);
-    const { payload } = toTypstPayload(b, opts);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.type, 'unknown');
     assert.strictEqual(node.sourceType, 'weird-widget');
@@ -107,13 +98,13 @@ test('unknown text remains visible without nested render blocks', async () => {
     assert.ok(!('blocks' in node));
 });
 
-async function compileOnce(bundle: any, assets: Record<string, Uint8Array>) {
+async function compileOnce(domain: any, assets: Record<string, Uint8Array>) {
     const host = new RealWasmSandboxHost(repoRoot());
     const compiler = new TypstSandboxCompiler({ host });
-    const assetPath = (a: any) => `/assets/${a.id}.png`;
-    const { payload: document } = toTypstPayload(bundle, { assetPath, convertMath });
+    const resources = Object.fromEntries(domain.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`]));
+    const { payload: document } = renderTypstFixture(composeDomainDocument(domain, fixtureAccountFor(domain)), resources, { convertMath });
     const context = {
-        bundle,
+
         assets: {
             resolve: async (id: string) => {
                 const bytes = assets[id];
@@ -128,10 +119,9 @@ async function compileOnce(bundle: any, assets: Record<string, Uint8Array>) {
         const result = await compiler.compile(
             {
                 rendererSchemaVersion: 1,
-                sourceSchemaVersion: 1,
-                bundle,
+
                 document,
-                assetPaths: new Map((bundle.assets ?? []).map((a: any) => [a.id, assetPath(a)])),
+                assetPaths: new Map(Object.entries(resources)),
             } as never,
             context as never,
         );
@@ -168,11 +158,7 @@ test('real WASM: nested lists and unknown text compile with all content selectab
                 { type: 'list', ordered: false, items: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text: 'quoted list item' }] }] }] },
             ],
         },
-        {
-            type: 'thought', kind: 'reasoning',
-            blocks: [{ type: 'paragraph', children: [{ type: 'text', text: 'thinking trace kept' }] }],
-        },
-    ], [imgAsset]);
+    ], [imgAsset], [{ type: 'paragraph', children: [{ type: 'text', text: 'thinking trace kept' }] }]);
     const result = await compileOnce(b, { 'list-img': Buffer.from(PNG_B64, 'base64') });
     assert.ok(!result.diagnostics.some((d: any) => d.severity === 'error'), JSON.stringify(result.diagnostics));
     assert.strictEqual(Buffer.from(result.pdfBytes.slice(0, 5)).toString('latin1'), '%PDF-');

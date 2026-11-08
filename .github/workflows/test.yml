@@ -10,7 +10,6 @@ on:
       - 'docs/**'
       - 'scripts/test_scenario_*.json'
   pull_request:
-    branches: [ main, dev ]
 
 permissions:
   contents: read
@@ -75,6 +74,10 @@ jobs:
         if: steps.filter.outputs.only_scenarios != 'true'
         run: npm ci || npm install
 
+      - name: Scoped zero-any gate
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: node scripts/check-zero-any.cjs
+
       - name: Type check (TypeScript)
         if: steps.filter.outputs.only_scenarios != 'true'
         run: npm run type-check
@@ -83,9 +86,17 @@ jobs:
         if: steps.filter.outputs.only_scenarios != 'true'
         run: node build.js
 
-      - name: Release gates — no CJK fonts bundled (§16 P0)
+      - name: Release gates — approved offline font assets
         if: steps.filter.outputs.only_scenarios != 'true'
-        run: npm run test:release-gates
+        run: npm run test:release-fonts
+
+      - name: Install Chromium for native Storage unit contracts
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Permit sandboxed Playwright on Ubuntu
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: bash scripts/setup-playwright-sandbox.sh
 
       - name: Run Unit Tests & Syntax Verification
         if: steps.filter.outputs.only_scenarios != 'true'
@@ -164,6 +175,10 @@ jobs:
         if: steps.filter.outputs.only_scenarios != 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      - name: Permit sandboxed Playwright on Ubuntu
+        if: steps.filter.outputs.only_scenarios != 'true'
+        run: bash scripts/setup-playwright-sandbox.sh
+
       - name: Run Playwright E2E Test Suite
         if: steps.filter.outputs.only_scenarios != 'true'
-        run: xvfb-run --auto-servernum npm run test:e2e
+        run: xvfb-run --auto-servernum npx playwright test

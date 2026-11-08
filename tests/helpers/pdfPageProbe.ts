@@ -55,7 +55,7 @@ function applyPt(m: Matrix, x: number, y: number): [number, number] {
     return [a * x + c * y + e, b * x + d * y + f];
 }
 
-export interface TextRun {
+interface TextRun {
     page: number;
     text: string;
     /** Baseline origin in PDF points (y-up), composed CTM x text matrix. */
@@ -66,7 +66,7 @@ export interface TextRun {
     width: number;
 }
 
-export interface ImageDraw {
+interface ImageDraw {
     page: number;
     name: string;
     x: number;
@@ -75,7 +75,7 @@ export interface ImageDraw {
     h: number;
 }
 
-export interface PageLayout {
+interface PageLayout {
     index: number;
     width: number;
     height: number;
@@ -86,7 +86,7 @@ export interface PageLayout {
     imageXObjects: number;
 }
 
-export interface LayoutReport {
+interface LayoutReport {
     pages: PageLayout[];
     fonts: string[];
     totalImageXObjects: number;
@@ -361,7 +361,7 @@ export function probePdfLayout(pdfBytes: Uint8Array): LayoutReport {
     };
 }
 
-export interface ProbeIssue {
+interface ProbeIssue {
     check: string;
     message: string;
 }

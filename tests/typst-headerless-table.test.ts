@@ -1,36 +1,29 @@
+import { fixtureKey, fixtureAccountFor } from './helpers/domainFixture.js';
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
-const { convertMath } = require('../src/core/export/typst/mathConverter.js');
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
+const { composeDomainDocument } = require('../src/l3b/compose/composeDomainDocument.js');
+const { validateParserDomain } = require('../src/l2/runtimeValidation.js');
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
+const { convertMathForTest: convertMath } = require('./helpers/mathConversion.js');
 const { extractPdfText } = require('./helpers/pdfTextExtract.js');
 const {
     RealWasmSandboxHost,
     repoRoot,
 } = require('./helpers/realWasmSandbox.js');
 
-function bundle(messages: any[], extra: any = {}) {
-    return {
-        schemaVersion: 1,
-        conversation: {
-            key: { providerId: 'gemini', accountId: 'test-account', conversationId: 'c1' },
-            title: 'Table break strike',
-            createdAt: '2026-09-26T10:00:00Z',
-            messages,
-        },
-        assets: [],
-        citations: [],
-        ...extra,
-    };
+function domainFixture(messages: any[], assets: any[] = []) {
+    // Use a valid, trusted Domain graph before testing DocumentAst/Typst behavior.
+    return validateParserDomain({ index: { key: fixtureKey(String('c1'), 'gemini'),   titleSource: "derived",   title: 'Fixture', createdAt: Date.parse('2026-09-26T10:00:00Z') }, detail: { key: fixtureKey(String('c1'), 'gemini'), quality: { status: 'unknown' }, assets, messages } });
 }
 
 function msg(id: string, role: string, blocks: any[], extra: any = {}) {
-    return { id, role, blocks, ...extra };
+    return { id, role, content: blocks, ...extra };
 }
 
-const opts = { assetPath: (a: any) => `assets/${a.id}.png` };
+const opts = {};
 
 function cell(text: string) {
     return { children: [{ type: 'text', text }] };
@@ -42,13 +35,12 @@ function row(...texts: string[]) {
 
 const headerlessTable = {
     type: 'table',
-    id: 't1',
     rows: [row('north-one', 'north-two'), row('south-one', 'south-two')],
 };
 
 test('headerless table keeps empty headers and full body rows', async () => {
-    const b = bundle([msg('m1', 'assistant', [headerlessTable])]);
-    const { payload } = toTypstPayload(b, opts);
+    const b = domainFixture([msg('m1', 'assistant', [headerlessTable])]);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.type, 'table');
     assert.deepStrictEqual(node.headers, []);
@@ -59,19 +51,19 @@ test('headerless table keeps empty headers and full body rows', async () => {
 });
 
 test('thematicBreak becomes a native divider node, not an em-dash paragraph', async () => {
-    const b = bundle([msg('m1', 'assistant', [{ type: 'thematicBreak', id: 'tb1' }])]);
-    const { payload } = toTypstPayload(b, opts);
+    const b = domainFixture([msg('m1', 'assistant', [{ type: 'thematicBreak' }])]);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
-    assert.deepStrictEqual(node, { type: 'thematicBreak' });
+    assert.deepStrictEqual(node, { type: 'thematicBreak', layout: { gapBeforePt: 0, keepWithNext: false, width: 'reading' } });
 });
 
-async function compileOnce(bundle: any) {
+async function compileOnce(domain: any) {
     const host = new RealWasmSandboxHost(repoRoot());
     const compiler = new TypstSandboxCompiler({ host });
-    const assetPath = (a: any) => `/assets/${a.id}.png`;
-    const { payload: document } = toTypstPayload(bundle, { assetPath, convertMath });
+    const resources = Object.fromEntries(domain.detail.assets.map((asset: { id: string }) => [asset.id, `/assets/${asset.id}.png`]));
+    const { payload: document } = renderTypstFixture(composeDomainDocument(domain, fixtureAccountFor(domain)), resources, { convertMath });
     const context = {
-        bundle,
+
         assets: {
             resolve: async (id: string) => null,
         },
@@ -83,10 +75,9 @@ async function compileOnce(bundle: any) {
         const result = await compiler.compile(
             {
                 rendererSchemaVersion: 1,
-                sourceSchemaVersion: 1,
-                bundle,
+
                 document,
-                assetPaths: new Map((bundle.assets ?? []).map((a: any) => [a.id, assetPath(a)])),
+                assetPaths: new Map(Object.entries(resources)),
             } as never,
             context as never,
         );
@@ -97,12 +88,11 @@ async function compileOnce(bundle: any) {
 }
 
 test('real WASM: headerless table, thematicBreak and strikethrough compile with all text selectable', async () => {
-    const b = bundle([msg('m1', 'assistant', [
+    const b = domainFixture([msg('m1', 'assistant', [
         headerlessTable,
-        { type: 'thematicBreak', id: 'tb1' },
+        { type: 'thematicBreak' },
         {
-            type: 'paragraph', id: 'p1',
-            children: [{ type: 'strikethrough', children: [{ type: 'text', text: 'struck-text' }] }],
+            type: 'paragraph', children: [{ type: 'strikethrough', children: [{ type: 'text', text: 'struck-text' }] }],
         },
     ])]);
     const result = await compileOnce(b);

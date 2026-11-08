@@ -2,11 +2,8 @@
  * tests/compat_rules.test.ts
  *
  * Tier 1 unit test for Parser Compatibility Rule Registry.
- * Asserts:
- * 1. Initial state is empty (Section 2.4 / Section 31).
- * 2. Immutable/frozen rule registries.
- * 3. Identity transformation when registry is empty (input === output).
- * 4. Preserves arbitrary text, Markdown, LaTeX, and Unicode exactly.
+ * Verifies every admitted compatibility rule has provenance evidence and
+ * immutable metadata, while ordinary authored Markdown/TeX remains untouched.
  */
 export {};
 const test = require('node:test');
@@ -21,36 +18,28 @@ const {
     GM_MD_001_FENCE_NORMALIZATION,
     preprocessGeminiMarkdown,
     preprocessGeminiLatex,
-} = require('../src/core/export/canonical/compat/rules.js');
+    GM_MD_004_LINE_START_DISPLAY,
+} = require('../src/l1/parsers/gemini/shared/markdownCompatibility.js');
 
-test('Compatibility Rules: GM-MD-001 is admitted with full provenance metadata', () => {
-    assert.strictEqual(Array.isArray(GEMINI_MARKDOWN_COMPAT_RULES), true);
-    assert.strictEqual(GEMINI_MARKDOWN_COMPAT_RULES.length, 1, 'Markdown compat rules must contain admitted GM-MD-001');
-    assert.strictEqual(Object.isFrozen(GEMINI_MARKDOWN_COMPAT_RULES), true, 'Markdown compat rules array must be frozen');
+test('Compatibility Rules: every admitted rule has immutable, unique provenance evidence', () => {
+    assert.ok(Object.isFrozen(GEMINI_MARKDOWN_COMPAT_RULES));
+    assert.ok(Object.isFrozen(GEMINI_TEX_COMPAT_RULES));
+    assert.ok(GEMINI_MARKDOWN_COMPAT_RULES.includes(GM_MD_001_FENCE_NORMALIZATION));
 
-    const rule = GEMINI_MARKDOWN_COMPAT_RULES[0];
-    assert.strictEqual(rule.id, 'GM-MD-001');
-    assert.strictEqual(rule.domain, 'markdown');
-    assert.strictEqual(typeof rule.observedAt, 'string');
-    assert.ok(rule.description.length > 20, 'Rule must have descriptive explanation');
-    assert.strictEqual(rule, GM_MD_001_FENCE_NORMALIZATION);
-
-    // Evidence file must physically exist
-    const evidencePath = path.resolve(__dirname, '..', rule.evidence);
-    assert.ok(fs.existsSync(evidencePath), `Evidence file must exist at ${rule.evidence}`);
-
-    assert.strictEqual(Array.isArray(GEMINI_TEX_COMPAT_RULES), true);
-    assert.strictEqual(GEMINI_TEX_COMPAT_RULES.length, 1, 'TeX compat rules contain admitted GM-TEX-001');
-    assert.strictEqual(Object.isFrozen(GEMINI_TEX_COMPAT_RULES), true, 'TeX compat rules array must be frozen');
-
-    const texRule = GEMINI_TEX_COMPAT_RULES[0];
-    assert.strictEqual(texRule.id, 'GM-TEX-001');
-    assert.strictEqual(texRule.domain, 'tex');
-    assert.strictEqual(typeof texRule.observedAt, 'string');
-    assert.ok(texRule.description.length > 20, 'Rule must have descriptive explanation');
-
-    const texEvidencePath = path.resolve(__dirname, '..', texRule.evidence);
-    assert.ok(fs.existsSync(texEvidencePath), `Evidence file must exist at ${texRule.evidence}`);
+    const all = [...GEMINI_MARKDOWN_COMPAT_RULES, ...GEMINI_TEX_COMPAT_RULES, GM_MD_004_LINE_START_DISPLAY];
+    assert.strictEqual(new Set(all.map(rule => rule.id)).size, all.length, 'rule IDs must be unique across registries');
+    for (const rule of all) {
+        assert.match(rule.id, /^GM-(MD|TEX)-\d{3}$/);
+        assert.strictEqual(rule.domain, rule.id.startsWith('GM-MD-') ? 'markdown' : 'tex');
+        assert.ok(Object.isFrozen(rule), `rule ${rule.id} must be frozen`);
+        assert.ok(Number.isFinite(Date.parse(rule.observedAt)), `rule ${rule.id} needs a valid observation date`);
+        assert.ok(rule.description.trim().length > 20, `rule ${rule.id} needs an explanation`);
+        assert.match(rule.evidence, /^tests\/fixtures\//);
+        assert.ok(fs.statSync(path.resolve(__dirname, '..', rule.evidence)).isFile(),
+            `rule ${rule.id} must reference an existing evidence file`);
+    }
+    assert.ok(all.some(rule => rule.id === 'GM-MD-002'), 'the evidenced table-math compatibility rule must remain admitted');
+    assert.ok(all.some(rule => rule.id === 'GM-TEX-001'), 'the evidenced mathscr compatibility rule must remain admitted');
 });
 
 test('Compatibility Rules: preprocessGeminiMarkdown preserves standard Markdown structures', () => {

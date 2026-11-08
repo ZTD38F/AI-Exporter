@@ -7,7 +7,7 @@
  * 拉字体/WASM, 不允许任何遥测外发。
  *
  * 用法 (Phase D sandbox 落地后一行接入):
- *   import { withNetworkGate, assertZeroExternalRequests } from '../helpers/compileNetworkGate.js';
+ *   import { withNetworkGate, assertZeroExternalRequests } from './compileNetworkGate.js';
  *   const gated = await withNetworkGate(() => sandboxCompiler.compile(payload));
  *   assertZeroExternalRequests(gated, 'typst-sandbox-compile');
  *   const pdfBytes = gated.result;
@@ -31,13 +31,13 @@
  *    阶段运行。
  */
 
-export interface NetworkGateViolation {
+interface NetworkGateViolation {
     kind: 'fetch' | 'xhr' | 'websocket';
     url: string;
     method?: string;
 }
 
-export interface NetworkGateReport<T> {
+interface NetworkGateReport<T> {
     /** 被测函数的返回值 (原样透传)。 */
     result: T;
     /** 执行期间所有被拦截到的网络调用 (含 data:/blob:)。 */

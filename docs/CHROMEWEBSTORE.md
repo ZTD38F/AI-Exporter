@@ -1,6 +1,6 @@
 # Chrome Web Store Publication & Permissions Justification
 
-This document tracks and maintains all required metadata, permissions justification, and privacy declarations for submitting **Gemini Exporter** to the Chrome Web Store.
+Current Chrome Web Store listing copy and permission rationale. Verify the published wording and the release `manifest.json` before submitting changes.
 
 ---
 
@@ -20,21 +20,33 @@ This document tracks and maintains all required metadata, permissions justificat
 
 ## 🔒 Permissions Justification (Single-Purpose Policy)
 
-Chrome Web Store enforces a strict single-purpose policy requiring explicit justifications for all requested permissions in `manifest.json`:
+The release `manifest.json` declares these required browser permissions:
 
 | Permission | Justification / Usage in Extension |
 | :--- | :--- |
-| **`storage`** | Stores user configuration settings (selected export format, toggle states) and local conversation index metadata (`gemini_conversations`, `exportedIds`) to enable fast incremental sync across sessions without re-querying all conversations. |
+| **`storage`** | Stores user configuration settings (selected export format, toggle states) and local conversation records and export history to enable fast incremental sync across sessions without re-querying all conversations. |
+| **`scripting`** | Registers and activates source scripts for platforms whose optional site access has been granted. |
+| **`activeTab`** | Lets the explicitly opened popup inspect the current tab to identify the conversation to export. |
 | **`unlimitedStorage`** | Required to persist conversation lists and metadata indexes for power users who have hundreds or thousands of Gemini conversations in their local browser sandbox. |
 
 ---
 
 ## 🌐 Host Permissions Justification
 
-| Host Pattern | Justification / Usage |
-| :--- | :--- |
-| **`https://gemini.google.com/*`** | Core target host. Required to inspect the conversation DOM, establish messaging with Gemini web app, and synchronize user-initiated chat exports. |
-| **`https://*.googleusercontent.com/*`** | Required to fetch user-uploaded attachments (PDFs, docs) and AI-generated image blobs displayed within conversation turns for offline packaging. |
+All platform hosts are **optional** in the release manifest. Onboarding and
+**Site access** request the conversation and attachment sites only for selected
+platforms. Already authorized platforms are hidden from the request list;
+unchecking a choice does not revoke previously granted access.
+
+| Platform | Optional host patterns | Justification |
+| :--- | :--- | :--- |
+| **Gemini** | `gemini.google.com`, `*.googleusercontent.com`, `*.usercontent.google.com`, `drive.google.com`, `lh3.google.com`, `*.gstatic.com` | Read requested conversations and retrieve associated images/files directly from Google. |
+| **ChatGPT (experimental)** | `chatgpt.com`, `chat.openai.com`, `images.openai.com` | Identify the signed-in account/workspace and retrieve requested conversations and images. |
+| **Claude (experimental)** | `claude.ai` | Identify the current organization and retrieve requested conversations and attachments. |
+| **Grok (experimental)** | `grok.com`, `assets.grok.com` | Retrieve requested conversations and available attachments using the signed-in Grok tab. |
+
+Use the release `manifest.json` as the authoritative permission list; temporary
+required permissions used for local staging must never enter a store package.
 
 ---
 
@@ -48,7 +60,7 @@ Chrome Web Store enforces a strict single-purpose policy requiring explicit just
 
 ## 🏷️ Title & Promotional Assets Policy Compliance (Red Nickel Prevention)
 
-In compliance with Chrome Web Store Developer Program Policies (*Ensuring Responsible Marketing and Monetization - Impersonation and Intellectual Property*):
-- **No Ranking or Status Claims**: The extension name, description, and promotional assets (`store_assets/promo_marquee_1400x560.png`, `store_assets/promo_tile_440x280.png`) must NEVER contain promotional buzzwords, ranking claims, or deceptive status indicators such as `Free`, `100% Free`, `#1`, `Best`, `Top`, `New`, `Recommended`, or `Premium`.
-- **Factual & Feature-Oriented**: Titles and descriptions focus strictly on factual functionality (e.g., `Bulk Export All Chats`, `Client-Side • Unlimited • Offline`).
+Store listing titles, descriptions and graphics must describe the extension accurately and avoid deceptive affiliation, ranking or endorsement claims:
+- **No misleading status or endorsement**: Avoid unsupported superlatives or official-affiliation claims (such as `#1`, `Best`, `Official`, or `Recommended`). A factual statement about free pricing is not a ranking or endorsement claim; it must remain accurate.
+- **Factual & Feature-Oriented**: Titles and descriptions focus strictly on factual functionality (e.g., `Save All Your Chats`, `Client-Side • Unlimited • Offline`).
 

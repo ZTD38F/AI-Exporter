@@ -5,6 +5,7 @@ StreamSettledConfig parametrization, and ChatPlatformDriver turn pipeline orches
 """
 
 import unittest
+from unittest.mock import patch
 import time
 import os
 import sys
@@ -88,7 +89,7 @@ class MockCustomDriver(ChatPlatformDriver):
     def get_selectors(self) -> Dict[str, str]:
         return {"editor": "#custom-input", "send": "#custom-send"}
 
-    def prepare_turn_environment(self, is_image: bool = False) -> bool:
+    def prepare_turn_environment(self) -> bool:
         self.env_prepared = True
         return True
 
@@ -96,7 +97,6 @@ class MockCustomDriver(ChatPlatformDriver):
         self,
         prompt_text: str,
         max_wait: int = 300,
-        is_image: bool = False,
         cooldown_seconds: float = 6.0
     ) -> List[AtomicAction]:
         class MockStageAction(AtomicAction):
@@ -147,82 +147,94 @@ class MockCustomDriver(ChatPlatformDriver):
 class TestPipelineDecoupling(unittest.TestCase):
     """Test suite for Phase 4 decoupled pipeline architecture."""
 
-    def test_stream_settled_config_defaults(self):
-        """Verify StreamSettledConfig default values match GeminiSelectors."""
-        cfg = StreamSettledConfig()
-        self.assertEqual(cfg.stop_btn_selector, GeminiSelectors.STOP_BTN)
-        self.assertEqual(cfg.send_btn_selector, GeminiSelectors.SEND_BTN_NOT_STOP)
-        self.assertEqual(cfg.editor_selector, GeminiSelectors.EDITOR)
-        self.assertEqual(cfg.stream_complete_flag, "__geminiLastStreamComplete")
-        self.assertIn("you stopped this response", cfg.abort_keywords)
-        self.assertIn("something went wrong", cfg.error_keywords)
+    def test_stream_settled_config_is_only_page_selectors(self):
+        cfg = StreamSettledConfig(stop_btn_selector="#custom-stop")
+        self.assertEqual(cfg.stop_btn_selector, '#custom-stop')
+        self.assertEqual(cfg.model_response_selector, GeminiSelectors.MODEL_RESPONSE)
+        self.assertTrue(all(name.endswith('_selector') for name in cfg.__dict__))
 
-    def test_stream_settled_config_custom(self):
-        """Verify StreamSettledConfig custom injection."""
-        cfg = StreamSettledConfig(
-            stop_btn_selector="#claude-stop",
-            send_btn_selector="#claude-send",
-            stream_complete_flag="__claudeComplete",
-            abort_keywords=("claude aborted",),
-            error_keywords=("rate limit exceeded",)
-        )
-        self.assertEqual(cfg.stop_btn_selector, "#claude-stop")
-        self.assertEqual(cfg.send_btn_selector, "#claude-send")
-        self.assertEqual(cfg.stream_complete_flag, "__claudeComplete")
-        self.assertIn("claude aborted", cfg.abort_keywords)
+    def settled_state(self, **changes):
+        return dict(newReply=True, busy=False, editorReady=True, hasContent=True,
+                    content='OK', error=None, **changes)
 
-    def test_await_stream_settled_action_success_via_config(self):
-        """Verify AwaitStreamSettledAction uses custom config and evaluates success."""
-        cfg = StreamSettledConfig(
-            stop_btn_selector="#custom-stop",
-            stream_complete_flag="__customComplete"
-        )
-        action = AwaitStreamSettledAction(timeout=5, config=cfg)
+    def run_wait(self, states, timeout=12):
+        cdp = MockCDP()
+        samples = iter(states)
+        cdp.eval_return = lambda _script: next(samples)
+        with patch('scripts.framework.pipeline.actions.time.sleep'), \
+             patch('scripts.framework.pipeline.actions.time.monotonic', side_effect=range(100)):
+            return AwaitStreamSettledAction(timeout=timeout).execute(None, cdp), cdp
 
-        mock_cdp = MockCDP(eval_return={
-            "hasStop": False,
-            "hasSend": True,
-            "isEditorReady": True,
-            "isStreamingDOM": False,
-            "netCompleted": True,
-            "currCount": 1,
-            "lastLen": 120,
-            "lastSnippet": "Hello from custom model",
-            "hasImages": False,
-            "hasRetry": False,
-            "toast": None
-        })
+    def test_short_text_and_image_only_reply_settle_without_extension_events(self):
+        for content in ('OK', '<img src="blob:actual-image">'):
+            state = self.settled_state(); state['content'] = content
+            result, cdp = self.run_wait([state] * 4)
+            self.assertTrue(result.success)
+            self.assertNotIn('__testStreamState', cdp.eval_history[-1])
 
-        result = action.execute(None, mock_cdp)
-        self.assertTrue(result.success)
-        self.assertIn("流式回复权威完成", result.message)
-        self.assertTrue(any("#custom-stop" in expr for expr in mock_cdp.eval_history))
-        self.assertTrue(any("__customComplete" in expr for expr in mock_cdp.eval_history))
+    def test_busy_stale_or_empty_reply_cannot_settle(self):
+        for key, value in [('busy', True), ('newReply', False), ('editorReady', False),
+                           ('hasContent', False)]:
+            with self.subTest(key=key):
+                state = self.settled_state(); state[key] = value
+                result, _ = self.run_wait([state] * 5, timeout=5)
+                self.assertFalse(result.success)
 
-    def test_await_stream_settled_action_fail_fast_abort(self):
-        """Verify AwaitStreamSettledAction fast-fails upon detecting abort keywords."""
-        cfg = StreamSettledConfig(
-            abort_keywords=("custom abort triggered",)
-        )
-        action = AwaitStreamSettledAction(timeout=5, config=cfg)
-
-        mock_cdp = MockCDP(eval_return={
-            "hasStop": False,
-            "hasSend": True,
-            "isEditorReady": True,
-            "isStreamingDOM": False,
-            "netCompleted": False,
-            "currCount": 1,
-            "lastLen": 50,
-            "lastSnippet": "Warning: custom abort triggered right here",
-            "hasImages": False,
-            "hasRetry": False,
-            "toast": None
-        })
-
-        result = action.execute(None, mock_cdp)
+    def test_timeout_reports_failed_conditions_without_authored_content(self):
+        state = self.settled_state()
+        state.update(newReply=False, modelCount=3, beforeSendCount=3, content='private answer')
+        result, _ = self.run_wait([state] * 5, timeout=5)
         self.assertFalse(result.success)
-        self.assertIn("检测到回复被异常中断掐死", result.message)
+        self.assertFalse(result.data['newReply'])
+        self.assertEqual(result.data['modelCount'], 3)
+        self.assertEqual(result.data['contentLength'], len('private answer'))
+        self.assertEqual(result.data['stableSamples'], 0)
+        self.assertNotIn('private answer', result.message)
+        self.assertNotIn('content', result.data)
+
+    def test_same_length_changes_reset_stability_and_busy_resets_it(self):
+        ready = self.settled_state()
+        changed = dict(ready, content='NO')
+        busy = dict(changed, busy=True)
+        states = [ready] * 3 + [changed] * 3 + [busy] + [changed] * 4
+        result, cdp = self.run_wait(states, timeout=20)
+        self.assertTrue(result.success)
+        self.assertEqual(len(cdp.eval_history), len(states))
+
+    def test_error_words_are_content_but_explicit_retry_is_a_page_failure(self):
+        state = self.settled_state(); state['content'] = 'Explain why something went wrong.'
+        self.assertTrue(self.run_wait([state] * 4)[0].success)
+        state['error'] = 'Page shows a retry control'
+        self.assertFalse(self.run_wait([state])[0].success)
+
+    def test_failed_current_response_can_retry_once_then_must_stabilize(self):
+        failed = dict(self.settled_state(), error='Page shows a retry control', replyId='current')
+        ready = self.settled_state(replyId='current'); ready['content'] = 'Recovered answer'
+        result, cdp = self.run_wait([failed, True] + [ready] * 4)
+        self.assertTrue(result.success)
+        self.assertIn('"current"', cdp.eval_history[1])
+        self.assertIn('retry.click()', cdp.eval_history[1])
+        self.assertNotIn('targetBtn.click()', cdp.eval_history[1])
+        result, cdp = self.run_wait([failed, True, failed])
+        self.assertFalse(result.success)
+        self.assertEqual(len(cdp.eval_history), 3, 'a second provider retry must not be clicked')
+
+    def test_retry_cannot_resubmit_an_old_reply_or_a_replaced_target(self):
+        failed = dict(self.settled_state(), error='Page shows a retry control', replyId='current')
+        failed['newReply'] = False
+        result, cdp = self.run_wait([failed])
+        self.assertFalse(result.success)
+        self.assertEqual(len(cdp.eval_history), 1)
+        failed['newReply'] = True
+        result, _ = self.run_wait([failed, False])
+        self.assertFalse(result.success)
+
+    def test_retry_can_preserve_a_draft_but_cannot_accept_unchanged_failed_content(self):
+        failed = dict(self.settled_state(), error='Page shows a retry control', replyId='current')
+        ready = dict(self.settled_state(), replyId='current', editorReady=False, content='Recovered answer')
+        self.assertTrue(self.run_wait([failed, True] + [ready] * 4)[0].success)
+        ready['content'] = failed['content']
+        self.assertFalse(self.run_wait([failed, True] + [ready] * 8, timeout=7)[0].success)
 
     def test_mock_driver_pipeline_orchestration(self):
         """Verify SerialActionExecutor executes custom platform driver's pipeline."""
@@ -236,7 +248,6 @@ class TestPipelineDecoupling(unittest.TestCase):
             driver=driver,
             prompt_text="Hello Multi-AI World",
             max_wait=30,
-            is_image=False,
             cooldown_seconds=0.0
         )
 
@@ -283,7 +294,7 @@ class TestPipelineDecoupling(unittest.TestCase):
         driver = GeminiPlatformDriver(mock_cdp)
 
         # 1. Test build_turn_pipeline
-        actions = driver.build_turn_pipeline("Test Gemini Prompt", max_wait=60, is_image=False, cooldown_seconds=0.0)
+        actions = driver.build_turn_pipeline("Test Gemini Prompt", max_wait=60, cooldown_seconds=0.0)
         self.assertEqual(len(actions), 4)  # AssertIdle, StagePrompt, SingleClickSend, AwaitStreamSettled
         self.assertIsInstance(actions[0], AssertIdleAction)
         self.assertIsInstance(actions[1], StagePromptAction)
@@ -291,7 +302,7 @@ class TestPipelineDecoupling(unittest.TestCase):
         self.assertIsInstance(actions[3], AwaitStreamSettledAction)
 
         # 2. Test extract_turn_result
-        turn_res = driver.extract_turn_result("Test Gemini Prompt", duration=3.5, is_image=False)
+        turn_res = driver.extract_turn_result("Test Gemini Prompt", duration=3.5)
         self.assertTrue(turn_res.success)
         self.assertEqual(turn_res.prompt, "Test Gemini Prompt")
         self.assertEqual(turn_res.model_response, "Gemini response text")

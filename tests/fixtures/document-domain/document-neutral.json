@@ -1,0 +1,159 @@
+{
+  "index": {
+    "key": {
+      "accountId": "10000000-0000-4000-8000-000000000008",
+      "conversationId": "c"
+    },
+    "title": "中文对话",
+    "titleSource": "derived"
+  },
+  "detail": {
+    "assets": [
+      {
+        "id": "image",
+        "kind": "image",
+        "name": "image.png"
+      },
+      {
+        "id": "file",
+        "kind": "file",
+        "name": "report.pdf",
+        "mediaType": "application/pdf",
+        "byteLength": 1234567
+      }
+    ],
+    "messages": [
+      {
+        "id": "a",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "code",
+            "language": "python",
+            "meta": "generated",
+            "code": "print(1)"
+          },
+          {
+            "type": "table",
+            "caption": [
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Rich caption"
+                  }
+                ]
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "H1"
+                      }
+                    ],
+                    "colSpan": 2
+                  }
+                ]
+              },
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "H2"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "H3"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Body"
+                      }
+                    ],
+                    "colSpan": 2
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "image",
+            "assetId": "image",
+            "caption": [
+              {
+                "type": "emphasis",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Image caption"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "file",
+            "assetId": "file",
+            "description": [
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Description"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "citations": [
+          {
+            "id": "s",
+            "title": "Reference",
+            "url": "https://example.com"
+          }
+        ],
+        "reasoning": [
+          {
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "中文推理"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "quality": {
+      "status": "unknown"
+    },
+    "key": {
+      "accountId": "10000000-0000-4000-8000-000000000008",
+      "conversationId": "c"
+    }
+  }
+}

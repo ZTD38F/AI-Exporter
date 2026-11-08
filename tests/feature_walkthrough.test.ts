@@ -1,213 +1,126 @@
-export {};
-// tests/feature_walkthrough.test.ts - Unit tests for Two-Track Walkthrough and Feature Releases Architecture
-const test = require('node:test');
-const assert = require('node:assert');
-const { __setModuleOverride } = require('../src/core/utils/moduleOverrides.js');
-
-// Mock browser environment
-let mockStorage: Record<string, any> = {};
-(global as any).chrome = {
-    storage: {
-        local: {
-            get: async (keys: string[]) => {
-                const res: Record<string, any> = {};
-                for (const k of keys) {
-                    if (mockStorage[k] !== undefined) res[k] = mockStorage[k];
-                }
-                return res;
-            },
-            set: async (items: Record<string, any>) => {
-                Object.assign(mockStorage, items);
-            }
-        }
-    },
-    runtime: {
-        getManifest: () => ({ version: '1.5.0' }),
-        openOptionsPage: () => {}
+import test, { before, after, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { chromium, type Browser, type Page } from 'playwright';
+import { mount, read } from './helpers/uiPortHarness.js';
+import { indexStorage } from './helpers/indexStorage.js';
+import { getSettings, updateSettings } from '../src/application/settings/index.js';
+import { isVersionGreater } from '../src/shared/utils/pathUtils.js';
+import { FEATURE_RELEASES, getLatestEligibleFeature } from '../src/ui/guidance/featureReleases.js';
+let browser: Browser, page: Page;
+before(async () => { browser = await chromium.launch({ chromiumSandbox: true, headless: true }); });
+afterEach(async () => { await page?.close(); }); after(async () => { await browser?.close(); });
+test('feature version comparison uses numeric components at the current shared owner', () => {
+    for (const [a, b, expected] of [['1.10.0', '1.9.0', true], ['1.5.0', '1.5.0', false], ['1.4.0', '1.5.0', false], ['2.0.0', '1.99.99', true]] as const) assert.equal(isVersionGreater(a, b), expected);
+});
+test('featureReleases - latest eligible release arbitration excludes old, future and unusable baselines', () => {
+    assert.deepEqual(FEATURE_RELEASES, [{ version: '2.1.0', kind: 'platforms' }, { version: '2.0.0', kind: 'upgrade' }], 'only approved v2 announcements are eligible');
+    assert.equal(getLatestEligibleFeature('1.4.0', '1.8.1'), null);
+    // Supply explicit announcements only for testing the arbitration algorithm.
+    const previous = FEATURE_RELEASES.slice();
+    FEATURE_RELEASES.push({ version: '1.7.0', stepId: 'export' }, { version: '1.5.0', stepId: 'live_save' });
+    try {
+    assert.deepEqual(getLatestEligibleFeature('1.4.0', '1.8.1'), { version: '1.7.0', stepId: 'export' });
+    assert.deepEqual(getLatestEligibleFeature('1.4.0', '1.5.0'), { version: '1.5.0', stepId: 'live_save' });
+    for (const baseline of ['', 'invalid', '1.7.0', '1.8.1', '2.0.0']) assert.equal(getLatestEligibleFeature(baseline, '1.8.1'), null);
+    } finally { FEATURE_RELEASES.splice(0, FEATURE_RELEASES.length, ...previous); }
+});
+test('2.0 release requires a previous version below 2.0.0, not a new installation', () => {
+    assert.deepEqual(getLatestEligibleFeature('1.8.1', '2.0.0'), { version: '2.0.0', kind: 'upgrade' });
+    assert.deepEqual(getLatestEligibleFeature('1.7.0', '2.0.1'), { version: '2.0.0', kind: 'upgrade' });
+    for (const [seen, current] of [['2.0.0', '2.0.0'], ['2.0.0', '2.0.1'],
+        ['1.8.1', '1.8.1'], ['', '2.0.0'], ['invalid', '2.0.0']]) {
+        assert.equal(getLatestEligibleFeature(seen, current), null);
     }
-};
-
-const mockElements = new Map<string, any>();
-function createMockElement(id: string, tagName: string = 'div') {
-    const listeners: Record<string, ((...args: any[]) => void)[]> = {};
-    const el: any = {
-        id,
-        tagName: tagName.toUpperCase(),
-        isConnected: true,
-        offsetParent: {},
-        style: {},
-        children: [],
-        classList: {
-            add: () => {},
-            remove: () => {},
-            contains: () => false,
-            toggle: () => {}
-        },
-        getBoundingClientRect: () => ({ left: 100, top: 100, right: 200, bottom: 150, width: 100, height: 50 }),
-        scrollIntoView: () => {},
-        appendChild: (child: any) => {
-            el.children.push(child);
-            return child;
-        },
-        removeChild: (child: any) => {
-            el.children = el.children.filter((c: any) => c !== child);
-        },
-        setAttribute: () => {},
-        getAttribute: () => null,
-        removeAttribute: () => {},
-        addEventListener: (event: string, fn: (...args: any[]) => void) => {
-            listeners[event] = listeners[event] || [];
-            listeners[event].push(fn);
-        },
-        removeEventListener: (event: string, fn: (...args: any[]) => void) => {
-            if (listeners[event]) {
-                listeners[event] = listeners[event].filter(cb => cb !== fn);
-            }
-        },
-        dispatchEvent: (eventObj: any) => {
-            const ev = typeof eventObj === 'string' ? { type: eventObj } : eventObj;
-            if (listeners[ev.type]) {
-                listeners[ev.type].forEach(cb => cb(ev));
-            }
-        },
-        click: () => {
-            if (listeners['click']) {
-                listeners['click'].forEach(cb => cb({ type: 'click' }));
-            }
-        },
-        closest: () => null,
-        innerHTML: '',
-        innerText: '',
-        textContent: '',
-        checked: false
-    };
-    return el;
-}
-
-(global as any).document = {
-    getElementById: (id: string) => mockElements.get(id) || null,
-    querySelector: (sel: string) => null,
-    querySelectorAll: (sel: string) => [],
-    createElement: (tag: string) => createMockElement(`dyn_${Math.random()}`, tag),
-    body: {
-        appendChild: () => {},
-        removeChild: () => {},
-        classList: { toggle: () => {}, add: () => {}, remove: () => {} }
-    },
-    addEventListener: () => {},
-    removeEventListener: () => {}
-};
-
-(global as any).window = {
-    innerWidth: 1280,
-    innerHeight: 800,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    location: { search: '' }
-};
-
-__setModuleOverride('I18n', {
-    t: (k: string) => k
+});
+test('last seen feature version persists through Application Settings', async () => {
+    const env = indexStorage(); try {
+        await updateSettings({ lastSeenFeatureVersion: '1.5.0' }); assert.equal((await getSettings()).lastSeenFeatureVersion, '1.5.0');
+        await updateSettings({ lastSeenFeatureVersion: '1.7.0' }); assert.equal((await getSettings()).lastSeenFeatureVersion, '1.7.0');
+    } finally { env.restore(); }
+});
+test('Options shows the 2.0 notice once for upgrades and opens the existing feedback form', async () => {
+    page = await browser.newPage();
+    await mount(page, 'options', { manifestVersion: '2.0.0', settings: { lastSeenFeatureVersion: '1.8.1' } });
+    await page.getByRole('heading', { name: 'Gemini Exporter 2.0 is Here!' }).waitFor();
+    assert.match(await page.locator('.tour-upgrade-copy').innerText(), /Your original Gemini chats are safe/);
+    assert.deepEqual((await read(page, 'patches')).filter((patch: { lastSeenFeatureVersion?: string }) =>
+        patch.lastSeenFeatureVersion), [{ lastSeenFeatureVersion: '2.0.0' }]);
+    await page.getByRole('button', { name: 'Leave Feedback' }).click();
+    assert.equal(await page.locator('.tour-popover').count(), 0);
+    assert.deepEqual(await read(page, 'openedUrls'), ['https://tally.so/r/Y56ZBB?source=extension']);
+});
+test('Options does not show the 2.0 notice on a new 2.0 installation', async () => {
+    page = await browser.newPage();
+    await mount(page, 'options', { manifestVersion: '2.0.0', settings: { lastSeenFeatureVersion: '2.0.0' } });
+    await page.locator('#list .item').waitFor();
+    assert.equal(await page.locator('.tour-popover').count(), 0);
+    assert.deepEqual(await read(page, 'patches'), []);
+});
+test('TourGuide - Spotlight activates, excludes competing modals and dismisses exactly once', async () => {
+    page = await browser.newPage(); await mount(page, 'options'); await page.locator('#list .item').waitFor();
+    const result = await page.evaluate(() => { const tour = Reflect.get(window, 'testUi').tour; const h = Reflect.get(window, 'harness'); h.dismissed = 0;
+        return [tour.startFeatureSpotlight('1.7.0', 'export', () => h.dismissed++), tour.startFeatureSpotlight('1.5.0', 'live_save', () => h.dismissed++)]; });
+    assert.deepEqual(result, [true, false]); await page.getByRole('button', { name: 'Got it', exact: true }).click();
+    assert.equal(await page.locator('[role=dialog]').count(), 0); assert.equal(await read(page, 'dismissed'), 1);
+    await page.evaluate(() => Reflect.get(window, 'testUi').tour.dismissFeatureSpotlight()); assert.equal(await read(page, 'dismissed'), 1);
+});
+test('format Spotlight dismissal restores focus without initiating PDF/HTML export', async () => {
+    page = await browser.newPage(); await mount(page, 'options'); await page.locator('#format').focus();
+    await page.evaluate(() => Reflect.get(window, 'testUi').tour.startFeatureSpotlight('1.7.0', 'format', () => {}));
+    assert.equal(await page.locator('[role=dialog]').count(), 1); await page.getByRole('button', { name: 'Got it', exact: true }).click();
+    assert.equal(await page.locator('#format').evaluate(el => document.activeElement === el), true);
+    assert.deepEqual(await read(page, 'exports'), []);
 });
 
-const StorageService = require('../src/core/storage/storageService.js');
-const { FEATURE_RELEASES, getLatestEligibleFeature } = require('../src/ui/tour/featureReleases.js');
-const TourGuide = require('../src/ui/tour/tourGuide.js');
-
-test('StorageService - isVersionGreater version comparison', () => {
-    assert.strictEqual(typeof StorageService.isVersionGreater, 'function');
-
-    // Standard cases
-    assert.strictEqual(StorageService.isVersionGreater('1.5.0', '1.4.3'), true);
-    assert.strictEqual(StorageService.isVersionGreater('1.4.3', '1.5.0'), false);
-    assert.strictEqual(StorageService.isVersionGreater('1.5.0', '1.5.0'), false);
-
-    // With 'v' prefix
-    assert.strictEqual(StorageService.isVersionGreater('v1.5.0', '1.4.3'), true);
-    assert.strictEqual(StorageService.isVersionGreater('1.5.0', 'v1.4.3'), true);
-
-    // Major version changes
-    assert.strictEqual(StorageService.isVersionGreater('2.0.0', '1.9.9'), true);
-    assert.strictEqual(StorageService.isVersionGreater('1.9.9', '2.0.0'), false);
-
-    // Patch differences
-    assert.strictEqual(StorageService.isVersionGreater('1.5.1', '1.5.0'), true);
-    assert.strictEqual(StorageService.isVersionGreater('1.5.0', '1.5.1'), false);
+for (const language of ['en', 'zh']) test(`2.1 highlights authorize sites and resume at the account switcher (${language})`, async () => {
+    page = await browser.newPage();
+    await mount(page, 'options', { manifestVersion: '2.1.0', settings: { language, lastSeenFeatureVersion: '2.0.0' } });
+    const heading = language === 'en' ? 'Multi-platform support (Beta)' : '多平台支持（测试版）';
+    await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+    assert.deepEqual((await read(page, 'patches')).filter((patch: { lastSeenFeatureVersion?: string }) =>
+        patch.lastSeenFeatureVersion), [{ lastSeenFeatureVersion: '2.1.0' }]);
+    await page.locator('#tourNextBtn').click();
+    await page.locator('#btnPlatformPermissions').click();
+    await page.locator('#platformAuthorizationDone').waitFor();
+    assert.equal(await page.locator('.tour-popover').count(), 1);
+    await page.locator('#btnAuthorizePlatforms').click();
+    await page.locator('.platform-permission-row[data-platform="chatgpt"]').waitFor({ state: 'hidden' });
+    await page.locator('#platformAuthorizationDone').click();
+    await page.getByRole('heading', { name: language === 'en' ? 'Switch platforms and accounts' : '切换平台与账号', exact: true }).waitFor();
+    await page.locator('#accountIdSelect').selectOption({ index: 1 });
+    await page.locator('#tourPrevBtn').click();
+    await page.locator('#tourNextBtn').click();
+    await page.locator('#tourNextBtn').click();
+    assert.equal(await page.locator('.tour-popover').count(), 0);
+});
+test('2.1 highlights are eligible for upgrades and not replayed for seen or fresh installs', () => {
+    for (const previous of ['1.8.1', '2.0.0', '2.0.1'])
+        assert.deepEqual(getLatestEligibleFeature(previous, '2.1.0'), { version: '2.1.0', kind: 'platforms' });
+    for (const previous of ['2.1.0', 'invalid']) assert.equal(getLatestEligibleFeature(previous, '2.1.0'), null);
+});
+test('installation tutorial starts with authorization and continues through account switching', async () => {
+    page = await browser.newPage();
+    await mount(page, 'options', { manifestVersion: '2.1.0', geminiAccess: false }, '?startTour=1');
+    await page.getByRole('heading', { name: 'Authorize AI platforms', exact: true }).waitFor();
+    assert.equal(await page.locator('#tourNextBtn').isDisabled(), true);
+    assert.equal(await page.locator('#tourSkipBtn').count(), 0);
+    assert.equal(await page.locator('.tour-coach-card').count(), 2);
+    await page.locator('#btnAuthorizePlatforms').click();
+    await page.getByRole('heading', { name: 'Connect an account', exact: true }).waitFor();
+    await page.locator('#btnDetectAccount:enabled').click();
+    await page.getByRole('heading', { name: 'Switch platforms and accounts', exact: true }).waitFor();
 });
 
-test('featureReleases - getLatestEligibleFeature arbitration logic', () => {
-    assert.ok(Array.isArray(FEATURE_RELEASES), 'FEATURE_RELEASES should be an array');
-    assert.ok(FEATURE_RELEASES.length > 0, 'FEATURE_RELEASES should have at least 1 feature');
-    assert.strictEqual(FEATURE_RELEASES[0].featureId, 'pdf_html_export');
-    assert.strictEqual(FEATURE_RELEASES[0].version, '1.7.0');
-
-    for (const lastSeen of ['', '1.4.0', '1.5.0', '1.6.3']) {
-        assert.strictEqual(getLatestEligibleFeature(lastSeen, '1.7.0')?.featureId, 'pdf_html_export');
-    }
-    assert.strictEqual(getLatestEligibleFeature('1.7.0', '1.7.0'), null);
-    assert.strictEqual(getLatestEligibleFeature('1.6.3', '1.6.3'), null);
-
-    // Case 1: Returning user with no recorded feature version ('') on v1.5.0 -> Eligible
-    const featNew = getLatestEligibleFeature('', '1.5.0');
-    assert.ok(featNew !== null, 'Empty lastSeen should be eligible for 1.5.0 spotlight');
-    assert.strictEqual(featNew?.featureId, 'live_save');
-
-    // Case 2: Returning user with older version '1.4.0' on v1.5.0 -> Eligible
-    const featUpgraded = getLatestEligibleFeature('1.4.0', '1.5.0');
-    assert.ok(featUpgraded !== null, '1.4.0 user should be eligible for 1.5.0');
-    assert.strictEqual(featUpgraded?.featureId, 'live_save');
-
-    // Case 3: User already visited '1.5.0' -> NOT eligible
-    const featVisited = getLatestEligibleFeature('1.5.0', '1.5.0');
-    assert.strictEqual(featVisited, null, '1.5.0 user should not be shown 1.5.0 again');
-
-    // Case 4: App is version 1.4.3 (future release 1.5.0 not yet released to user) -> NOT eligible
-    const featUnreleased = getLatestEligibleFeature('1.4.0', '1.4.3');
-    assert.strictEqual(featUnreleased, null, 'Feature version 1.5.0 should not show if app is 1.4.3');
-});
-
-test('StorageService - last seen feature version persistence', async () => {
-    mockStorage = {};
-    const initialVer = await StorageService.getLastSeenFeatureVersion();
-    assert.strictEqual(initialVer, '0.0.0');
-
-    await StorageService.setLastSeenFeatureVersion('1.5.0');
-    const savedVer = await StorageService.getLastSeenFeatureVersion();
-    assert.strictEqual(savedVer, '1.5.0');
-});
-
-test('TourGuide - Feature Spotlight mode activation and dismissal', async () => {
-    mockStorage = {};
-    const mockDiskToggle = createMockElement('liveSaveDiskToggle', 'input');
-    mockElements.set('liveSaveDiskToggle', mockDiskToggle);
-
-    assert.strictEqual(typeof TourGuide.startFeatureSpotlight, 'function');
-    assert.strictEqual(typeof TourGuide.dismissFeatureSpotlight, 'function');
-
-    await TourGuide.startFeatureSpotlight('live_save', '1.5.0');
-    assert.strictEqual(TourGuide.isActive(), true);
-
-    await TourGuide.dismissFeatureSpotlight();
-    assert.strictEqual(TourGuide.isActive(), false);
-
-    // Verify storage was updated with version '1.5.0'
-    const storedVer = await StorageService.getLastSeenFeatureVersion();
-    assert.strictEqual(storedVer, '1.5.0');
-});
-
-test('TourGuide - PDF / HTML spotlight dismisses and focuses format without starting export', async () => {
-    mockStorage = {};
-    const format = createMockElement('format', 'select');
-    let focused = false;
-    format.focus = () => { focused = true; };
-    mockElements.set('format', format);
-    const action = createMockElement('tourSpotlightActionBtn', 'button');
-    mockElements.set('tourSpotlightActionBtn', action);
-    await TourGuide.startFeatureSpotlight('export', '1.7.0');
-    assert.strictEqual(TourGuide.isActive(), true);
-    action.click();
-    for (let i = 0; i < 20 && !focused; i++) await new Promise(r => setTimeout(r, 10));
-    assert.strictEqual(focused, true);
-    assert.strictEqual(TourGuide.isActive(), false);
-    assert.strictEqual(await StorageService.getLastSeenFeatureVersion(), '1.7.0');
+test('the account lesson highlights the source area even before any account is connected', async () => {
+    page = await browser.newPage({ viewport: { width: 640, height: 480 } });
+    await mount(page, 'options', { accounts: [], manifestVersion: '2.1.0', settings: { lastSeenFeatureVersion: '2.0.0' } });
+    await page.getByRole('heading', { name: 'Multi-platform support (Beta)', exact: true }).waitFor();
+    await page.locator('#tourNextBtn').click();
+    await page.locator('#btnPlatformPermissions').click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('heading', { name: 'Switch platforms and accounts', exact: true }).waitFor();
+    assert.equal(await page.locator('#accountName').isVisible(), true);
+    assert.equal(await page.locator('.tour-spotlight').isVisible(), true);
+    await page.locator('#tourNextBtn').click();
+    assert.equal(await page.locator('.tour-popover').count(), 0);
 });

@@ -61,6 +61,11 @@ fs.readFileSync = function(pathArg, options) {
                 const source = origReadFileSync.call(fs, tsPath, 'utf8');
                 // If it's protocol.js, hookCredentials.js, or bootstrap.js (which tests execute inside vm.runInContext), transpile it
                 if (pathArg.endsWith('protocol.js') || pathArg.endsWith('hookCredentials.js') || pathArg.endsWith('bootstrap.js')) {
+                    if (pathArg.endsWith('hookCredentials.js')) {
+                        const code = require('./helpers/bundleGeminiHook.cjs')();
+                        const encoding = typeof options === 'string' ? options : (options && options.encoding);
+                        return encoding ? code : Buffer.from(code, 'utf8');
+                    }
                     if (pathArg.endsWith('bootstrap.js')) {
                         const bResult = esbuild.buildSync({
                             entryPoints: [tsPath],

@@ -1,140 +1,68 @@
-import { test, expect } from './fixtures';
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import type { Download } from '@playwright/test';
+import { openOptions, seedConversations, openPopup, storedSettings } from './uiFixture';
+test.beforeEach(async({context,extensionId})=>{void extensionId;await seedRegistryAccounts(context);});
+test('Popup renders current bilingual labels and five format controls with durable v2 Settings',async({context,extensionId})=>{
+    const options=await openOptions(context,extensionId);await seedConversations(options,[{id:'a',title:'Current title'}]);const page=await openPopup(context,extensionId);
+    await expect(page.locator('#currentChatTitle')).toHaveText('Current title');await expect(page.locator('[data-format]')).toHaveCount(5);
+    await expect(page.locator('#btnCurrent')).toHaveText('📥 Export Current Conversation');await expect(page.locator('#btnOptions')).toBeVisible();
+    await options.locator('#langToggle').uncheck();await expect(page.locator('#btnCurrent')).toHaveText('📥 导出当前对话');
+    await options.locator('#langToggle').check();await expect(page.locator('#btnCurrent')).toHaveText('📥 Export Current Conversation');
+    await page.locator('[data-format="json"]').click();await expect(page.locator('[data-format="json"]')).toHaveAttribute('aria-pressed','true');await expect.poll(async()=> (await storedSettings(page)).defaultFormat).toBe('json');
+    for(const enabled of [true,false]) {await options.locator('#devToggle').setChecked(enabled);await expect(page.locator('[data-format]')).toHaveCount(5);await expect(page.locator('[data-format="json_raw"],[data-format="json_openai"]')).toHaveCount(0);}
+    await expect(page.locator('#chatSlotBadge,#historyTotalSynced,#btnCopyMarkdown,#btnScreenshot,#previewModal')).toHaveCount(0);
+});
+test('Popup and Options synchronize format in both directions and consume the same language setting',async({context,extensionId})=>{
+    const options=await openOptions(context,extensionId);const popup=await openPopup(context,extensionId);
+    await popup.locator('[data-format="json"]').click();await expect(options.locator('#format')).toHaveValue('json');
+    await options.locator('#format').selectOption('html');await expect(popup.locator('[data-format="html"]')).toHaveAttribute('aria-pressed','true');
+    await options.locator('#langToggle').uncheck();await expect(popup.locator('#btnCurrent')).toHaveText('📥 导出当前对话');
+    await popup.reload();await expect(popup.locator('[data-format="html"]')).toHaveAttribute('aria-pressed','true');await expect(popup.locator('#btnCurrent')).toHaveText('📥 导出当前对话');
+});
+test('Popup DOCX export downloads a Word archive locally', async ({ context, extensionId }) => {
+    const options = await openOptions(context, extensionId);
+    await seedConversations(options, [{ id: 'a', body: 'A Word export in Chromium' }]);
+    const popup = await openPopup(context, extensionId);
+    await popup.locator('[data-format="docx"]').click();
+    const pending = popup.waitForEvent('download');
+    await popup.locator('#btnCurrent').click();
+    const file = await pending;
+    expect(file.suggestedFilename()).toMatch(/\.docx$/);
+    const bytes = await readFile((await file.path())!);
+    expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    await expect(popup.locator('#status')).toHaveText('Download initiated');
+});
 
-test.describe('Popup UI & Action Center Localization', () => {
-  test('should render properly localized UI, format tabs, and handle language toggle across controls and storage sync', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-
-    // 1. Navigate to popup page
-    await page.goto(`chrome-extension://${extensionId}/src/ui/popup/popup.html`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // Wait for async initLanguage
-    await expect(page.locator('#btnCurrent')).toHaveText(/(Export|导出)/);
-
-    // 2. Ensure zero raw i18n keys are exposed on the page and unwanted debug elements are absent
-    const rawKeyCheck = await page.evaluate(() => {
-      const elements = Array.from(document.querySelectorAll('[data-i18n]'));
-      const violations: { id: string; key: string; text: string }[] = [];
-      for (const el of elements) {
-        const key = el.getAttribute('data-i18n');
-        const text = el.textContent?.trim() || '';
-        if (key && text === key) {
-          violations.push({ id: el.id, key, text });
-        }
-      }
-      return violations;
-    });
-    expect(rawKeyCheck).toEqual([]);
-    expect(await page.locator('#chatSlotBadge').count()).toBe(0);
-    expect(await page.locator('#historyTotalSynced').count()).toBe(0);
-    expect(await page.locator('#historyCountBadge').count()).toBe(0);
-    expect(await page.locator('#btnCopyMarkdown').count()).toBe(0);
-    expect(await page.locator('#btnScreenshot').count()).toBe(0);
-    expect(await page.locator('#previewModal').count()).toBe(0);
-
-    // 3. Test explicit switch to English by clicking labelLangEn
-    await page.click('#labelLangEn');
-    await expect(page.locator('#btnCurrent')).toHaveText('📥 Export Current Page');
-    await expect(page.locator('#btnOptions')).toHaveText('Batch Export in Console ↗');
-    await expect(page.locator('#currentChatLabel')).toHaveText('Current Conversation');
-    await expect(page.locator('#formatTabs .tab-btn[data-value="markdown"]')).toHaveText('Markdown');
-    await expect(page.locator('#formatTabs .tab-btn[data-value="json_openai"]')).toHaveText('JSON (OpenAI)');
-    await expect(page.locator('#formatTabs .tab-btn[data-value="json"]')).toHaveText('JSON (Std)');
-    expect(await page.locator('#langToggle').isChecked()).toBe(true);
-
-    const enStorageLang = await page.evaluate(async () => {
-      const data = await chrome.storage.local.get('gemini_exporter_lang');
-      return data.gemini_exporter_lang;
-    });
-    expect(enStorageLang).toBe('en');
-
-    // 4. Test explicit switch to Chinese by clicking labelLangZh
-    await page.click('#labelLangZh');
-    await expect(page.locator('#btnCurrent')).toHaveText('📥 导出当前页面');
-    await expect(page.locator('#btnOptions')).toHaveText('去控制台批量导出 ↗');
-    await expect(page.locator('#currentChatLabel')).toHaveText('当前会话');
-    await expect(page.locator('#formatTabs .tab-btn[data-value="markdown"]')).toHaveText('Markdown');
-    await expect(page.locator('#formatTabs .tab-btn[data-value="json_openai"]')).toHaveText('JSON (OpenAI)');
-    await expect(page.locator('#formatTabs .tab-btn[data-value="json"]')).toHaveText('JSON (标准)');
-    expect(await page.locator('#langToggle').isChecked()).toBe(false);
-
-    const zhStorageLang = await page.evaluate(async () => {
-      const data = await chrome.storage.local.get('gemini_exporter_lang');
-      return data.gemini_exporter_lang;
-    });
-    expect(zhStorageLang).toBe('zh');
-
-    // 5. Test clicking the outer capsule pill container (#langTogglePill)
-    await page.locator('#langTogglePill').click({ position: { x: 2, y: 2 } });
-    await expect(page.locator('#btnCurrent')).toHaveText('📥 Export Current Page');
-    expect(await page.locator('#langToggle').isChecked()).toBe(true);
-
-    await page.locator('#langTogglePill').click({ position: { x: 2, y: 2 } });
-    await expect(page.locator('#btnCurrent')).toHaveText('📥 导出当前页面');
-    expect(await page.locator('#langToggle').isChecked()).toBe(false);
-
-    // 6. Test Format Tabs click selection and storage persistence
-    await page.click('#formatTabs .tab-btn[data-value="json_openai"]');
-    await expect(page.locator('#formatTabs .tab-btn[data-value="json_openai"]')).toHaveClass(/active/);
-    await expect(page.locator('#formatTabs .tab-btn[data-value="markdown"]')).not.toHaveClass(/active/);
-    await expect(page.locator('#activeFormatLabel')).toHaveText('JSON (OpenAI)');
-
-    const savedFmt = await page.evaluate(async () => {
-      const d = await chrome.storage.local.get('gemini_export_format');
-      return d.gemini_export_format;
-    });
-    expect(savedFmt).toBe('json_openai');
-
-    // 7. Test dev-mode raw json tab visibility
-    const rawTabBefore = page.locator('#formatTabs .tab-btn[data-value="json_raw"]');
-    await expect(rawTabBefore).toBeHidden();
-
-    await page.evaluate(async () => {
-      await chrome.storage.local.set({ gemini_dev_mode: true });
-    });
-    await expect(rawTabBefore).toBeVisible();
-
-    await page.evaluate(async () => {
-      await chrome.storage.local.set({ gemini_dev_mode: false });
-    });
-    await expect(rawTabBefore).toBeHidden();
-  });
-
-  test('should synchronize format and language bidirectionally between options workbench and popup', async ({ context, extensionId }) => {
-    const popupPage = await context.newPage();
-    const optionsPage = await context.newPage();
-
-    await popupPage.goto(`chrome-extension://${extensionId}/src/ui/popup/popup.html`);
-    await popupPage.evaluate(async () => {
-      await chrome.storage.local.set({
-        has_completed_tour: true,
-        last_seen_feature_version: '999.0.0'
-      });
-    });
-    await optionsPage.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-
-    await popupPage.waitForLoadState('domcontentloaded');
-    await optionsPage.waitForLoadState('domcontentloaded');
-    await expect(popupPage.locator('#btnCurrent')).toBeVisible();
-    await expect(optionsPage.locator('#btnSelectAll')).toBeVisible();
-
-    // 1. Language: Switch in popup to English -> options workbench updates
-    await popupPage.click('#labelLangEn');
-    await expect(popupPage.locator('#btnCurrent')).toHaveText('📥 Export Current Page');
-    await expect(optionsPage.locator('#btnSelectAll')).toHaveText('All');
-
-    // 2. Language: Switch in options to Chinese -> popup updates
-    await optionsPage.click('#labelLangZh');
-    await expect(optionsPage.locator('#btnSelectAll')).toHaveText('全选');
-    await expect(popupPage.locator('#btnCurrent')).toHaveText('📥 导出当前页面');
-
-    // 3. Format: Switch in popup to json_openai -> options workbench format select updates
-    await popupPage.click('#formatTabs .tab-btn[data-value="json_openai"]');
-    await expect(optionsPage.locator('#format')).toHaveValue('json_openai');
-
-    // 4. Format: Switch in options to json -> popup format tabs active state updates
-    await optionsPage.selectOption('#format', 'json');
-    await expect(popupPage.locator('#formatTabs .tab-btn[data-value="json"]')).toHaveClass(/active/);
-    await expect(popupPage.locator('#activeFormatLabel')).toHaveText('JSON (标准)');
-  });
+test('Popup rejects malformed current context without download and allows retry after a transport failure',async({context,extensionId})=>{
+    const options=await openOptions(context,extensionId);await seedConversations(options,[{id:'a'}]);const popup=await openPopup(context,extensionId);await expect(popup.locator('#btnCurrent')).toBeEnabled();
+    await popup.evaluate(()=>{Object.defineProperty(chrome.tabs,'sendMessage',{configurable:true,value:()=>{throw new Error('Injected context failure');}});});
+    let downloads=0;popup.on('download',()=>{downloads++;});await popup.locator('#btnCurrent').click();await expect(popup.locator('#status')).toHaveText('Operation failed. Please retry; details are available in the logs or diagnostic report.');await expect(popup.locator('#btnCurrent')).toBeEnabled();expect(downloads).toBe(0);
+    await popup.reload();const pending=popup.waitForEvent('download');await popup.locator('#btnCurrent').click();const file=await pending;expect(await readFile((await file.path())!,'utf8')).toContain('Answer a');
+    await popup.evaluate(()=>{Object.defineProperty(chrome.tabs,'sendMessage',{configurable:true,value:(_id:number,_m:unknown,cb:(v:unknown)=>void)=>cb({ok:'true'})});});
+    await popup.locator('#btnCurrent').click();await expect(popup.locator('#status')).toHaveText('No trusted current conversation');await expect(popup.locator('#btnCurrent')).toBeDisabled();expect(downloads).toBe(1);
+});
+for(const format of ['html','markdown','json'] as const)test(`Popup ${format} physical export delivers one package with its corrected body and failure report`,async({context,extensionId})=>{
+    const options=await openOptions(context,extensionId);await seedConversations(options,[{id:'a',body:'Body survives',missingAsset:true}]);
+    await options.evaluate(async()=>Reflect.get(globalThis,'uiFixture').updateSettings({includeAssets:true}));
+    const popup=await openPopup(context,extensionId);await popup.locator(`[data-format="${format}"]`).click();
+    const downloads: Download[]=[];popup.on('download',file=>downloads.push(file));await popup.locator('#btnCurrent').click();
+    await expect.poll(()=>downloads.length).toBe(1);await expect(popup.locator('#btnCurrent')).toBeEnabled();
+    const file=downloads[0];
+    const JSZip=require(path.resolve(__dirname,'../../lib/jszip.min.js'));const zip=await JSZip.loadAsync(await readFile((await file.path())!));
+    const documentPath=Object.keys(zip.files).find(name=>name.endsWith(format==='markdown'?'.md':'.'+format));expect(documentPath).toBeTruthy();
+    const corrected=await zip.file(documentPath).async('string');expect(corrected).toContain('Body survives');
+    const report=Object.keys(zip.files).find(name=>name.endsWith('/report.json'));expect(report).toBeTruthy();expect(JSON.parse(await zip.file(report).async('string')).failures).toHaveLength(1);
+    if(format==='json'){
+        const archive=JSON.parse(corrected);expect(archive.transport).toBeUndefined();expect(archive.resources).toEqual({});expect(archive.version).toBe(1);expect(archive.conversation.detail.assets[0].id).toBe('image');
+    }else{expect(corrected).toMatch(/unavailable|gem-missing-asset|Attachment failed: Unknown error/);}
+    await expect(popup.locator('#btnCurrent')).toBeEnabled();
+    await expect(popup.locator('#status')).toContainText('Successfully downloaded: 1');
+    await expect(popup.locator('#status')).not.toContainText('Attachment');
+    await options.locator('#devToggle').check();
+    await expect(popup.locator('#status')).toContainText('Attachment failures with unknown cause: 1');
+    await expect(popup.locator('#status')).not.toContainText('Conversation export failed:');
+    await options.locator('#devToggle').uncheck();
+    await expect(popup.locator('#status')).not.toContainText('Attachment');
 });

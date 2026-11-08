@@ -1,0 +1,34 @@
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import type { Download } from '@playwright/test';
+import { openOptions, seedConversations, accountId } from './uiFixture';
+const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS9sAAAAASUVORK5CYII=';
+test('physical archive bytes survive verified local deletion; missing bodies fail rather than fabricate content, and record cleanup stays nondestructive',async({context,extensionId})=>{
+    // Two exports, physical attachment checks and both cleanup paths share this budget on CI.
+    test.setTimeout(60000);
+    await seedRegistryAccounts(context);const page=await openOptions(context,extensionId);await seedConversations(page,[{id:'archive_local',body:'Preserved local answer'}]);
+    const source=await context.newPage();await source.route('https://gemini.google.com/**',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><script>window.WIZ_global_data={qDCSke:'10000000001',SNlM0e:'token',cfb2h:'build'}</script><main>Offline source fixture</main>`}));await source.goto('https://gemini.google.com/app/archive_local');await expect(source.locator('#geminiExportBadge')).toBeVisible();
+    await context.route('https://lh3.googleusercontent.com/archive-fixture.png',route=>route.fulfill({contentType:'image/png',body:Buffer.from(png,'base64')}));
+    await page.evaluate(async id=>{const api=Reflect.get(globalThis,'uiFixture');const key={accountId:id,conversationId:'archive_local'};const detail=await api.getDetail(key);const{key:_key,...fields}=detail;fields.savedAt=200;fields.assets=[{id:'img',kind:'image',sourceUri:'https://lh3.googleusercontent.com/archive-fixture.png',mediaType:'image/png'}];fields.messages[1].content.push({type:'image',assetId:'img'});await api.ingestDetail(id,'archive_local',fields,{title:'Retained local archive',titleSource:'provider'});await api.ingestIndexes(id,[{conversationId:'metadata_only',fields:{title:'Title without body',titleSource:'derived'}}]);},accountId);
+    await page.reload();await page.locator('#devToggle').check();await expect(page.locator('#devToggle')).toBeEnabled();
+    await page.locator('#includeAssets').check();await expect(page.locator('#includeAssets')).toBeEnabled();
+    await page.locator('[data-chat-id="archive_local"] input').check();
+    const downloads: Download[]=[];page.on('download',file=>downloads.push(file));await page.locator('#btnExport').click();
+    await expect.poll(()=>downloads.length).toBe(1);await expect(page.locator('body')).toHaveAttribute('data-busy','false');
+    const file=downloads[0];
+    const bytes=await readFile((await file.path())!);
+    const JSZip=require(path.resolve(__dirname,'../../lib/jszip.min.js'));const zip=await JSZip.loadAsync(bytes);
+    const documentPath=Object.keys(zip.files).find(name=>name.endsWith('.md'));expect(documentPath).toBeTruthy();
+    const body=await zip.file(documentPath).async('string');expect(body).toContain('Preserved local answer');
+    const attachment=Object.keys(zip.files).find(x=>x.endsWith('.png'));expect(attachment).toBeTruthy();expect(body).toContain(attachment);
+    expect(Buffer.from(await zip.file(attachment).async('uint8array'))).toEqual(Buffer.from(png,'base64'));
+    await page.locator('[data-chat-id="archive_local"] input').uncheck();await page.locator('[data-chat-id="metadata_only"] input').check();await page.locator('#btnExport').click();await expect(page.locator('#status')).toContainText('failed: 1');
+    const {exposeUIStorage}=await import('./uiFixture');await exposeUIStorage(page);
+    await page.locator('#devToggle').check();
+    await page.locator('#btnMoreActions').click();
+    await expect(page.locator('#btnClearExported')).toBeVisible();
+    await page.locator('#btnClearExported').click();await page.locator('#btnCleanupCancel').click();expect(await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').getExportRecord({accountId:id,conversationId:'archive_local'}),accountId)).toBeTruthy();
+    await page.locator('#btnMoreActions').click(); await page.locator('#btnClearExported').click();await page.locator('#btnCleanupConfirm').click();await expect(page.locator('#status')).toHaveText('Records cleared');expect(await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').readConversation({accountId:id,conversationId:'archive_local'}),accountId)).toBeTruthy();
+    await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').ingestDeletedConversation(id,'archive_local'),accountId);expect(await page.evaluate(id=>Reflect.get(globalThis,'uiFixture').readConversation({accountId:id,conversationId:'archive_local'}),accountId)).toBeNull();expect(await readFile((await file.path())!)).toEqual(bytes);
+});

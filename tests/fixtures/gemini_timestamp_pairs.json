@@ -1,0 +1,122 @@
+[
+  {
+    "sample": 1,
+    "listUpdatedAt": 1792011603510,
+    "detailUpdatedAt": 1792011603510,
+    "maxMessageAt": 1792011603510,
+    "messageCount": 12,
+    "hasMore": false,
+    "listWire": [
+      1792011603,
+      510828000
+    ],
+    "metadataWire": [
+      1792011603,
+      510828000
+    ],
+    "detailTurnWire": [
+      1792011603,
+      510828000
+    ]
+  },
+  {
+    "sample": 2,
+    "listUpdatedAt": 1792011347034,
+    "detailUpdatedAt": 1792011347034,
+    "maxMessageAt": 1792011347034,
+    "messageCount": 10,
+    "hasMore": false,
+    "listWire": [
+      1792011347,
+      34651000
+    ],
+    "metadataWire": [
+      1792011347,
+      34651000
+    ],
+    "detailTurnWire": [
+      1792011347,
+      34651000
+    ]
+  },
+  {
+    "sample": 3,
+    "listUpdatedAt": 1792010344820,
+    "detailUpdatedAt": 1792010344820,
+    "maxMessageAt": 1792010344820,
+    "messageCount": 10,
+    "hasMore": false,
+    "listWire": [
+      1792010344,
+      820772000
+    ],
+    "metadataWire": [
+      1792010344,
+      820772000
+    ],
+    "detailTurnWire": [
+      1792010344,
+      820772000
+    ]
+  },
+  {
+    "sample": 4,
+    "listUpdatedAt": 1791859894717,
+    "detailUpdatedAt": 1791859894717,
+    "maxMessageAt": 1791859894717,
+    "messageCount": 14,
+    "hasMore": false,
+    "listWire": [
+      1791859894,
+      717525000
+    ],
+    "metadataWire": [
+      1791859894,
+      717525000
+    ],
+    "detailTurnWire": [
+      1791859894,
+      717525000
+    ]
+  },
+  {
+    "sample": 5,
+    "listUpdatedAt": 1791785795200,
+    "detailUpdatedAt": 1791785795200,
+    "maxMessageAt": 1791785795200,
+    "messageCount": 14,
+    "hasMore": false,
+    "listWire": [
+      1791785795,
+      200959000
+    ],
+    "metadataWire": [
+      1791785795,
+      200959000
+    ],
+    "detailTurnWire": [
+      1791785795,
+      200959000
+    ]
+  },
+  {
+    "sample": 6,
+    "listUpdatedAt": 1791702686294,
+    "detailUpdatedAt": 1791702686294,
+    "maxMessageAt": 1791702686294,
+    "messageCount": 14,
+    "hasMore": false,
+    "listWire": [
+      1791702686,
+      294339000
+    ],
+    "metadataWire": [
+      1791702686,
+      294339000
+    ],
+    "detailTurnWire": [
+      1791702686,
+      294339000
+    ]
+  }
+]

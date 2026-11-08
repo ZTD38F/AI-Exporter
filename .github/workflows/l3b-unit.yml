@@ -1,0 +1,37 @@
+name: L3b Unit Tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/l2/**'
+      - 'src/l3b/**'
+      - 'tests/ast-composer.test.ts'
+      - 'tests/domain-ast-projection.test.ts'
+      - 'tests/document-ast-contract.test.ts'
+      - 'tests/ast-composer.types.ts'
+      - 'tests/helpers/l3bUnitHarness.ts'
+      - 'tests/helpers/assertDocumentAst.ts'
+      - 'tests/fixtures/**'
+      - 'scripts/test-l3b.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/l3b-unit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  l3b-unit:
+    name: L3b Mocked Unit Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run L3b-only tests with typed L2 v2 mocks
+        run: npm run test:l3b:unit

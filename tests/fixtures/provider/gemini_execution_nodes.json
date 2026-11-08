@@ -1,0 +1,30 @@
+{
+  "observedAt": "2026-10-11T17:54:28Z",
+  "chatId": "f4fbc38b3ea84f9c",
+  "turn": 2,
+  "source": "Controlled live Tier 2 Janssen derivation; turn[3][12][0][0] extension-39 execution code and stdout nodes.",
+  "nodes": [
+    [
+      {
+        "39": [
+          "import sympy as sp\n\nz, rho, g, A, U, mu, K, R = sp.symbols('z rho g A U mu K R', positive=True)\nsigma_v = sp.Function('sigma_v')(z)\n\n# Force balance: A * d(sigma_v)/dz = rho * g * A - U * mu * K * sigma_v\n# d(sigma_v)/dz + (U * mu * K / A) * sigma_v = rho * g\node = sp.Eq(sigma_v.diff(z) + (U * mu * K / A) * sigma_v, rho * g)\nsol = sp.dsolve(ode, ics={sigma_v.subs(z, 0): 0})\nprint(\"General solution:\", sol)\n\n# For cylinder: A = pi * R^2, U = 2 * pi * R => A / U = R / 2\nlambda_char = R / (2 * mu * K)\nsol_cyl = sol.rhs.subs(A/U, R/2)\nprint(\"Cylindrical solution:\", sol_cyl)\n\n# Limit as mu -> 0:\nlimit_zero_friction = sp.limit(sol.rhs, mu, 0)\nprint(\"Limit as mu -> 0:\", limit_zero_friction)\n\n# Series expansion around z=0:\nseries_z0 = sp.series(sol.rhs, z, 0, 2)\nprint(\"Series around z=0:\", series_z0)\n\n",
+          "python",
+          1,
+          null,
+          0
+        ]
+      }
+    ],
+    [
+      {
+        "39": [
+          "General solution: Eq(sigma_v(z), (A*g*rho + exp(K*U*mu*((log(A*g*rho) + I*pi)/(K*U*mu) - z/A)))/(K*U*mu))\nCylindrical solution: (A*g*rho + exp(K*U*mu*((log(A*g*rho) + I*pi)/(K*U*mu) - z/A)))/(K*U*mu)\nLimit as mu -> 0: g*rho*z\nSeries around z=0: g*rho*z + O(z**2)\n\n",
+          "text",
+          1,
+          null,
+          1
+        ]
+      }
+    ]
+  ]
+}

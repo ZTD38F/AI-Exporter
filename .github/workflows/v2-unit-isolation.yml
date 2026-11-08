@@ -1,0 +1,39 @@
+name: V2 Module Unit Isolation
+
+on:
+  pull_request:
+    branches: [dev/v2]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/v2-unit-isolation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-v2-units:
+    name: All module units with frozen v2 mocks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for native L3a and UI test surfaces
+        run: npx playwright install --with-deps chromium
+      - name: Permit sandboxed Playwright on Ubuntu
+        run: bash scripts/setup-playwright-sandbox.sh
+      - name: Check that the strict execution guard blocks foreign production code
+        run: node --test tests/arch/v2-unit-guard.test.cjs
+      - name: Type-check mocked ports against latest v2 owner definitions
+        run: npm run test:v2:unit-ports
+      - name: Run every v2 module-unit suite with real-external-module guard
+        run: npm run test:v2:unit-isolation

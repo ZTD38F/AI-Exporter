@@ -1,221 +1,83 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-
-// 1. D1: Pagination loop sets stoppedEarly and exhaustive accurately
-test('D1: Pagination getAllConversations sets stoppedEarly=true and exhaustive=false on token loop', async () => {
-    const Pagination = require('../src/core/api/client/pagination.js');
-    let callCount = 0;
-    const mockClient = {
-        getConversationList: async () => {
-            callCount++;
-            return {
-                conversations: [{ id: `c_${callCount}`, title: `Chat ${callCount}` }],
-                nextPageToken: 'looping_cursor'
-            };
-        }
-    };
-
-    const result = await Pagination.getAllConversations(mockClient, 2000);
-    assert.strictEqual(callCount, 2);
-    assert.strictEqual(result.stoppedEarly, true, 'Token loop must set stoppedEarly: true');
-    assert.strictEqual(result.exhaustive, false, 'Token loop must set exhaustive: false');
-    assert.ok(result.diagnostics.stopReason.includes('Token Loop'));
-});
-
-test('D1: Natural end sets stoppedEarly=false and exhaustive=true', async () => {
-    const Pagination = require('../src/core/api/client/pagination.js');
-    let callCount = 0;
-    const mockClient = {
-        getConversationList: async (token: string | null) => {
-            callCount++;
-            if (callCount === 1) {
-                return {
-                    conversations: [{ id: 'c_1', title: 'Chat 1' }],
-                    nextPageToken: 'next_page'
-                };
-            }
-            return {
-                conversations: [{ id: 'c_2', title: 'Chat 2' }],
-                nextPageToken: null // Natural end
-            };
-        }
-    };
-
-    const result = await Pagination.getAllConversations(mockClient, 2000);
-    assert.strictEqual(callCount, 2);
-    assert.strictEqual(result.stoppedEarly, undefined, 'Natural end must not set stoppedEarly');
-    assert.strictEqual(result.exhaustive, true, 'Natural end must set exhaustive: true');
-});
-
-// 2. D2: Narrowed error detection
-test('D2: BatchWorker does not delete conversation when error contains 11167 or other non-deletion numbers', async () => {
-    const BatchWorker = require('../src/core/engine/export/batchWorker.js');
-    const { __setModuleOverride } = require('../src/core/utils/moduleOverrides.js');
-
-    let removedId: string | null = null;
-    const mockStorage = {
-        removeConversation: async (_slot: string, id: string) => {
-            removedId = id;
-            return true;
-        }
-    };
-    __setModuleOverride('StorageService', mockStorage);
-
-    try {
-        const logs: string[] = [];
-        const chatWith11167 = {
-            id: 'chat_safe_1',
-            title: 'Safe Chat',
-            messages: [],
-            error: 'Server returned error code 11167',
-            _empty: true
-        };
-        const reqItem = { id: 'chat_safe_1', title: 'Safe Chat' };
-
-        const res = await BatchWorker.resolveChat(
-            chatWith11167,
-            reqItem,
-            null,
-            null,
-            'u0',
-            () => {},
-            (msg: string) => logs.push(msg)
-        );
-
-        assert.strictEqual(removedId, null, '11167 must NOT trigger removeConversation');
-        assert.strictEqual(res.isConfirmedDeleted, false);
-    } finally {
-        __setModuleOverride('StorageService', null);
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { useIndexStorage } from './helpers/indexStorage.js';
+import { accountRuntime, ACCOUNT_UUID } from './helpers/accountRuntime.js';
+import { ingestDetail } from '../src/l2/ingestion.js';
+import { getIndex, getDetail, getExportRecord, putExportRecord } from '../src/l3a/storageService.js';
+import { GeminiProvider } from '../src/l1/client/gemini/geminiProvider.js';
+import { ConfirmedGeminiConversationNotFound } from '../src/l1/client/gemini/geminiClient.js';
+import { sourceList } from './helpers/l1SourceFixture.js';
+import { init, handleWindowMessage } from '../src/l1/sniffer/gemini/messageBridge.js';
+useIndexStorage();
+const key = { accountId: ACCOUNT_UUID, conversationId: '12345678abcdef' };
+async function seed() {
+    await ingestDetail(key.accountId, key.conversationId, { quality: { status: 'complete' }, assets: [],
+        messages: [{ role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text: 'Local body' }] }] }] });
+    await putExportRecord(key, { status: 'ok', format: 'markdown', exportedAt: 100 });
+}
+function failingProvider(error: Error) {
+    return new GeminiProvider({ getConversationList: async () => sourceList('G_SOURCE_EMPTY_01'),
+        getConversationDetail: async () => { throw error; } }, async () => 'u0');
+}
+test('D2: incidental 11167, generic 404 and unverified error strings cannot delete local facts', async () => {
+    await seed();
+    for (const error of [new Error('Server returned error code 11167'), new Error('HTTP 404'),
+        new Error('BardErrorInfo: 1167'), new ConfirmedGeminiConversationNotFound('c_other')]) {
+        await assert.rejects(failingProvider(error).fetchConversationDetail(key.accountId, key.conversationId));
+        assert.ok(await getIndex(key)); assert.ok(await getDetail(key)); assert.ok(await getExportRecord(key));
     }
 });
+test('D2: target-bound verified NotFound removes Index, Detail and ExportRecord while preserving another account', async () => {
+    await seed();
+    const otherKey = { ...key, accountId: '10000000-0000-4000-8000-000000000002' };
+    const { key: _key, ...detail } = (await getDetail(key))!;
+    await ingestDetail(otherKey.accountId, otherKey.conversationId, detail);
+    const confirmed = failingProvider(new ConfirmedGeminiConversationNotFound('c_' + key.conversationId));
+    await assert.rejects(confirmed.fetchConversationDetail(key.accountId, key.conversationId), /conversation_not_found/);
+    assert.equal(await getIndex(key), null); assert.equal(await getDetail(key), null); assert.equal(await getExportRecord(key), null);
+    assert.ok(await getDetail(otherKey));
+});
 
-test('D2: BatchWorker deletes conversation ONLY when confirmed BardErrorInfo: 1167 or 404', async () => {
-    const BatchWorker = require('../src/core/engine/export/batchWorker.js');
-    const { __setModuleOverride } = require('../src/core/utils/moduleOverrides.js');
-
-    let removedId: string | null = null;
-    const mockStorage = {
-        removeConversation: async (_slot: string, id: string) => {
-            removedId = id;
-            return true;
-        }
-    };
-    __setModuleOverride('StorageService', mockStorage);
-
+// Explicit scan reset clears all account-local conversation facts.
+test('D4: clearStoredAccountScanRecords clears all account-local records and preserves another account', async () => {
+    const { indexStorage } = require('./helpers/indexStorage.js');
+    const storage = require('../src/l3a/storageService.js');
+    const env = indexStorage();
     try {
-        const logs: string[] = [];
-        const deletedChat = {
-            id: 'chat_del_1',
-            title: 'Deleted Chat',
-            messages: [],
-            error: '会话已在服务端删除 (chat_del_1) [BardErrorInfo: 1167]',
-            _empty: true
-        };
-        const reqItem = { id: 'chat_del_1', title: 'Deleted Chat' };
-
-        const res = await BatchWorker.resolveChat(
-            deletedChat,
-            reqItem,
-            null,
-            null,
-            'u0',
-            () => {},
-            (msg: string) => logs.push(msg)
-        );
-
-        assert.strictEqual(removedId, 'chat_del_1', 'Confirmed BardErrorInfo: 1167 must trigger removeConversation');
-        assert.strictEqual(res.isConfirmedDeleted, true);
-    } finally {
-        __setModuleOverride('StorageService', null);
-    }
+        const key = { accountId: '10000000-0000-4000-8000-000000000001', conversationId: 'chat_1' };
+        await storage.putIndexes([{ key }]);
+        await storage.updateConversationAtomically(key, () => ({ detail: { key, quality: {status:'complete'}, assets:[], messages:[{role:'user',content:[]}] }, result: undefined }));
+        await storage.putExportRecord(key, { format: 'markdown', exportedAt: 0, status: 'ok' });
+        await storage.updateCoverageAtomically(key.accountId, 'recent', () => ({ next: { range: null }, result: undefined }));
+        const otherKey = { ...key, accountId: '10000000-0000-4000-8000-000000000002' };
+        await storage.putIndexes([{ key: otherKey }]);
+        await storage.updateConversationAtomically(otherKey, () => ({ detail: { key: otherKey, quality: {status:'complete'}, assets:[], messages:[{role:'user',content:[]}] }, result: undefined }));
+        await storage.putExportRecord(otherKey, { format: 'markdown', exportedAt: 0, status: 'ok' });
+        await storage.clearStoredAccountScanRecords(key.accountId);
+        assert.deepEqual(await storage.listExportRecords(key.accountId), {});
+        assert.equal(await storage.getCoverage(key.accountId, 'recent'), null);
+        assert.equal(await storage.getIndex(key), null);
+        assert.equal(await storage.getDetail(key), null);
+        assert.deepEqual(await storage.getIndex(otherKey), { key: otherKey });
+        assert.ok(await storage.getDetail(otherKey));
+        assert.ok(await storage.getExportRecord(otherKey));
+    } finally { env.restore(); }
 });
 
-// 3. D4: Clear All clears list, details, checkpoint, and exported records
-test('D4: StorageService.clearConversations cleans up checkpoint and exported records map', async () => {
-    const StorageService = require('../src/core/storage/storageService.js');
-
-    const mockStore: Record<string, any> = {
-        gemini_conversations: [{ id: 'chat_1', title: 'Chat 1' }],
-        gemini_last_count: 1,
-        gemini_scan_checkpoint: 1700000000000,
-        exportedIds: { 'chat_1': { status: 'ok', exportedAt: 1700000000000 } }
-    };
-
-    (globalThis as any).chrome = {
-        storage: {
-            local: {
-                get: async (keys: any) => {
-                    const out: Record<string, any> = {};
-                    const arr = Array.isArray(keys) ? keys : (typeof keys === 'string' ? [keys] : Object.keys(mockStore));
-                    for (const k of arr) {
-                        if (mockStore[k] !== undefined) out[k] = mockStore[k];
-                    }
-                    return out;
-                },
-                set: async (items: Record<string, any>) => {
-                    Object.assign(mockStore, items);
-                },
-                remove: async (keys: any) => {
-                    const arr = Array.isArray(keys) ? keys : [keys];
-                    for (const k of arr) {
-                        delete mockStore[k];
-                    }
-                }
-            }
+// An untrusted page-world notification has no acknowledged DELETE response.
+test('MessageBridge ignores malformed and unverified deletion notifications without active fetch or local deletion', async t => {
+    await seed();
+    const runtime = accountRuntime('u0');
+    const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('No active verification request allowed'); });
+    try {
+        init();
+        for (const id of ['../../malicious/path', 'c_' + key.conversationId]) {
+            await handleWindowMessage({ origin: location.origin, source: window, data: {
+                type: 'GEMINI_CONVERSATION_DELETED', payload: { id, slot: 'u0',
+                    requestAccountObservation: { providerId: 'gemini', providerAccountId: '10000000001' } },
+            } } as unknown as MessageEvent);
         }
-    };
-
-    await StorageService.clearConversations('u0');
-
-    assert.deepStrictEqual(mockStore.gemini_conversations, []);
-    assert.strictEqual(mockStore.gemini_last_count, 0);
-    assert.strictEqual(mockStore.gemini_scan_checkpoint, undefined, 'Scan checkpoint must be removed');
-    assert.deepStrictEqual(mockStore.exportedIds, {}, 'Exported records must be emptied');
-
-    const checkpoint = await StorageService.getScanCheckpoint('u0');
-    assert.strictEqual(checkpoint, null, 'getScanCheckpoint must return null after clearConversations');
-});
-
-// 4. MessageBridge: Invalid ID validation on deletion
-test('MessageBridge: ignores malformed conversation IDs in CONVERSATION_DELETED event', async () => {
-    const MessageBridge = require('../src/content/messageBridge.js');
-
-    let removedCalled = false;
-    const mockStorage = {
-        removeConversation: async () => {
-            removedCalled = true;
-            return true;
-        }
-    };
-
-    const api = MessageBridge.init({
-        Storage: mockStorage,
-        getAccountSlot: () => 'u0',
-        upsertConversations: async () => {}
-    });
-
-    // 1. Post message with invalid ID (e.g. script injection attempt or garbage)
-    await api.handleWindowMessage({
-        origin: (typeof location !== 'undefined' ? location.origin : undefined),
-        source: (typeof window !== 'undefined' ? window : null),
-        data: {
-            type: 'GEMINI_CONVERSATION_DELETED',
-            payload: { id: '../../malicious/path' }
-        }
-    });
-
-    assert.strictEqual(removedCalled, false, 'Malformed ID must NOT call removeConversation');
-
-    // 2. Post message with valid hex ID
-    await api.handleWindowMessage({
-        origin: (typeof location !== 'undefined' ? location.origin : undefined),
-        source: (typeof window !== 'undefined' ? window : null),
-        data: {
-            type: 'GEMINI_CONVERSATION_DELETED',
-            payload: { id: 'c_12345678abcdef' }
-        }
-    });
-
-    assert.strictEqual(removedCalled, false, 'Valid page event must still be verified before deletion');
+        assert.equal(fetch.mock.callCount(), 0);
+        assert.ok(await getIndex(key)); assert.ok(await getDetail(key)); assert.ok(await getExportRecord(key));
+    } finally { runtime.restore(); }
 });

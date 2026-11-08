@@ -1,3 +1,4 @@
+import { fixtureKey, fixtureAccountFor } from './helpers/domainFixture.js';
 /**
  * tests/pdf-d8-evidence.test.ts
  *
@@ -28,10 +29,10 @@ export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
-const { convertMath: convertLatex } = require('../src/core/export/typst/mathConverter.js');
-const convertMath = (source: string, display: boolean) => convertLatex(source, 'latex', display);
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
+const { composeDomainDocument } = require('../src/l3b/compose/composeDomainDocument.js');
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
+const { convertMathForTest: convertMath } = require('./helpers/mathConversion.js');
 const { withNetworkGate, assertZeroExternalRequests } = require('./helpers/compileNetworkGate.js');
 const { extractPdfText } = require('./helpers/pdfTextExtract.js');
 const {
@@ -40,49 +41,30 @@ const {
     resolveLocalCjkFont,
 } = require('./helpers/realWasmSandbox.js');
 
-// ---------------------------------------------------------------------------
 // builders
-// ---------------------------------------------------------------------------
 
-let blockSeq = 0;
-const bid = () => `b${(blockSeq += 1)}`;
 
 function para(text: string) {
-    return { id: bid(), type: 'paragraph', children: [{ type: 'text', text }] };
+    return { type: 'paragraph', children: [{ type: 'text', text }] };
 }
 
 function mathBlock(source: string) {
-    return { id: bid(), type: 'math', source };
+    return { type: 'math', source };
 }
 
 function msg(id: string, role: 'user' | 'assistant', blocks: unknown[], extra: Record<string, unknown> = {}) {
-    return { id, role, blocks, ...extra };
+    return { id, role, content: blocks, ...extra };
 }
 
-function makeBundle(
-    messages: unknown[],
-    opts: { title?: string; conversationId?: string; assets?: unknown[] } = {},
-) {
-    return {
-        schemaVersion: 1,
-        conversation: {
-            key: { providerId: 'gemini', conversationId: opts.conversationId ?? 'd8-evidence' },
-            title: opts.title ?? 'D8 evidence',
-            createdAt: '2026-09-26T00:00:00Z',
-            updatedAt: '2026-09-26T00:10:00Z',
-            messages,
-        },
-        assets: opts.assets ?? [],
-        citations: [],
-    };
+function makeDomain(messages: unknown[], opts: { title?: string; conversationId?: string; assets?: unknown[] } = {}) {
+    return { index: { key: fixtureKey(String(opts.conversationId ?? 'd8-evidence'), 'gemini'),   titleSource: "derived",   title: opts.title ?? 'D8 evidence', createdAt: '2026-09-26T00:00:00Z', updatedAt: '2026-09-26T00:10:00Z' }, detail: { key: fixtureKey(String(opts.conversationId ?? 'd8-evidence'), 'gemini'), quality: { status: 'unknown' }, assets: opts.assets ?? [], messages } };
 }
 
-function makeContext(overrides: { assets?: Record<string, Uint8Array>; bundle?: unknown } = {}) {
+function makeContext(overrides: { assets?: Record<string, Uint8Array> } = {}) {
     const store: Record<string, Uint8Array> = overrides.assets ?? {};
     const calls: string[] = [];
     return {
         context: {
-            bundle: overrides.bundle ?? null,
             assets: {
                 resolve: async (id: string) => {
                     calls.push(id);
@@ -100,20 +82,19 @@ function makeContext(overrides: { assets?: Record<string, Uint8Array>; bundle?: 
 
 /** Build the converged compiler contract payload: prebuilt document + asset paths. */
 function compilerPayload(
-    bundle: unknown,
+    domain: unknown,
     convertMathFn?: (source: string, display: boolean) => string | undefined,
 ) {
     const assetPath = (a: any) => `/assets/${a.id}`;
-    const { payload: document } = toTypstPayload(bundle as any, {
-        assetPath,
+    const { payload: document } = renderTypstFixture(composeDomainDocument(domain as any, fixtureAccountFor(domain as any)), Object.fromEntries(((domain as any).assets ?? []).map((asset: any) => [asset.id, assetPath(asset)])), {
         ...(convertMathFn ? { convertMath: convertMathFn } : {}),
     });
     return {
         rendererSchemaVersion: 1,
-        sourceSchemaVersion: 1,
-        bundle,
+
+
         document,
-        assetPaths: new Map((((bundle as any).assets ?? []) as any[]).map((a: any) => [a.id, assetPath(a)])),
+        assetPaths: new Map((((domain as any).assets ?? []) as any[]).map((a: any) => [a.id, assetPath(a)])),
     };
 }
 
@@ -123,9 +104,9 @@ interface CompiledEvidence {
     ms: number;
 }
 
-/** Build a compiler + host, compile one bundle, dispose, return evidence. */
+/** Build a compiler + host, compile one domain, dispose, return evidence. */
 async function compileOnce(
-    bundle: unknown,
+    domain: unknown,
     opts: {
         fontPaths?: string[];
         assets?: Record<string, Uint8Array>;
@@ -137,11 +118,11 @@ async function compileOnce(
         host,
         ...(opts.fontPaths ? { fontPaths: opts.fontPaths } : {}),
     });
-    const { context } = makeContext({ assets: opts.assets, bundle });
+    const { context } = makeContext({ assets: opts.assets });
     const t0 = Date.now();
     try {
         const result = await compiler.compile(
-            compilerPayload(bundle, opts.convertMathFn ?? convertMath) as never,
+            compilerPayload(domain, opts.convertMathFn ?? convertMath) as never,
             context as never,
         );
         return { pdfBytes: result.pdfBytes, diagnostics: result.diagnostics, ms: Date.now() - t0, host };
@@ -154,22 +135,20 @@ function assertPdfMagic(pdfBytes: Uint8Array): void {
     assert.strictEqual(Buffer.from(pdfBytes.slice(0, 5)).toString('latin1'), '%PDF-');
 }
 
-// ---------------------------------------------------------------------------
 // D8-1: 0 外部请求
-// ---------------------------------------------------------------------------
 
 test('D8-1: full WASM init + font install + compile makes 0 external requests', async () => {
-    const bundle = makeBundle([
+    const domain = makeDomain([
         msg('m1', 'user', [para('离线编译测试：请确认没有任何外部网络请求。')]),
         msg('m2', 'assistant', [para('本段由真实 Typst WASM 在完全离线状态下编译。')]),
     ]);
     const gated = await withNetworkGate(async () => {
         const host = new RealWasmSandboxHost(repoRoot());
         const compiler = new TypstSandboxCompiler({ host });
-        const { context } = makeContext({ bundle });
+        const { context } = makeContext();
         try {
             return await compiler.compile(
-                compilerPayload(bundle, convertMath) as never,
+                compilerPayload(domain, convertMath) as never,
                 context as never,
             );
         } finally {
@@ -180,12 +159,10 @@ test('D8-1: full WASM init + font install + compile makes 0 external requests', 
     assertPdfMagic(gated.result.pdfBytes);
 });
 
-// ---------------------------------------------------------------------------
 // D8-2: selectable math (real convertMath, no formula-as-image)
-// ---------------------------------------------------------------------------
 
 test('D8-2: formulas compile to selectable text, not images', async () => {
-    const bundle = makeBundle(
+    const domain = makeDomain(
         [
             msg('m1', 'user', [para('Please show the mass-energy equivalence and the Pythagorean theorem.')]),
             msg('m2', 'assistant', [
@@ -197,7 +174,7 @@ test('D8-2: formulas compile to selectable text, not images', async () => {
         ],
         { title: 'math selectability' },
     );
-    const { pdfBytes, diagnostics } = await compileOnce(bundle);
+    const { pdfBytes, diagnostics } = await compileOnce(domain);
     assertPdfMagic(pdfBytes);
     const errors = diagnostics.filter((d) => d.severity === 'error');
     assert.deepStrictEqual(errors, [], `compile errors: ${JSON.stringify(errors)}`);
@@ -219,9 +196,7 @@ test('D8-2: formulas compile to selectable text, not images', async () => {
     assert.ok(extracted.text.includes('mass-energy'), 'prose survives alongside math');
 });
 
-// ---------------------------------------------------------------------------
 // D8-3: CJK 文本提取 / 无 tofu
-// ---------------------------------------------------------------------------
 
 test('D8-3: long Chinese session extracts with full CJK coverage, zero tofu', async (t: { skip: (msg?: string) => void }) => {
     const cjkFont = resolveLocalCjkFont();
@@ -246,9 +221,9 @@ test('D8-3: long Chinese session extracts with full CJK coverage, zero tofu', as
             ]),
         );
     }
-    const bundle = makeBundle(messages, { title: '中文长会话提取测试', conversationId: 'd8-cjk' });
-    const fontPaths = ['src/ui/sandbox/fonts/NewCMMath-Regular.otf', cjkFont];
-    const { pdfBytes, diagnostics } = await compileOnce(bundle, { fontPaths });
+    const domain = makeDomain(messages, { title: '中文长会话提取测试', conversationId: 'd8-cjk' });
+    const fontPaths = ['src/l4/format/pdf/sandbox/fonts/NewCMMath-Regular.otf', cjkFont];
+    const { pdfBytes, diagnostics } = await compileOnce(domain, { fontPaths });
     assertPdfMagic(pdfBytes);
     const errors = diagnostics.filter((d) => d.severity === 'error');
     assert.deepStrictEqual(errors, [], `compile errors: ${JSON.stringify(errors)}`);
@@ -272,9 +247,7 @@ test('D8-3: long Chinese session extracts with full CJK coverage, zero tofu', as
     assert.ok(missing.length === 0, `all input CJK chars extractable; missing: ${missing.slice(0, 20).join('')}`);
 });
 
-// ---------------------------------------------------------------------------
 // D8-4: 50 MiB metadata-only 附件
-// ---------------------------------------------------------------------------
 
 test('D8-4: 50 MiB file attachment stays metadata-only (no read, no hash, no OOM)', async () => {
     const FIFTY_MIB = 50 * 1024 * 1024;
@@ -284,11 +257,10 @@ test('D8-4: 50 MiB file attachment stays metadata-only (no read, no hash, no OOM
         id: 'big-file',
         kind: 'file',
         name: 'dataset.zip',
-        mimeType: 'application/zip',
-        sizeBytes: FIFTY_MIB,
-        status: 'notFetched',
+        mediaType: 'application/zip',
+        byteLength: FIFTY_MIB,
     };
-    const bundle = makeBundle(
+    const domain = makeDomain(
         [
             msg('m1', 'user', [
                 para('请看附件里的 50MB 数据集。'),
@@ -305,11 +277,11 @@ test('D8-4: 50 MiB file attachment stays metadata-only (no read, no hash, no OOM
         host,
         ...(cjkFont ? { fontPaths: [cjkFont] } : {}),
     });
-    const { context, calls } = makeContext({ bundle });
+    const { context, calls } = makeContext();
     let result: { pdfBytes: Uint8Array; diagnostics: Array<{ severity: string; message: string }> };
     try {
         result = await compiler.compile(
-            compilerPayload(bundle, convertMath) as never,
+            compilerPayload(domain, convertMath) as never,
             context as never,
         );
     } finally {
@@ -333,9 +305,7 @@ test('D8-4: 50 MiB file attachment stays metadata-only (no read, no hash, no OOM
     );
 });
 
-// ---------------------------------------------------------------------------
 // D8-5: 多会话压力
-// ---------------------------------------------------------------------------
 
 test('D8-5: 20 sequential compiles on one reused frame: timing + heap', async () => {
     const host = new RealWasmSandboxHost(repoRoot());
@@ -346,14 +316,14 @@ test('D8-5: 20 sequential compiles on one reused frame: timing + heap', async ()
     let failures = 0;
     try {
         for (let i = 0; i < 20; i += 1) {
-            const bundle = makeBundle(
+            const domain = makeDomain(
                 [
                     msg(`u${i}`, 'user', [para(`压力会话 ${i + 1}：混合内容测试，中文与 English mixed。`)]),
                     msg(`a${i}`, 'assistant', [
                         para(`回复 ${i + 1}：包含公式与列表。`),
                         mathBlock('\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}'),
                         {
-                            id: bid(), type: 'list', ordered: false,
+                            type: 'list', ordered: false,
                             items: [
                                 { blocks: [para(`要点一：会话 ${i + 1}`)] },
                                 { blocks: [para('要点二：separate check')] },
@@ -363,11 +333,11 @@ test('D8-5: 20 sequential compiles on one reused frame: timing + heap', async ()
                 ],
                 { title: `压力会话 ${i + 1}`, conversationId: `d8-stress-${i}` },
             );
-            const { context } = makeContext({ bundle });
+            const { context } = makeContext();
             const t0 = Date.now();
             try {
                 const r = await compiler.compile(
-                    compilerPayload(bundle, convertMath) as never,
+                    compilerPayload(domain, convertMath) as never,
                     context as never,
                 );
                 assertPdfMagic(r.pdfBytes);
@@ -395,22 +365,20 @@ test('D8-5: 20 sequential compiles on one reused frame: timing + heap', async ()
     );
 });
 
-// ---------------------------------------------------------------------------
 // D8-6: 连续导出 dispose / leak 回归 (#594)
-// ---------------------------------------------------------------------------
 
 test('D8-6: repeated create -> compile -> dispose leaves no frame/listener growth', async () => {
     const CYCLES = 5;
     const host = new RealWasmSandboxHost(repoRoot());
     for (let i = 0; i < CYCLES; i += 1) {
         const compiler = new TypstSandboxCompiler({ host });
-        const bundle = makeBundle(
+        const domain = makeDomain(
             [msg('m1', 'user', [para(`第 ${i + 1} 次导出`)])],
             { conversationId: `d8-dispose-${i}` },
         );
-        const { context } = makeContext({ bundle });
+        const { context } = makeContext();
         const result = await compiler.compile(
-            compilerPayload(bundle, convertMath) as never,
+            compilerPayload(domain, convertMath) as never,
             context as never,
         );
         assertPdfMagic(result.pdfBytes);
@@ -427,31 +395,23 @@ test('D8-6: repeated create -> compile -> dispose leaves no frame/listener growt
     console.log(`  D8-6: ${CYCLES} cycles, stats=${JSON.stringify(host.stats)}`);
 });
 
-// ---------------------------------------------------------------------------
 // extractor self-check (guards the test helper itself)
-// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
 // extractor unit tests (guard the test helper itself)
-// ---------------------------------------------------------------------------
 
 test('pdfTextExtract: literal strings with raw balanced parens (Typst CID bytes)', () => {
     // Typst emits 2-byte CID bytes 0x28/0x29 as RAW '(' / ')' inside literal
     // strings (balanced, legal per PDF 7.3.4.2). A flat regex tokenizer
     // fragments such strings; the scanner must depth-count.
     // CIDs here are octal: \027(oct)=0x17->春, raw ( =0x28->眠, raw )=0x29->不.
-    const cmap = `1 0 obj
-<< /Length 10 >>
-stream
-1 begincodespacerange <0000> <FFFF> endcodespacerange
+    const cmapSrc = `1 begincodespacerange <0000> <FFFF> endcodespacerange
 4 beginbfchar
 <0013> <95EE>
 <0017> <6625>
 <0028> <7720>
 <0029> <4E0D>
-endbfchar
-endstream
-endobj`;
+endbfchar`;
+    const cmap = `1 0 obj\n<< /Length ${Buffer.byteLength(cmapSrc)} >>\nstream\n${cmapSrc}\nendstream\nendobj`;
     const contentSrc = 'BT /f0 12 Tf 72 720 Td ' +
         '[(' + '\\000\\023\\000\\027\\000' + '(' + '\\000' + ')' + ')] TJ ET';
     const content = `2 0 obj\n<< /Length ${Buffer.byteLength(contentSrc)} >>\nstream\n${contentSrc}\nendstream\nendobj`;
@@ -469,14 +429,14 @@ endobj`;
 });
 
 test('pdfTextExtract: known content round-trips through a real compiled PDF', async () => {
-    const bundle = makeBundle(
+    const domain = makeDomain(
         [
             msg('m1', 'user', [para('提取器自检：hello world 123')]),
             msg('m2', 'assistant', [mathBlock('x^2 + 1 = 0')]),
         ],
         { title: 'extractor-selfcheck' },
     );
-    const { pdfBytes } = await compileOnce(bundle);
+    const { pdfBytes } = await compileOnce(domain);
     const extracted = extractPdfText(pdfBytes);
     assert.ok(extracted.pageCount >= 1, 'at least one page');
     assert.ok(extracted.text.includes('hello world 123'), 'latin prose extracts');
@@ -497,4 +457,14 @@ test("pdfTextExtract: marked content /ActualText replaces composite glyphs witho
     const extracted = extractPdfText(Buffer.from(pdf, "latin1"));
     assert.strictEqual(extracted.text, "()");
     assert.ok(!extracted.text.includes(String.fromCharCode(0xfffd)), "no tofu");
+});
+
+test('offline emoji fallback preserves selectable conversation symbols without device fonts', async () => {
+    const symbols = ['🎉', '💬', '🧠', '✍', '🖼', '🌅', '🐈'];
+    const result = await compileOnce(makeDomain([msg('emoji', 'assistant', [para('Emoji: ' + symbols.join(' '))])]));
+    assertPdfMagic(result.pdfBytes);
+    const extracted = extractPdfText(result.pdfBytes);
+    for (const symbol of symbols) assert.ok(extracted.text.includes(symbol), `missing emoji ${symbol}`);
+    assert.equal(extracted.imageXObjectCount, 0, 'emoji remain font glyphs, not downloaded pictures');
+    assert.ok(!extracted.text.includes('�'));
 });

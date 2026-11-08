@@ -20,7 +20,7 @@ export {};
 
 const zlib = require('node:zlib');
 
-export interface PdfObject { num: number; dict: string; stream: Buffer | null }
+interface PdfObject { num: number; dict: string; stream: Buffer | null }
 
 export function parseObjects(data: Buffer): Map<number, PdfObject> {
     const objs = new Map<number, PdfObject>();
@@ -34,11 +34,16 @@ export function parseObjects(data: Buffer): Map<number, PdfObject> {
         const sm = /stream\r?\n/.exec(body);
         if (sm) {
             const streamStart = m.index + m[0].indexOf(m[2]) + sm.index + sm[0].length;
-            const endIdx = text.indexOf('endstream', streamStart);
-            stream = data.subarray(streamStart, endIdx);
-            // strip trailing CRLF before endstream
-            while (stream.length > 0 && (stream[stream.length - 1] === 0x0a || stream[stream.length - 1] === 0x0d)) {
-                stream = stream.subarray(0, stream.length - 1);
+            const length = /\/Length\s+(\d+)(?:\s+(\d+)\s+R)?/.exec(body.slice(0, sm.index));
+            if (length && length[2] === undefined) {
+                // Compressed data can legitimately end in CR/LF. /Length counts
+                // binary bytes; trimming them corrupts the stream and hides pages.
+                stream = data.subarray(streamStart, streamStart + Number(length[1]));
+            } else {
+                const endIdx = text.indexOf('endstream', streamStart);
+                stream = data.subarray(streamStart, endIdx);
+                if (stream.subarray(-2).equals(Buffer.from('\r\n'))) stream = stream.subarray(0, -2);
+                else if (stream[stream.length - 1] === 0x0a) stream = stream.subarray(0, -1);
             }
         }
         objs.set(num, { num, dict: body, stream });
@@ -215,17 +220,96 @@ export function tokenizeContent(content: string): string[] {
     return tokens;
 }
 
-export interface ExtractedPdf {
+function dictionaryValue(dictionary: string, key: string): string {
+    const tokens = tokenizeContent(dictionary);
+    let depth = 0, arrays = 0;
+    for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index];
+        if (token === '<<') depth++;
+        else if (token === '>>') depth--;
+        else if (token === '[') arrays++;
+        else if (token === ']') arrays--;
+        else if (depth === 1 && arrays === 0 && token === key) {
+            let end = index + 1;
+            const start = tokens[end];
+            if (start === '[' || start === '<<') {
+                let nested = 0;
+                const close = start === '[' ? ']' : '>>';
+                for (; end < tokens.length; end++) {
+                    if (tokens[end] === start) nested++;
+                    if (tokens[end] === close) { nested--; if (nested === 0) break; }
+                }
+            } else if (tokens[end + 1] === '0' && tokens[end + 2] === 'R') end += 2;
+            return tokens.slice(index + 1, end + 1).join(' ');
+        }
+    }
+    return '';
+}
+
+function structureChildren(element: PdfObject, page: string | null): Array<{ ref?: number; key?: string }> {
+    const kids = dictionaryValue(element.dict, '/K');
+    const tokens = /<<[\s\S]*?>>|(\d+)\s+0\s+R|(\d+)/g;
+    const values: Array<{ ref?: number; key?: string }> = [];
+    let token: RegExpExecArray | null;
+    while ((token = tokens.exec(kids)) !== null) {
+        if (token[1]) values.push({ ref: Number(token[1]) });
+        else if (token[2] && page) values.push({ key: `${page}:${token[2]}` });
+        else if (token[0].startsWith('<<')) {
+            const targetPage = /\/Pg\s+(\d+)\s+0\s+R/.exec(token[0])?.[1] ?? page;
+            const mcid = /\/MCID\s+(\d+)/.exec(token[0])?.[1];
+            if (targetPage && mcid) values.push({ key: `${targetPage}:${mcid}` });
+        }
+    }
+    return values;
+}
+
+interface PdfContentRun { kind: 'text' | 'math' | 'code'; text: string; group: number | null }
+
+interface ExtractedPdf {
     text: string;
+    contentRuns: PdfContentRun[];
     pageCount: number;
     imageXObjectCount: number;
     fonts: string[];
 }
 
 /** Extract selectable text from a PDF. */
-export function extractPdfText(pdfBytes: Uint8Array): ExtractedPdf {
+export function extractPdfText(pdfBytes: Uint8Array, honorActualText = true): ExtractedPdf {
     const data = Buffer.from(pdfBytes);
     const objs = parseObjects(data);
+
+    // Resolve marked content to its independent PDF structure ancestry. The
+    // production renderer is not used to reconstruct expected message text.
+    const contentKinds = new Map<string, { kind: 'text' | 'math' | 'code' | 'label'; group: number | null }>();
+    for (const obj of objs.values()) {
+        if (!/\/Type\s*\/StructElem/.test(obj.dict)) continue;
+        let page: string | null = null;
+        let parent: PdfObject | undefined = obj;
+        let kind: 'text' | 'math' | 'code' | 'label' = 'text';
+        let group: number | null = null;
+        const visited = new Set<number>();
+        while (parent && !visited.has(parent.num)) {
+            visited.add(parent.num);
+            page ??= /^(\d+)\s+0\s+R/.exec(dictionaryValue(parent.dict, '/Pg'))?.[1] ?? null;
+            const role = /\/S\s*\/(\w+)/.exec(parent.dict)?.[1];
+            // A formula may contain a tagged table and nested Formula cells.
+            // Its outer Formula is one authored expression, including all cells.
+            if (role === 'Formula' || role === 'Code' || role === 'Lbl') {
+                kind = role === 'Formula' ? 'math' : role === 'Code' ? 'code' : 'label';
+                group = parent.num;
+            }
+            const ref = /\/P\s+(\d+)\s+0\s+R/.exec(parent.dict);
+            parent = ref ? objs.get(Number(ref[1])) : undefined;
+        }
+        // A single formula/code span can use integer MCIDs on its first page
+        // and explicit MCR dictionaries on later pages. Page refs are not MCIDs.
+        for (const child of structureChildren(obj, page)) {
+            if (child.key) contentKinds.set(child.key, { kind, group });
+        }
+    }
+    const contentRuns: PdfContentRun[] = [];
+    const markedText = new Map<string, string>();
+    const markedEntries: Array<{ key: string; text: string }> = [];
 
     // Build font info: resource name -> { toUnicode, baseFont }
     const fontInfo = new Map<string, { toUnicode: Map<string, string> | null; baseFont: string }>();
@@ -288,27 +372,47 @@ export function extractPdfText(pdfBytes: Uint8Array): ExtractedPdf {
                 const tokens = tokenizeContent(inflated.toString('latin1'));
                 let i = 0;
                 const stack: string[] = [];
-                const markedContentStack: Array<{ actualText: string | null }> = [];
+                const markedContentStack: Array<{ actualText: string | null; artifact: boolean; mcid: string | null }> = [];
+                const append = (text: string): void => {
+                    pageText.push(text);
+                    if (!text || markedContentStack.some(entry => entry.artifact)) return;
+                    const mcid = [...markedContentStack].reverse().find(entry => entry.mcid !== null)?.mcid;
+                    if (mcid != null) {
+                        const key = `${obj.num}:${mcid}`;
+                        markedText.set(key, (markedText.get(key) ?? '') + text);
+                        markedEntries.push({ key, text });
+                    }
+                    const type = mcid != null ? contentKinds.get(`${obj.num}:${mcid}`) : undefined;
+                    if (type?.kind === 'label') return;
+                    const kind = type?.kind ?? 'text';
+                    const group = type?.group ?? null;
+                    const last = contentRuns.at(-1);
+                    if (last && last.kind === kind && last.group === group) last.text += text;
+                    else contentRuns.push({ kind, group, text });
+                };
                 while (i < tokens.length) {
                     const t = tokens[i];
                     if (t === 'BDC' || t === 'BMC') {
                         let actualText: string | null = null;
                         const actIdx = stack.lastIndexOf('/ActualText');
-                        if (actIdx !== -1 && actIdx + 1 < stack.length) {
+                        if (honorActualText && actIdx !== -1 && actIdx + 1 < stack.length) {
                             actualText = parseActualTextString(stack[actIdx + 1]);
                         }
-                        markedContentStack.push({ actualText });
+                        const mcidIndex = stack.lastIndexOf('/MCID');
+                        markedContentStack.push({ actualText, artifact: stack.includes('/Artifact'),
+                            mcid: mcidIndex === -1 ? null : stack[mcidIndex + 1] ?? null });
                         stack.length = 0;
                     } else if (t === 'EMC') {
-                        const entry = markedContentStack.pop();
-                        if (entry && entry.actualText != null) {
-                            pageText.push(entry.actualText);
-                        }
+                        const entry = markedContentStack.at(-1);
+                        // An outer ActualText replaces the entire nested marked sequence.
+                        if (entry?.actualText != null && !markedContentStack.slice(0, -1).some(m => m.actualText != null))
+                            append(entry.actualText);
+                        markedContentStack.pop();
                         stack.length = 0;
                     } else if (t === 'Tj' || t === "'") {
                         const s = stack.pop() ?? '';
                         if (!markedContentStack.some(m => m.actualText != null)) {
-                            pageText.push(renderStringToken(s, currentFont));
+                            append(renderStringToken(s, currentFont));
                         }
                         stack.length = 0;
                     } else if (t === '"') {
@@ -316,7 +420,7 @@ export function extractPdfText(pdfBytes: Uint8Array): ExtractedPdf {
                         const s = stack.pop() ?? '';
                         stack.pop(); stack.pop();
                         if (!markedContentStack.some(m => m.actualText != null)) {
-                            pageText.push(renderStringToken(s, currentFont));
+                            append(renderStringToken(s, currentFont));
                         }
                         stack.length = 0;
                     } else if (t === 'TJ') {
@@ -332,7 +436,7 @@ export function extractPdfText(pdfBytes: Uint8Array): ExtractedPdf {
                             for (const e of elems) {
                                 if (e.startsWith('<') || e.startsWith('(')) out += renderStringToken(e, currentFont);
                             }
-                            pageText.push(out);
+                            append(out);
                         }
                         stack.length = 0;
                     } else if (t === 'Tf') {
@@ -352,7 +456,93 @@ export function extractPdfText(pdfBytes: Uint8Array): ExtractedPdf {
         }
     }
 
-    return { text: pageText.join(''), pageCount, imageXObjectCount, fonts };
+    // A paginated table can emit cell fragments in page/paint order. Read its
+    // tagged logical structure to preserve cell and source-code reading order.
+    const logicalRuns: PdfContentRun[] = [];
+    const appendLogical = (text: string, kind: PdfContentRun['kind'], group: number | null): void => {
+        if (!text) return;
+        const last = logicalRuns.at(-1);
+        if (last && last.kind === kind && last.group === group) last.text += text;
+        else logicalRuns.push({ kind, group, text });
+    };
+    const metadata = (element: PdfObject, page: string | null, kind: PdfContentRun['kind'], group: number | null) => {
+        const role = /\/S\s*\/(\w+)/.exec(element.dict)?.[1];
+        return { role, page: /^(\d+)\s+0\s+R/.exec(dictionaryValue(element.dict, '/Pg'))?.[1] ?? page,
+            kind: group === null ? (role === 'Formula' ? 'math' as const : role === 'Code' ? 'code' as const : kind) : kind,
+            group: group === null && (role === 'Formula' || role === 'Code') ? element.num : group };
+    };
+    const collect = (num: number, page: string | null, kind: PdfContentRun['kind'], group: number | null, owned: Map<string, { kind: PdfContentRun['kind']; group: number | null }>, path: Set<number>): void => {
+        const element = objs.get(num);
+        if (!element || path.has(num)) return;
+        const ancestors = new Set(path); ancestors.add(num);
+        const meta = metadata(element, page, kind, group);
+        if (meta.role === 'Lbl') return;
+        for (const child of structureChildren(element, meta.page)) {
+            if (child.ref) collect(child.ref, meta.page, meta.kind, meta.group, owned, ancestors);
+            else if (child.key) owned.set(child.key, { kind: meta.kind, group: meta.group });
+        }
+    };
+    const visit = (num: number, inheritedPage: string | null, inheritedKind: PdfContentRun['kind'], inheritedGroup: number | null, path: Set<number>): void => {
+        const element = objs.get(num);
+        if (!element || path.has(num)) return;
+        const meta = metadata(element, inheritedPage, inheritedKind, inheritedGroup);
+        if (meta.role === 'Lbl') return;
+        // Keep physical inline order inside an atomic paragraph/cell/code block;
+        // Typst's mixed K arrays can list inline child references before MCIDs.
+        // Only block/cell order comes from the logical structure tree.
+        if (meta.role && /^(?:P|H[1-6]|TD|TH|Code|Formula|LBody)$/.test(meta.role)) {
+            const owned = new Map<string, { kind: PdfContentRun['kind']; group: number | null }>();
+            collect(num, inheritedPage, inheritedKind, inheritedGroup, owned, path);
+            for (const entry of markedEntries) {
+                const type = owned.get(entry.key);
+                if (type) appendLogical(entry.text, type.kind, type.group);
+            }
+            return;
+        }
+        const ancestors = new Set(path); ancestors.add(num);
+        for (const child of structureChildren(element, meta.page)) {
+            if (child.ref) visit(child.ref, meta.page, meta.kind, meta.group, ancestors);
+            else if (child.key) appendLogical(markedText.get(child.key) ?? '', meta.kind, meta.group);
+        }
+    };
+    const tables = [...objs.values()].filter(obj => {
+        if (!/\/Type\s*\/StructElem/.test(obj.dict) || !/\/S\s*\/Table\b/.test(obj.dict)) return false;
+        let parent = obj;
+        const visited = new Set<number>();
+        while (!visited.has(parent.num)) {
+            visited.add(parent.num);
+            const ref = /\/P\s+(\d+)\s+0\s+R/.exec(parent.dict);
+            const next = ref ? objs.get(Number(ref[1])) : undefined;
+            if (!next) break;
+            if (/\/S\s*\/(?:Formula|Code)\b/.test(next.dict)) return false;
+            parent = next;
+        }
+        return true;
+    });
+    const tableKeys = new Map<string, number>();
+    const tableRuns = new Map<number, PdfContentRun[]>();
+    for (const table of tables) {
+        const owned = new Map<string, { kind: PdfContentRun['kind']; group: number | null }>();
+        collect(table.num, null, 'text', null, owned, new Set());
+        for (const key of owned.keys()) tableKeys.set(key, table.num);
+        const begin = logicalRuns.length;
+        visit(table.num, null, 'text', null, new Set());
+        tableRuns.set(table.num, logicalRuns.splice(begin));
+    }
+    const emitted = new Set<number>();
+    for (const entry of markedEntries) {
+        const table = tableKeys.get(entry.key);
+        if (table !== undefined) {
+            if (!emitted.has(table)) {
+                emitted.add(table);
+                for (const run of tableRuns.get(table) ?? []) appendLogical(run.text, run.kind, run.group);
+            }
+        } else {
+            const type = contentKinds.get(entry.key);
+            if (type?.kind !== 'label') appendLogical(entry.text, type?.kind ?? 'text', type?.group ?? null);
+        }
+    }
+    return { text: pageText.join(''), contentRuns: markedEntries.length ? logicalRuns : contentRuns, pageCount, imageXObjectCount, fonts };
 }
 
 function parseActualTextString(raw: string): string {

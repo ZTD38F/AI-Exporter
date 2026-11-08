@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from scripts.framework.pipeline import (
     PipelineStage,
     PipelineConcurrencyViolationError,
-    CircuitBreakerError,
     ProcessLock,
     ProcessLockError,
     AtomicAction,
@@ -55,28 +54,27 @@ class MockAction(AtomicAction):
 class TestSerialPipeline(unittest.TestCase):
 
     def test_process_lock_acquisition_and_conflict(self):
-        with tempfile.NamedTemporaryFile(delete=True) as tmp:
-            lock_path = tmp.name
+        with tempfile.TemporaryDirectory() as directory:
+            lock_path = os.path.join(directory, "runner.lock")
+            lock1, lock2 = ProcessLock(lock_path), ProcessLock(lock_path)
+            try:
+                lock1.acquire()
+                self.assertTrue(lock1._acquired)
+                self.assertTrue(os.path.exists(lock_path))
 
-        lock1 = ProcessLock(lock_path)
-        lock1.acquire()
-        self.assertTrue(lock1._acquired)
-        self.assertTrue(os.path.exists(lock_path))
+                with self.assertRaises(ProcessLockError):
+                    lock2.acquire()
 
-        # Second lock attempt must fail
-        lock2 = ProcessLock(lock_path)
-        with self.assertRaises(ProcessLockError):
-            lock2.acquire()
+                lock1.release()
+                self.assertFalse(lock1._acquired)
+                self.assertFalse(os.path.exists(lock_path))
 
-        # Release first lock
-        lock1.release()
-        self.assertFalse(lock1._acquired)
-        self.assertFalse(os.path.exists(lock_path))
-
-        # Now second lock can acquire
-        lock2.acquire()
-        self.assertTrue(lock2._acquired)
-        lock2.release()
+                lock2.acquire()
+                self.assertTrue(lock2._acquired)
+            finally:
+                lock2.release()
+                lock1.release()
+            self.assertFalse(os.path.exists(lock_path))
 
     def test_executor_state_machine_transition_success(self):
         executor = SerialActionExecutor()
@@ -99,6 +97,28 @@ class TestSerialPipeline(unittest.TestCase):
 
         with self.assertRaises(PipelineConcurrencyViolationError):
             executor.run_pipeline(None, None, [a1])
+
+    def test_nested_execution_is_rejected_while_outer_action_is_running(self):
+        executor = SerialActionExecutor()
+        case = self
+        nested = MockAction("Nested", {PipelineStage.IDLE}, PipelineStage.STAGED)
+
+        class ReenterAction(MockAction):
+            def execute(self, ctx, cdp):
+                case.assertTrue(executor.is_in_flight)
+                with case.assertRaises(PipelineConcurrencyViolationError):
+                    executor.run_pipeline(ctx, cdp, [nested])
+                self.executed = True
+                return ActionResult(True, "nested call rejected")
+
+        outer = ReenterAction("Outer", {PipelineStage.IDLE}, PipelineStage.IDLE)
+        result = executor.run_pipeline(None, None, [outer])
+        self.assertTrue(result.success)
+        self.assertEqual(result.executed_actions, 1)
+        self.assertTrue(outer.executed)
+        self.assertFalse(nested.executed)
+        self.assertFalse(executor.is_in_flight)
+        self.assertEqual(executor.current_stage, PipelineStage.IDLE)
 
     def test_circuit_breaker_halts_on_action_failure(self):
         executor = SerialActionExecutor()

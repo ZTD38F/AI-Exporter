@@ -22,19 +22,11 @@ const {
 } = require('../scripts/parser_migration/diff_runner.ts');
 
 test('Differential Runner: extracts semantic AST fingerprint', () => {
-    const fakeBundle = {
-        conversation: {
-            messages: [
-                {
-                    blocks: [
+    const fakeBundle = [
                         { type: 'paragraph', children: [{ type: 'text', text: 'Hello' }] },
                         { type: 'heading', level: 1, text: 'Title' },
                         { type: 'code', code: 'console.log(1)' },
-                    ],
-                },
-            ],
-        },
-    };
+                    ];
 
     const fp = extractAstFingerprint(fakeBundle);
     assert.strictEqual(fp.blockCount, 3);
@@ -43,11 +35,7 @@ test('Differential Runner: extracts semantic AST fingerprint', () => {
 });
 
 test('Differential Runner: Markdown AST comparison identifies identical structures', () => {
-    const bundle = {
-        conversation: {
-            messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text: 'Sample' }] }] }],
-        },
-    };
+    const bundle = [{ type: 'paragraph', children: [{ type: 'text', text: 'Sample' }] }];
 
     const result = compareMarkdownAst('Sample', bundle, bundle);
     assert.strictEqual(result.hasDiff, false);
@@ -55,16 +43,8 @@ test('Differential Runner: Markdown AST comparison identifies identical structur
 });
 
 test('Differential Runner: Structural diffs default to D_CANNOT_DETERMINE (No automatic B bias)', () => {
-    const bundleBase = {
-        conversation: {
-            messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text: 'Sample' }] }] }],
-        },
-    };
-    const bundleWithUnknown = {
-        conversation: {
-            messages: [{ blocks: [{ type: 'unknown', text: 'Sample' }] }],
-        },
-    };
+    const bundleBase = [{ type: 'paragraph', children: [{ type: 'text', text: 'Sample' }] }];
+    const bundleWithUnknown = [{ type: 'unknown', text: 'Sample' }];
 
     // Any diff MUST default to D_CANNOT_DETERMINE: Old parser is NOT an oracle
     const diff = compareMarkdownAst('Sample', bundleBase, bundleWithUnknown);
@@ -101,68 +81,42 @@ test('Differential Runner: Math comparison defaults all diffs to D_CANNOT_DETERM
 });
 
 test('Differential Runner: Ignores ephemeral IDs when content is identical', () => {
-    const bundleA = {
-        conversation: {
-            messages: [{
-                blocks: [{
-                    id: 'b-random-uuid-1',
+    const bundleA = [{
                     type: 'paragraph',
                     children: [{
                         type: 'strong',
                         children: [{ type: 'text', text: 'Important' }],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
-    const bundleB = {
-        conversation: {
-            messages: [{
-                blocks: [{
-                    id: 'b-completely-different-uuid-2',
+    const bundleB = [{
                     type: 'paragraph',
                     children: [{
                         type: 'strong',
                         children: [{ type: 'text', text: 'Important' }],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
     const result = compareMarkdownAst('**Important**', bundleA, bundleB);
     assert.strictEqual(result.hasDiff, false, 'Ephemeral metadata differences must not trigger a semantic diff');
 });
 
 test('Differential Runner: Recursively catches lost formatting (strong -> text)', () => {
-    const bundleWithBold = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const bundleWithBold = [{
                     type: 'paragraph',
                     children: [{
                         type: 'strong',
                         children: [{ type: 'text', text: 'Important' }],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
-    const bundleWithPlainText = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const bundleWithPlainText = [{
                     type: 'paragraph',
                     children: [{
                         type: 'text',
                         text: 'Important',
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
     const result = compareMarkdownAst('**Important**', bundleWithBold, bundleWithPlainText);
     assert.strictEqual(result.hasDiff, true, 'Dropping strong to plain text must be detected as a diff');
@@ -172,35 +126,23 @@ test('Differential Runner: Recursively catches lost formatting (strong -> text)'
 });
 
 test('Differential Runner: Recursively catches link href corruption', () => {
-    const bundleLinkA = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const bundleLinkA = [{
                     type: 'paragraph',
                     children: [{
                         type: 'link',
                         href: 'https://correct.org',
                         children: [{ type: 'text', text: 'Link' }],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
-    const bundleLinkB = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const bundleLinkB = [{
                     type: 'paragraph',
                     children: [{
                         type: 'link',
                         href: 'https://corrupted.org',
                         children: [{ type: 'text', text: 'Link' }],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
     const result = compareMarkdownAst('[Link](https://correct.org)', bundleLinkA, bundleLinkB);
     assert.strictEqual(result.hasDiff, true);
@@ -210,10 +152,7 @@ test('Differential Runner: Recursively catches link href corruption', () => {
 });
 
 test('Differential Runner: Recursively catches table structure and cell alterations', () => {
-    const bundleTableA = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const bundleTableA = [{
                     type: 'table',
                     columns: [{ align: 'left' }, { align: 'right' }],
                     headerRows: [{
@@ -228,15 +167,9 @@ test('Differential Runner: Recursively catches table structure and cell alterati
                             { children: [{ type: 'text', text: 'Cell2' }] },
                         ],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
-    const bundleTableB = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const bundleTableB = [{
                     type: 'table',
                     columns: [{ align: 'left' }, { align: 'center' }], // alignment differs
                     headerRows: [{
@@ -251,10 +184,7 @@ test('Differential Runner: Recursively catches table structure and cell alterati
                             { children: [{ type: 'text', text: 'Cell2' }] },
                         ],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
     const result = compareMarkdownAst('| H1 | H2 |', bundleTableA, bundleTableB);
     assert.strictEqual(result.hasDiff, true);
@@ -263,59 +193,33 @@ test('Differential Runner: Recursively catches table structure and cell alterati
 });
 
 test('Differential Runner: Unknown / future semantic fields produce diff by default without special-casing', () => {
-    // 1. Candidate introduces an unmentioned custom semantic attribute on a block
-    const baseBundle = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const baseBundle = [{
                     type: 'paragraph',
                     children: [{ type: 'text', text: 'Hello' }],
-                }],
-            }],
-        },
-    };
-    const candBundleWithExtraField = {
-        conversation: {
-            messages: [{
-                blocks: [{
+                }];
+    const candBundleWithExtraField = [{
                     type: 'paragraph',
                     customSemanticAnnotation: 'v2-extra-meta', // not in any hardcoded allowlist!
                     children: [{ type: 'text', text: 'Hello' }],
-                }],
-            }],
-        },
-    };
+                }];
 
     const diff1 = compareMarkdownAst('Hello', baseBundle, candBundleWithExtraField);
     assert.strictEqual(diff1.hasDiff, true, 'Unknown block field must default to semantic and trigger diff');
     assert.strictEqual(diff1.category, 'D_CANNOT_DETERMINE');
     assert.ok(diff1.rationale?.includes('customSemanticAnnotation'));
 
-    // 2. Candidate modifies a cell-level property (e.g. rowSpan)
-    const baseTable = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const baseTable = [{
                     type: 'table',
                     rows: [{
                         cells: [{ rowSpan: 1, children: [{ type: 'text', text: 'cell' }] }],
                     }],
-                }],
-            }],
-        },
-    };
-    const candTableSpan = {
-        conversation: {
-            messages: [{
-                blocks: [{
+                }];
+    const candTableSpan = [{
                     type: 'table',
                     rows: [{
                         cells: [{ rowSpan: 2, children: [{ type: 'text', text: 'cell' }] }],
                     }],
-                }],
-            }],
-        },
-    };
+                }];
 
     const diff2 = compareMarkdownAst('table', baseTable, candTableSpan);
     assert.strictEqual(diff2.hasDiff, true, 'rowSpan difference must be detected automatically');
@@ -323,50 +227,32 @@ test('Differential Runner: Unknown / future semantic fields produce diff by defa
 });
 
 test('Differential Runner: Minimal canonicalization coalesces adjacent inline text nodes', () => {
-    const chunkedTextBundle = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const chunkedTextBundle = [{
                     type: 'paragraph',
                     children: [
                         { type: 'text', text: 'Hello ' },
                         { type: 'text', text: 'World' },
                     ],
-                }],
-            }],
-        },
-    };
+                }];
 
-    const singleTextBundle = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const singleTextBundle = [{
                     type: 'paragraph',
                     children: [
                         { type: 'text', text: 'Hello World' },
                     ],
-                }],
-            }],
-        },
-    };
+                }];
 
     // When text is identical after coalescing, it is considered equivalent
     const resIdentical = compareMarkdownAst('Hello World', chunkedTextBundle, singleTextBundle);
     assert.strictEqual(resIdentical.hasDiff, false, 'Coalesced identical text must not trigger false diff');
 
     // When text actually differs, it must trigger diff
-    const differentTextBundle = {
-        conversation: {
-            messages: [{
-                blocks: [{
+    const differentTextBundle = [{
                     type: 'paragraph',
                     children: [
                         { type: 'text', text: 'Hello Earth' },
                     ],
-                }],
-            }],
-        },
-    };
+                }];
     const resDiff = compareMarkdownAst('Hello World', chunkedTextBundle, differentTextBundle);
     assert.strictEqual(resDiff.hasDiff, true);
     assert.strictEqual(resDiff.rationaleKind, 'CONTENT_CHANGED');
@@ -374,10 +260,10 @@ test('Differential Runner: Minimal canonicalization coalesces adjacent inline te
 
 
 test('Differential Runner: only IDs are ephemeral', () => {
-    const a = { conversation: { messages: [{ blocks: [{ id: 'a', type: 'paragraph', children: [] }] }] } };
+    const a = [{ type: 'paragraph', children: [] }];
     for (const key of ['sourceRef', 'extensions']) {
         const b = JSON.parse(JSON.stringify(a));
-        b.conversation.messages[0].blocks[0][key] = { unexpected: true };
+        b[0][key] = { unexpected: true };
         assert.strictEqual(compareMarkdownAst('', a, b).hasDiff, true);
     }
 });

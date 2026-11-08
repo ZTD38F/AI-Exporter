@@ -1,0 +1,7 @@
+{
+  "description": "Captured DIL component and official Markdown fallback from the live compost questionnaire. No account, conversation or message identifiers retained.",
+  "raw": "# 家庭堆肥知识小问卷\n\n{@body const [answers, setAnswers] = DIL.useState([\"\",\"\",\"\"])}\n{@body const questions = [{q:\"1. 以下哪种垃圾最适合放入家庭堆肥？\",opts:[\"果皮和蔬菜残渣\",\"塑料包装袋\",\"玻璃碎片\"]},{q:\"2. 为了让堆肥顺利分解，应该怎么做？\",opts:[\"密封后完全不管\",\"适当混合并保持透气\",\"不断加入大量清水\"]},{q:\"3. 怎样判断堆肥通常已经成熟？\",opts:[\"有强烈刺鼻气味\",\"仍能清楚辨认所有新鲜厨余\",\"颜色较深、质地疏松且有泥土气味\"]}]}\n<box border radius=\"xl\" padding={4} gap={5}>\n  {#each questions as question, i}\n    <box gap={3} key={question.q}>\n      <text weight=\"medium\">{question.q}</text>\n      <radio-group value={answers[i]} onChange={v => setAnswers(old => old.map((a,j) => i === j ? v : a))} direction=\"col\">\n        {#each question.opts as opt, j}\n          <radio value={String(j)}>{[\"A\",\"B\",\"C\"][j]}. {opt}</radio>\n        {/each}\n      </radio-group>\n    </box>\n    {#if i < questions.length - 1}<divider color=\"subtle\"/>{/if}\n  {/each}\n  <button block onClick={() => GenUI.issueNewTurn(\"请检查我的家庭堆肥问卷答案并给出简短反馈：\\n\" + questions.map((q,i) => q.q + \"\\n我的答案：\" + (answers[i] === \"\" ? \"未作答\" : [\"A\",\"B\",\"C\"][Number(answers[i])] + \". \" + q.opts[Number(answers[i])])).join(\"\\n\\n\"))}>提交问卷</button>\n  <button block variant=\"outline\" onClick={() => setAnswers([\"\",\"\",\"\"])}>清空重答</button>\n</box>\n\nCOMPOST-END",
+  "fallbackMarkdown": "# 家庭堆肥知识小问卷\n\n[提交问卷]\n\n[清空重答]\n\nCOMPOST-END",
+  "expectedQuestions": 3,
+  "expectedOptions": 9
+}

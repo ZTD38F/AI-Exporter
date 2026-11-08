@@ -1,0 +1,1738 @@
+{
+  "schemaVersion": 1,
+  "profile": {
+    "id": "pdf",
+    "version": 1
+  },
+  "title": "Direct PDF boundary",
+  "metadata": "gemini · 2023-11-14 · 2 messages",
+  "layout": {
+    "page": {
+      "widthMm": 210,
+      "heightMm": 297,
+      "topMm": 18.5,
+      "bottomMm": 18,
+      "sideMm": 22,
+      "contentWidthMm": 166,
+      "proseWidthMm": 135.8181818181818
+    },
+    "bubble": {
+      "maxWidthRatio": 0.85,
+      "compactHeightPt": 120,
+      "minInnerWidthPt": 28,
+      "paddingXPt": 12.5,
+      "paddingYPt": 8.4
+    },
+    "figure": {
+      "maxPageHeightRatio": 0.6,
+      "captionMaxWidthMm": 115
+    },
+    "textLanguage": "zh",
+    "headerGapPt": 4.5,
+    "bodyGapPt": 22.5
+  },
+  "messages": [
+    {
+      "id": "msg-0",
+      "variant": "bubble",
+      "plainText": "Explain the pipeline.",
+      "minWidthCards": [],
+      "gapAfterPt": 22.5,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Explain the pipeline."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 0,
+            "keepWithNext": false,
+            "width": "container"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg-1",
+      "variant": "flow",
+      "plainText": "Check every relation.\nResults\nStrong text and source.\nA quoted result.\nFirst\nSecond\nconst layers = 2;\n\n\\frac{a}{b}\nItem | Value\nResult | 42\nSample\nParagraph 0: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 1: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 2: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 3: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 4: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 5: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 6: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 7: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 8: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 9: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 10: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 11: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 12: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 13: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 14: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 15: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 16: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 17: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 18: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 19: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 20: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 21: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 22: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 23: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 24: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 25: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 26: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 27: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 28: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 29: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 30: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 31: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 32: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 33: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 34: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 35: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 36: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 37: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 38: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 39: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 40: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 41: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 42: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 43: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 44: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 45: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 46: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 47: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 48: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 49: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 50: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 51: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 52: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 53: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 54: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 55: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 56: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 57: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 58: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 59: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 60: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 61: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 62: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 63: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 64: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 65: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 66: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 67: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 68: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 69: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 70: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 71: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 72: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 73: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 74: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 75: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 76: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 77: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 78: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 79: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 80: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 81: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 82: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 83: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 84: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 85: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 86: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 87: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 88: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 89: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 90: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 91: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 92: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 93: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 94: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 95: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 96: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 97: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 98: This detailed explanation exercises physical page breaks and flowing text.\nParagraph 99: This detailed explanation exercises physical page breaks and flowing text.\nreport.pdf",
+      "minWidthCards": [
+        {
+          "label": "report.pdf",
+          "metadata": "PDF · 1.18 MB"
+        }
+      ],
+      "gapAfterPt": 0,
+      "blocks": [
+        {
+          "type": "note",
+          "label": "Thinking Process",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Check "
+                },
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "every"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "text": " relation."
+                }
+              ],
+              "layout": {
+                "gapBeforePt": 0,
+                "keepWithNext": false,
+                "width": "reading"
+              }
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 0,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "heading",
+          "level": 1,
+          "children": [
+            {
+              "type": "text",
+              "text": "Results"
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 22.5,
+            "keepWithNext": true,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Strong"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " text and "
+            },
+            {
+              "type": "link",
+              "url": "https://example.test",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "source"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "quote",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "text": "A quoted result."
+                }
+              ],
+              "layout": {
+                "gapBeforePt": 0,
+                "keepWithNext": false,
+                "width": "reading"
+              }
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 13.5,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "First"
+                    }
+                  ],
+                  "layout": {
+                    "gapBeforePt": 0,
+                    "keepWithNext": false,
+                    "width": "reading"
+                  }
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "Second"
+                    }
+                  ],
+                  "layout": {
+                    "gapBeforePt": 0,
+                    "keepWithNext": false,
+                    "width": "reading"
+                  }
+                }
+              ]
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 13.5,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "code",
+          "language": "ts",
+          "header": "ts · filename=pipeline.ts",
+          "text": "const layers = 2;\n",
+          "layout": {
+            "gapBeforePt": 13.5,
+            "keepWithNext": false,
+            "width": "full"
+          }
+        },
+        {
+          "type": "math",
+          "latex": "\\frac{a}{b}",
+          "typst": "frac(a ,b )",
+          "fallbackLabel": "Could not typeset this formula; original LaTeX preserved:",
+          "layout": {
+            "gapBeforePt": 13.5,
+            "keepWithNext": false,
+            "width": "full"
+          }
+        },
+        {
+          "type": "table",
+          "headers": [
+            [
+              {
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Item"
+                  }
+                ]
+              },
+              {
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Value"
+                  }
+                ]
+              }
+            ]
+          ],
+          "rows": [
+            [
+              {
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Result"
+                  }
+                ]
+              },
+              {
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "42"
+                  }
+                ]
+              }
+            ]
+          ],
+          "columnCount": 2,
+          "aligns": [
+            "left",
+            "right"
+          ],
+          "repeatHeader": true,
+          "layout": {
+            "gapBeforePt": 13.5,
+            "keepWithNext": false,
+            "width": "full"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "image",
+              "asset": "assets/sha256/c4/14/c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77.png",
+              "alt": "Sample"
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 13.5,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 0: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 1: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 2: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 3: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 4: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 5: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 6: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 7: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 8: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 9: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 10: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 11: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 12: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 13: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 14: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 15: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 16: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 17: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 18: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 19: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 20: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 21: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 22: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 23: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 24: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 25: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 26: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 27: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 28: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 29: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 30: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 31: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 32: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 33: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 34: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 35: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 36: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 37: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 38: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 39: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 40: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 41: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 42: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 43: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 44: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 45: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 46: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 47: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 48: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 49: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 50: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 51: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 52: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 53: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 54: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 55: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 56: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 57: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 58: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 59: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 60: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 61: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 62: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 63: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 64: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 65: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 66: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 67: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 68: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 69: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 70: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 71: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 72: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 73: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 74: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 75: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 76: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 77: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 78: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 79: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 80: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 81: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 82: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 83: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 84: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 85: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 86: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 87: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 88: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 89: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 90: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 91: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 92: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 93: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 94: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 95: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 96: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 97: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 98: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "text": "Paragraph 99: This detailed explanation exercises physical page breaks and flowing text."
+            }
+          ],
+          "layout": {
+            "gapBeforePt": 9,
+            "keepWithNext": false,
+            "width": "reading"
+          }
+        },
+        {
+          "type": "file",
+          "name": "report.pdf",
+          "kind": "PDF",
+          "size": "1.18 MB",
+          "metadata": "PDF · 1.18 MB",
+          "layout": {
+            "gapBeforePt": 13.5,
+            "keepWithNext": false,
+            "width": "full"
+          }
+        }
+      ]
+    }
+  ]
+}

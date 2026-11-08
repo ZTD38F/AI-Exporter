@@ -1,0 +1,205 @@
+{
+  "index": {
+    "key": {
+      "accountId": "10000000-0000-4000-8000-000000000008",
+      "conversationId": "c"
+    },
+    "title": "Title",
+    "titleSource": "derived",
+    "createdAt": 1791244800000
+  },
+  "detail": {
+    "assets": [
+      {
+        "id": "file",
+        "kind": "file",
+        "name": "Reference.pdf",
+        "mediaType": "application/pdf",
+        "byteLength": 4096
+      },
+      {
+        "id": "image",
+        "kind": "image",
+        "name": "asset_987654.png"
+      }
+    ],
+    "messages": [
+      {
+        "id": "u",
+        "role": "user",
+        "content": [
+          {
+            "type": "file",
+            "assetId": "file"
+          },
+          {
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Question"
+              }
+            ]
+          }
+        ],
+        "citations": []
+      },
+      {
+        "id": "a",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "heading",
+            "level": 2,
+            "children": [
+              {
+                "type": "text",
+                "text": "Heading"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "Before code"
+              }
+            ]
+          },
+          {
+            "type": "code",
+            "language": "python",
+            "meta": "sample",
+            "code": "print(1)"
+          },
+          {
+            "type": "quote",
+            "blocks": [
+              {
+                "type": "paragraph",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Nested intro"
+                  }
+                ]
+              },
+              {
+                "type": "code",
+                "code": "nested"
+              }
+            ]
+          },
+          {
+            "type": "table",
+            "caption": [
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "Table caption"
+                  }
+                ]
+              }
+            ],
+            "headerRows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Merged"
+                      }
+                    ],
+                    "colSpan": 2
+                  }
+                ]
+              }
+            ],
+            "rows": [
+              {
+                "cells": [
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Left"
+                      }
+                    ]
+                  },
+                  {
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Right"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "image",
+            "assetId": "image",
+            "caption": [
+              {
+                "type": "strong",
+                "children": [
+                  {
+                    "type": "text",
+                    "text": "123"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "image",
+            "assetId": "image",
+            "alt": "Again"
+          }
+        ],
+        "citations": [
+          {
+            "id": "c",
+            "title": "Source",
+            "url": "https://example.com"
+          }
+        ]
+      },
+      {
+        "id": "s",
+        "role": "system",
+        "content": [
+          {
+            "type": "paragraph",
+            "children": [
+              {
+                "type": "text",
+                "text": "System content"
+              }
+            ]
+          }
+        ],
+        "citations": []
+      },
+      {
+        "id": "u2",
+        "role": "user",
+        "content": [],
+        "citations": []
+      }
+    ],
+    "quality": {
+      "status": "unknown"
+    },
+    "key": {
+      "accountId": "10000000-0000-4000-8000-000000000008",
+      "conversationId": "c"
+    }
+  }
+}

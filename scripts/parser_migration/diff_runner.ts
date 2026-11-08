@@ -5,7 +5,7 @@
  *
  * CORE INVARIANTS:
  * 1. Default-Semantic Principle:
- *    The comparator performs recursive deep comparison over the entire Canonical AST.
+ *    The comparator performs recursive deep comparison over the entire Content AST.
  *    Only explicit ephemeral metadata (id) is ignored.
  *    Any other field (known or future unknown) is default-semantic and will trigger a diff.
  * 2. Minimal Explicit Canonicalization:
@@ -22,7 +22,7 @@ export type DiffCategory =
     | 'C_BOTH_REASONABLE'
     | 'D_CANNOT_DETERMINE';
 
-export type DiffRationaleKind =
+type DiffRationaleKind =
     | 'IDENTICAL'
     | 'FORMATTING_LOST'
     | 'LINK_CORRUPTED'
@@ -32,21 +32,21 @@ export type DiffRationaleKind =
     | 'CONTENT_CHANGED'
     | 'UNKNOWN_FALLBACK_DIVERGENCE';
 
-export interface BlockSummary {
+interface BlockSummary {
     type: string;
     textLength: number;
     childCount: number;
     preview: string;
 }
 
-export interface AstSemanticFingerprint {
+interface AstSemanticFingerprint {
     blockCount: number;
     blockTypes: string[];
     blocks: BlockSummary[];
     totalTextLength: number;
 }
 
-export interface SemanticDiffResult {
+interface SemanticDiffResult {
     domain: 'markdown' | 'latex';
     inputPreview: string;
     hasDiff: boolean;
@@ -87,7 +87,7 @@ function coalesceInlines(nodes: any[]): any[] {
  * Normalizes an AST value by stripping only explicit ephemeral metadata and
  * applying minimal equivalence rules.
  */
-export function canonicalizeSemanticAst(val: any): any {
+function canonicalizeSemanticAst(val: any): any {
     if (val === null || val === undefined || typeof val !== 'object') {
         return val;
     }
@@ -284,11 +284,9 @@ function extractText(node: any): string {
 }
 
 /**
- * Extracts a simplified semantic fingerprint of a canonical AST message.
+ * Extracts a simplified semantic fingerprint of Content AST blocks.
  */
-export function extractAstFingerprint(bundle: any): AstSemanticFingerprint {
-    const msg = bundle?.conversation?.messages?.[0];
-    const blocks: any[] = msg?.blocks || [];
+export function extractAstFingerprint(blocks: any[]): AstSemanticFingerprint {
 
     const summaries: BlockSummary[] = blocks.map((b) => {
         const text = extractText(b);
@@ -323,14 +321,12 @@ export function extractAstFingerprint(bundle: any): AstSemanticFingerprint {
  */
 export function compareMarkdownAst(
     input: string,
-    baselineBundle: any,
-    candidateBundle: any,
+    baseBlocks: any[],
+    candBlocks: any[],
 ): SemanticDiffResult {
-    const baseFp = extractAstFingerprint(baselineBundle);
-    const candFp = extractAstFingerprint(candidateBundle);
+    const baseFp = extractAstFingerprint(baseBlocks);
+    const candFp = extractAstFingerprint(candBlocks);
 
-    const baseBlocks: any[] = baselineBundle?.conversation?.messages?.[0]?.blocks || [];
-    const candBlocks: any[] = candidateBundle?.conversation?.messages?.[0]?.blocks || [];
 
     const canonicalBase = baseBlocks.map(canonicalizeSemanticAst);
     const canonicalCand = candBlocks.map(canonicalizeSemanticAst);

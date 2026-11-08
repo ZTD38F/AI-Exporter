@@ -10,6 +10,7 @@ from typing import Tuple, Optional, Dict, Any
 from scripts.framework.cases.base import FeatureTestCase, TestContext
 from scripts.framework.features import FeatureDomain
 from scripts.framework.actions import CDPActions
+from scripts.framework.tab_cleanup import uninstall_extension
 
 try:
     from scripts.cdp_client import CDPConnection, get_tabs, get_extension_id, get_browser_ws_url
@@ -49,21 +50,28 @@ class UninstallLifecycleCase(FeatureTestCase):
         cdp = CDPConnection(browser_ws)
         try:
             # 1. 触发原生卸载
-            cdp.call("Extensions.uninstall", {"id": curr_ext_id})
+            removed = uninstall_extension(cdp, curr_ext_id, ctx.port)
+            if removed.get("error"):
+                return False, f"扩展卸载请求失败: {removed['error']}", None
 
             # 2. 验证扩展已从浏览器中完全移除 (轮询最多 6 秒，消除异步靶标注销时序差)
             uninstalled = False
             for _ in range(12):
                 time.sleep(0.5)
-                new_check_id = get_extension_id(ctx.port)
-                if not new_check_id or new_check_id != curr_ext_id:
+                # CDP can retain terminated worker targets after uninstall. The
+                # extension registry is authoritative and isolates this workspace ID.
+                inventory = cdp.call('Extensions.getExtensions')
+                extensions = inventory.get('result', {}).get('extensions')
+                if inventory.get('error') or not isinstance(extensions, list):
+                    return False, '无法读取 Chrome 扩展安装状态', None
+                if not any(extension.get('id') == curr_ext_id for extension in extensions):
                     uninstalled = True
                     break
 
             if not uninstalled:
                 return False, f"扩展卸载后仍然在浏览器中驻留: {curr_ext_id}", None
 
-            print("   ✓ 扩展已成功彻底卸载，验证后台页面已注销")
+            print("   ✓ 扩展已成功彻底卸载，验证 Chrome 扩展注册表已移除该安装")
 
             # 3. 重新纯净安装，验证零污染恢复
             print("   📦 重新安装扩展以恢复测试基线并验证零污染加载...")

@@ -6,26 +6,27 @@ Enables any AI Agent or human operator to interact directly with the Visual Play
 - click: dispatch hardware mouse click at normalized (x, y)
 - type: dispatch hardware keyboard input at (x, y)
 - scroll: dispatch hardware wheel scroll
-- wait-on: blocking deterministic wait (stream_settled, zip_downloaded, ui_idle, dom_pruned)
+- wait-on: blocking deterministic wait (stream_settled, download_complete, zip_downloaded, ui_idle, dom_pruned)
 - reset: reset environment to initial state
-- evaluate-export: verify exported ZIP against specification
+- evaluate-export: verify ZIP or standalone Markdown against specification
 """
 
 import os
 import sys
 import argparse
 import json
+import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from scripts.visual_agent.playground import open_visual_playground
 
 
-def main():
+def parse_args(argv=None):
     common_parser = argparse.ArgumentParser(add_help=False)
-    common_parser.add_argument("--port", type=int, default=9222, help="CDP debug port (default: 9222)")
-    common_parser.add_argument("--target", type=str, default=None, choices=["options", "gemini", "chat", "workbench", "popup"], help="Target page (default: auto-detect from active state)")
-    common_parser.add_argument("--json", action="store_true", help="Output result in structured JSON format")
+    common_parser.add_argument("--port", type=int, default=argparse.SUPPRESS, help="CDP debug port (default: 9222)")
+    common_parser.add_argument("--target", type=str, default=argparse.SUPPRESS, choices=["options", "gemini", "chat", "workbench", "popup"], help="Target page (default: auto-detect from active state)")
+    common_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="Output result in structured JSON format")
 
     parser = argparse.ArgumentParser(description="Gemini Exporter Visual Playground CLI", parents=[common_parser])
     subparsers = parser.add_subparsers(dest="command", help="Playground command")
@@ -38,11 +39,15 @@ def main():
     p_click = subparsers.add_parser("click", help="Physical mouse click", parents=[common_parser])
     p_click.add_argument("--x", type=float, required=True, help="Normalized X coordinate (0.0 - 1.0)")
     p_click.add_argument("--y", type=float, required=True, help="Normalized Y coordinate (0.0 - 1.0)")
+    p_click.add_argument("--wait-download", action="store_true", help="Keep download routing alive until a new export file is saved")
+    p_click.add_argument("--timeout", type=int, default=60, help="Download wait timeout in seconds")
     p_click.add_argument("--button", type=str, default="left", choices=["left", "right"], help="Mouse button")
 
     # 3. type
     p_type = subparsers.add_parser("type", help="Physical keyboard input", parents=[common_parser])
-    p_type.add_argument("--text", type=str, required=True, help="Text to type")
+    type_input = p_type.add_mutually_exclusive_group(required=True)
+    type_input.add_argument("--text", type=str, help="Text to type")
+    type_input.add_argument("--key", type=str, help="Physical key, e.g. Enter, Escape, ArrowDown, Home")
     p_type.add_argument("--x", type=float, default=None, help="Optional click X to focus")
     p_type.add_argument("--y", type=float, default=None, help="Optional click Y to focus")
     p_type.add_argument("--no-clear", action="store_true", help="Do not clear existing input first")
@@ -55,10 +60,12 @@ def main():
 
     # 5. wait-on
     p_wait = subparsers.add_parser("wait-on", help="Deterministic blocking wait", parents=[common_parser])
-    p_wait.add_argument("--condition", type=str, required=True, help="Condition to await: stream_settled, zip_downloaded, ui_idle, dom_pruned")
+    p_wait.add_argument("--condition", type=str, required=True, help="Condition to await: stream_settled, download_complete, zip_downloaded, ui_idle, dom_pruned")
     p_wait.add_argument("--timeout", type=int, default=120, help="Timeout in seconds")
     p_wait.add_argument("--chat-id", type=str, default="", help="Chat ID for dom_pruned condition")
-    p_wait.add_argument("--min-mtime", type=float, default=0.0, help="Min mtime for zip_downloaded condition")
+    p_wait.add_argument("--download-dir", type=str, default=None, help="Directory containing this test's downloaded export")
+    p_wait.add_argument("--pattern", type=str, default=None, help="Optional downloaded filename pattern")
+    p_wait.add_argument("--min-mtime", type=float, default=0.0, help="Min mtime for download completion")
 
     # 6. switch-page
     p_switch = subparsers.add_parser("switch-page", help="Switch active page / tab silently in background", parents=[common_parser])
@@ -75,17 +82,23 @@ def main():
     p_reinstall = subparsers.add_parser("reinstall", help="Cleanly reinstall extension from current workspace", parents=[common_parser])
 
     # 9. evaluate-export
-    p_eval = subparsers.add_parser("evaluate-export", help="Evaluate exported ZIP file specification", parents=[common_parser])
-    p_eval.add_argument("--zip", type=str, required=True, help="Path to ZIP file")
+    p_eval = subparsers.add_parser("evaluate-export", help="Evaluate ZIP or standalone Markdown specification", parents=[common_parser])
+    p_eval.add_argument("--file", "--zip", dest="zip", type=str, required=True, help="Path to ZIP or standalone Markdown file")
     p_eval.add_argument("--min", type=int, default=1, help="Expected minimum conversations (default: 1)")
     p_eval.add_argument("--chat-id", type=str, default=None, help="Target conversation ID to assert presence and validity")
     p_eval.add_argument("--require-golden", action="store_true", help="Assert presence and deep content of core test golden dataset")
 
-    args = parser.parse_args()
-
+    # Shared options can appear before or after the subcommand. A child parser
+    # must not overwrite explicitly supplied parent options with its defaults.
+    args = parser.parse_args(argv, namespace=argparse.Namespace(port=9222, target=None, json=False))
     if not args.command:
         parser.print_help()
         sys.exit(1)
+    return args
+
+
+def main():
+    args = parse_args()
 
     if args.command == "reinstall":
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -132,20 +145,34 @@ def main():
                 print(f"📸 截屏成功: {obs.file_path}")
 
         elif args.command == "click":
+            started = time.time()
             playground.mouse_click(args.x, args.y, button=args.button)
             res = {"success": True, "action": "click", "x": args.x, "y": args.y}
+            if args.wait_download:
+                download = playground.wait_on("download_complete", timeout=args.timeout, min_mtime=started)
+                res.update(success=download.success, download=download.data, message=download.message)
             if args.json:
                 print(json.dumps(res, ensure_ascii=False))
             else:
                 print(f"🖱️ 点击成功 -> ({args.x:.3f}, {args.y:.3f})")
+                if args.wait_download:
+                    print(res["message"])
+            if not res["success"]:
+                sys.exit(2)
 
         elif args.command == "type":
-            playground.input_text(args.text, x=args.x, y=args.y, clear_first=not args.no_clear)
-            res = {"success": True, "action": "type", "text": args.text}
+            if args.key is not None:
+                if args.x is not None and args.y is not None:
+                    playground.mouse_click(args.x, args.y)
+                playground.press_key(args.key)
+                res = {"success": True, "action": "type", "key": args.key}
+            else:
+                playground.input_text(args.text, x=args.x, y=args.y, clear_first=not args.no_clear)
+                res = {"success": True, "action": "type", "text": args.text}
             if args.json:
                 print(json.dumps(res, ensure_ascii=False))
             else:
-                print(f"⌨️ 键入成功 -> '{args.text}'")
+                print(f"⌨️ 键入成功 -> '{args.key if args.key is not None else args.text}'")
 
         elif args.command == "scroll":
             playground.mouse_scroll(args.delta, x=args.x, y=args.y)
@@ -159,6 +186,9 @@ def main():
             extra = {}
             if args.chat_id:
                 extra["chat_id"] = args.chat_id
+            extra["pattern"] = args.pattern
+            if args.download_dir:
+                extra["download_dir"] = args.download_dir
             if args.min_mtime:
                 extra["min_mtime"] = args.min_mtime
             w_res = playground.wait_on(args.condition, timeout=args.timeout, **extra)
@@ -232,7 +262,7 @@ def main():
                 sys.exit(3)
 
     finally:
-        playground.teardown()
+        playground.teardown(keep_viewport=True)
 
 
 if __name__ == "__main__":

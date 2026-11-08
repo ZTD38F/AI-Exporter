@@ -1,0 +1,38 @@
+name: Publish Release to Chrome Web Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git release tag to publish (e.g. v1.1.0)'
+        required: true
+        default: 'v1.1.0'
+      confirmation:
+        description: 'Type PUBLISH to explicitly authorize Chrome Web Store upload'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  upload-and-publish:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'PUBLISH' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release asset
+        run: |
+          gh release download "${TAG}" -p "*.zip" -R ${{ github.repository }}
+          ls -lh *.zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag }}
+
+      - name: Upload and Publish to Chrome Web Store
+        uses: mnao305/chrome-extension-upload@v5.0.0
+        with:
+          file-path: gemini-exporter-${{ github.event.inputs.tag }}.zip
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          publish: true

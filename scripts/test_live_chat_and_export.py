@@ -2,13 +2,9 @@
 """
 scripts/test_live_chat_and_export.py
 ------------------------------------
-Gemini Exporter 全流程特性驱动测试入口 (Feature-Driven Live Chat & Export Test).
-基于 scripts/framework 模块化测试框架：
-- 声明式 19 大功能特性 (FeatureRegistry) 跨 5 大生命周期领域
-- CDP 操作原语 (CDPActions) 与 规范级严格断言 (CDPAssertions)
-- 自动化执行编排器 (FrameworkRunner)
-- 磁盘实时保存严格核验 (严禁 0 字节图片与对话)
-- 4 大黄金分类多模态规范断言 (ExportSpecificationAsserter)
+平台插件驱动的 Tier 2 入口。公共 DAG 与生命周期支持多选平台，
+平台用例与环境差异由 scripts/framework/platforms 注册的插件提供。
+旧版 Gemini 辅助接口保留兼容。
 """
 
 import sys
@@ -117,57 +113,61 @@ def validate_dataset_freshness(dataset_path, allow_stale=False, max_age_seconds=
     return load_custom_dataset(dataset_path)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Gemini 特性驱动全流程实跑测试 (Feature-Driven Live Chat & Export Test)")
-    parser.add_argument("--features", default=None, help="指定单项或多项待测特性 ID（逗号分隔，如 feat_search_filter_by_keyword,feat_language_toggle）")
-    parser.add_argument("--domain", default=None, help="指定待测生命周期领域（chat / lifecycle / takeout / workbench / export）")
-    parser.add_argument("--list-features", action="store_true", help="打印所有已注册特性清单及其依赖关系拓扑")
-    parser.add_argument("--pool", action="store_true", help="从动态场景池中自动消费最新多模态场景（默认行为）")
-    parser.add_argument("--dataset", default=None, help="可选自定义外挂测试数据集 JSON 文件路径（默认从动态场景池调度）")
-    parser.add_argument("--output-dir", default=None, help="测试导出落地目录")
-    parser.add_argument("--port", type=int, default=CDP_DEFAULT_PORT, help="Chrome CDP 远程调试端口")
-    parser.add_argument("--delay", type=int, default=6, help="轮次之间的人性化安全冷却秒数 (默认 6 秒，防机械发帖)")
-    parser.add_argument("--takeout-zip", default=None, help="自定义预置 Takeout ZIP 样本路径")
-    args = parser.parse_args()
-
-    if args.list_features:
-        features = FrameworkRunner.list_all_features()
-        print("\n" + "=" * 90)
-        print("📋 Gemini Exporter DAG 声明式特性注册表 (Feature Registry)")
-        print("=" * 90)
-        print(f"{'特性 ID':<35} | {'领域':<12} | {'关键':<4} | {'前置依赖'}")
-        print("-" * 90)
-        for f in features:
-            crit = "★ 是" if f["critical"] else "  否"
-            prereqs = ", ".join(f["prerequisites"]) if f["prerequisites"] else "(无)"
-            print(f"{f['id']:<35} | {f['domain']:<12} | {crit:<4} | {prereqs}")
-        print("=" * 90)
-        print(f"💡 总计: {len(features)} 项已注册特性。")
-        print("💡 运行单项/多项特性: python3 scripts/test_live_chat_and_export.py --features <id1>,<id2>")
-        print("💡 按生命周期领域运行: python3 scripts/test_live_chat_and_export.py --domain <workbench|takeout|export|...>\n")
-        sys.exit(0)
-
-    custom_dataset = None
-    if args.dataset:
-        valid, result_or_err = load_custom_dataset(args.dataset)
-        if not valid:
-            print(result_or_err)
-            sys.exit(1)
-        custom_dataset = result_or_err
-
+def main(argv=None):
+    from scripts.framework.platforms import load_plugins, RunConfig, Tier2Runner
+    parser = argparse.ArgumentParser(description="Platform-independent Tier 2 live acceptance")
+    parser.add_argument('--platforms', '--platform', '--provider', dest='platforms',
+                        nargs='+', action='append', help='Registered platform IDs (space/comma separated), or all')
+    parser.add_argument('--plugin', action='append', default=[], help='Python module exporting register(registry)')
+    parser.add_argument('--list-platforms', action='store_true')
+    parser.add_argument('--list-features', action='store_true')
+    parser.add_argument('--plan', action='store_true', help='Validate and print plans without touching Chrome or the scenario pool')
+    parser.add_argument('--features', default=None)
+    parser.add_argument('--domain', default=None)
+    parser.add_argument('--pool', action='store_true', help='Use the shared scenario pool (default)')
+    parser.add_argument('--dataset', default=None)
+    parser.add_argument('--output-dir', default=None)
+    parser.add_argument('--port', type=int, default=CDP_DEFAULT_PORT)
+    parser.add_argument('--delay', type=int, default=6)
+    parser.add_argument('--platform-option', action='append', default=[], metavar='PLATFORM.KEY=VALUE',
+                        help='Plugin option, scoped to its platform; VALUE may be JSON')
+    parser.add_argument('--takeout-zip', default=None, help='Compatibility alias for gemini.takeout_zip')
+    args = parser.parse_args(argv)
     try:
+        registry = load_plugins(args.plugin)
+        if args.list_platforms:
+            print(json.dumps([{'id': p.id, 'capabilities': p.capabilities,
+                               'options': p.accepted_options} for p in registry.select(['all'])],
+                             ensure_ascii=False, indent=2))
+            return 0
+        plugins = registry.select([item for group in (args.platforms or [['gemini']]) for item in group])
+        options = {}
+        for item in args.platform_option:
+            key, value = item.split('=', 1)
+            platform, option = key.split('.', 1)
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                pass
+            options.setdefault(platform, {})[option] = value
+        if args.takeout_zip:
+            options.setdefault('gemini', {})['takeout_zip'] = args.takeout_zip
+        valid, dataset = load_custom_dataset(args.dataset)
+        if not valid:
+            parser.error(dataset)
+        domain = {'chat': 'page_chat', 'export': 'export_disk'}.get(args.domain, args.domain)
+        targets = ','.join(part.strip() for part in args.features.split(',')) if args.features else None
+        config = RunConfig(port=args.port, output_dir=args.output_dir, dataset=dataset,
+                           delay=args.delay, target_features=targets, domain=domain, options=options)
+        runner = Tier2Runner(plugins, config)
+        if args.list_features or args.plan:
+            print(json.dumps(runner.plan(), ensure_ascii=False, indent=2))
+            return 0
         with ProcessLock():
-            success = run_live_chat_and_export(
-                dataset=custom_dataset,
-                port=args.port,
-                output_dir=args.output_dir,
-                delay=args.delay,
-                takeout_zip=args.takeout_zip,
-                target_features=args.features,
-                domain=args.domain
-            )
-    except ProcessLockError as ple:
-        print(ple)
-        sys.exit(1)
+            return 0 if runner.run() else 1
+    except (ValueError, ProcessLockError) as error:
+        parser.error(str(error))
 
-    sys.exit(0 if success else 1)
+
+if __name__ == '__main__':
+    sys.exit(main())

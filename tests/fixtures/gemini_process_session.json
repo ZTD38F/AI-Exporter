@@ -1,0 +1,6 @@
+{
+  "partial": "110\n[[5,[\"Ekk6RwpFCAASDAoKcl8xMTExMTExMSIzIjESHAoOY19hYmNkZWYxMjM0NTYSCnJfMTExMTExMTEqEQoLcmNfMjIyMjIyMjJKAggB\"]]]",
+  "answered": "110\n[[8,[\"Ekk6RwpFCAESDAoKcl8xMTExMTExMSIzIjESHAoOY19hYmNkZWYxMjM0NTYSCnJfMTExMTExMTEqEQoLcmNfMjIyMjIyMjJKAggC\"]]]",
+  "description": "Sanitized processSession WebChannel frames captured 2026-11-01. Only response identity, final-frame flag, candidate identity and answered status retained; account/session tokens, text, telemetry removed. Persistence receipt retains its field path with a redacted dummy token.",
+  "receipt": "114\n[[9,[\"Eko6SApGCAASDAoKcl8xMTExMTExMSI0IjISHAoOY19hYmNkZWYxMjM0NTYSCnJfMTExMTExMTHSARFwZXJzaXN0ZWQtcmVjZWlwdA==\"]]]"
+}

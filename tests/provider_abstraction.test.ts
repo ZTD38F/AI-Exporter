@@ -1,3 +1,7 @@
+import { useIndexStorage } from './helpers/indexStorage.js';
+import { bindTabAccounts } from './helpers/tabAccounts.js';
+import { ACCOUNT_UUID } from './helpers/accountRuntime.js';
+useIndexStorage();
 /**
  * tests/provider_abstraction.test.ts
  * Comprehensive unit test suite for AIProvider abstraction layer,
@@ -6,46 +10,21 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-import { ProviderRegistryClass } from '../src/core/provider/providerRegistry.js';
-import { GeminiProvider } from '../src/core/provider/gemini/geminiProvider.js';
-import * as TabService from '../src/core/utils/tabService.js';
-
-test('ProviderRegistry - registration, lookup, and URL auto-matching', () => {
-    const registry = new ProviderRegistryClass();
-    const gemini = new GeminiProvider();
-
-    registry.register(gemini);
-
-    assert.strictEqual(registry.get('gemini')?.id, 'gemini');
-    assert.strictEqual(registry.get('nonexistent'), undefined);
-
-    // URL resolution
-    const geminiMatch = registry.findByUrl('https://gemini.google.com/app/c_12345678');
-    assert.strictEqual(geminiMatch?.id, 'gemini', 'Should match gemini URL');
-
-    const unknownMatch = registry.findByUrl('https://claude.ai/chat/123');
-    assert.strictEqual(unknownMatch, undefined, 'Unregistered URL should return undefined');
-
-    // Default provider
-    registry.setDefaultProviderId('gemini');
-    assert.strictEqual(registry.getDefault()?.id, 'gemini');
-});
-
-test('GeminiProvider - contract verification', () => {
-    const gemini = new GeminiProvider();
-    assert.strictEqual(gemini.id, 'gemini');
-    assert.strictEqual(gemini.name, 'Google Gemini');
-
-    assert.ok(gemini.matchesUrl('https://gemini.google.com/app'));
-    assert.ok(!gemini.matchesUrl('https://chatgpt.com'));
-});
+import { ProviderRegistryClass } from '../src/l1/client/providerRegistry.js';
+import { GeminiProvider } from '../src/l1/client/gemini/geminiProvider.js';
+import * as TabService from '../src/runtime/capabilities/tabService.js';
 
 test('TabService - getAITab and sendToAITab integration', async () => {
     const origChrome = (global as any).chrome;
     try {
+        const queries: string[] = [];
+        const messages: Array<{ tabId: number; message: unknown }> = [];
+        const runtime = chrome.runtime;
         (global as any).chrome = {
+            ...chrome,
             tabs: {
                 query: async ({ url }: { url: string }) => {
+                    queries.push(url);
                     try {
                         const parsed = new URL(url.replace(/\*$/, ''));
                         if (parsed.hostname === 'chatgpt.com') {
@@ -57,21 +36,26 @@ test('TabService - getAITab and sendToAITab integration', async () => {
                     } catch {}
                     return [];
                 },
-                sendMessage: (_tabId: number, _msg: any, cb: (res: any) => void) => {
+                sendMessage: (tabId: number, message: unknown, cb: (res: unknown) => void) => {
+                    messages.push({ tabId, message });
                     cb({ ok: true, data: 'tab-response' });
                 }
             },
-            runtime: {}
+            runtime
         };
 
-        const chatgptTab = await TabService.getAITab('chatgpt');
-        assert.strictEqual(chatgptTab?.id, 101, 'Should resolve ChatGPT tab');
+        await assert.rejects(TabService.getAITab('chatgpt'), /Provider\/account mismatch/);
 
-        const geminiTab = await TabService.getAITab('gemini');
+        await require('../src/l3a/storageService.js').putAccount({ id: ACCOUNT_UUID, providerId: 'gemini', providerAccountId: '10000000001' });
+        bindTabAccounts({ 202: ACCOUNT_UUID });
+        const geminiTab = await TabService.getAITab('gemini', ACCOUNT_UUID);
         assert.strictEqual(geminiTab?.id, 202, 'Should resolve Gemini tab');
 
-        const res = await TabService.sendToAITab('chatgpt', { action: 'test' });
-        assert.strictEqual(res.ok, true);
+        await assert.rejects(TabService.sendToAITab('chatgpt', { action: 'test' }), /Provider\/account mismatch/);
+        const res = await TabService.sendToAITab('gemini', { action: 'test' }, ACCOUNT_UUID);
+        assert.deepStrictEqual(res, { ok: true, data: 'tab-response' });
+        assert.deepStrictEqual(queries, ['https://gemini.google.com/*', 'https://gemini.google.com/*']);
+        assert.deepStrictEqual(messages, [{ tabId: 202, message: { action: 'test', accountId: ACCOUNT_UUID } }]);
     } finally {
         (global as any).chrome = origChrome;
     }

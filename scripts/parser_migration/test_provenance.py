@@ -90,7 +90,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test Provenance Classification Inspector")
     parser.add_argument("--summary", action="store_true", help="Print overall provenance summary")
     parser.add_argument("--tier", choices=["P0", "P1", "P2", "P3", "P4"], help="Filter by tier")
-    parser.add_argument("--domain", choices=["markdown", "latex", "canonical_ast", "typst_payload"], help="Filter by domain")
+    parser.add_argument("--domain", choices=["markdown", "latex", "domain", "document_ast", "provider_parser", "typst_payload"], help="Filter by domain")
     args = parser.parse_args()
 
     manifest = load_manifest()

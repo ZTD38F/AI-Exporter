@@ -1,0 +1,67 @@
+name: Update install growth statistics
+
+on:
+  schedule:
+    - cron: '17 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-install-stats
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main workflow code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify statistics merge and chart logic
+        run: node --test scripts/update-install-stats.test.mjs
+
+      - name: Read previous history from stats branch
+        id: previous
+        run: |
+          mkdir -p "$RUNNER_TEMP/install-stats"
+          if git fetch --no-tags origin stats:refs/remotes/origin/stats 2>/dev/null; then
+            if git show refs/remotes/origin/stats:stats/install-history.json > "$RUNNER_TEMP/install-stats/previous.json" 2>/dev/null; then
+              echo "history=$RUNNER_TEMP/install-stats/previous.json" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Query GA4 and generate history and chart
+        env:
+          GA_PROPERTY_ID: ${{ secrets.GA_PROPERTY_ID }}
+          GA_ADC_JSON: ${{ secrets.GA_ADC_JSON }}
+          STATS_HISTORY_PATH: ${{ steps.previous.outputs.history }}
+          STATS_OUTPUT_DIR: ${{ runner.temp }}/install-stats/generated
+        run: node scripts/update-install-stats.mjs
+
+      - name: Update dedicated stats branch
+        run: |
+          if git show-ref --verify --quiet refs/remotes/origin/stats; then
+            git checkout -B stats refs/remotes/origin/stats
+          else
+            git checkout --orphan stats
+            git rm -rf --ignore-unmatch .
+          fi
+          mkdir -p stats
+          cp "$RUNNER_TEMP/install-stats/generated/install-history.json" stats/install-history.json
+          cp "$RUNNER_TEMP/install-stats/generated/install-growth.svg" stats/install-growth.svg
+          git add stats/install-history.json stats/install-growth.svg
+          if git diff --cached --quiet; then
+            echo "Statistics are already up to date."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "chore: update install growth statistics"
+          git push origin stats

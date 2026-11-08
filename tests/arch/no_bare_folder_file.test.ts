@@ -8,7 +8,7 @@ const { execSync } = require('node:child_process');
 const path = require('node:path');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const ZIP_WRITER = 'src/core/engine/writers/zipWriter.ts';
+const ZIP_WRITER = 'src/l4/packaging/writers/zipWriter.ts';
 
 function gitGrepFixed(pattern: string): Array<{ file: string; line: number; text: string }> {
     let out = '';

@@ -7,7 +7,7 @@ tests/helpers/export_spec_asserter.py
 用于对真实导出的 Markdown 归档包执行规范级 Lint 与确定性内容断言：
 1. 目录结构与索引完整性 (00_INDEX.md, meta.json, 文件命名规范)
 2. YAML Frontmatter 规范 (字段闭合、标准键、ISO 8601 时间戳、Tags)
-3. 问答轮次与角色规范 (## 👤 You / ## 🤖 Assistant、正文非空)
+3. 问答轮次与角色规范 (v2 English/中文 renderer 标题、正文非空)
 4. 纯净度与零噪点断言 (无 Google JSPB 遥测单字、无语言代码泄露、无未处理 RPC 壳)
 5. 附件与多媒体一致性 (Markdown 引用的 images/ 物理存在且体积合法)
 6. 固化测试账号的已知黄金对话特征断言 (代码块、表格、特定语义)
@@ -22,6 +22,9 @@ import hashlib
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from scripts.framework.archive_resources import find_archive_resource, validate_archive_resources
+
+# L4 renderer roles depend on persisted Settings.language; both locales use v2 labels.
+_V2_ROLE_HEADING = r'^(## (?:👤 (?:You|你)|🤖 (?:Assistant|助手)))$'
 
 
 class ExportSpecificationAsserter:
@@ -178,19 +181,14 @@ class ExportSpecificationAsserter:
                 if k not in fields:
                     fields[k] = v
 
-        required_keys = ["title", "id", "provider", "exported", "tags"]
+        required_keys = ["title", "id", "provider", "tags"]
         for key in required_keys:
             if key not in fields and f"{key}:" not in fm_text:
                 self.log_error(file_name, f"Frontmatter 缺少必要字段 '{key}'")
-            elif key in ["title", "id", "provider", "exported"]:
+            elif key in ["title", "id", "provider"]:
                 val = fields.get(key, "")
                 if not val:
                     self.log_error(file_name, f"Frontmatter 字段 '{key}' 值为空非法")
-
-        # 检查 exported 格式 (ISO 8601)
-        exported_val = fields.get("exported", "")
-        if exported_val and not re.match(r"^\d{4}-\d{2}-\d{2}", exported_val):
-            self.log_error(file_name, f"Frontmatter 'exported' 字段格式非法 (非 ISO 8601): {exported_val}")
 
         # 当可选字段存在时校验其格式
         if "url" in fields:
@@ -215,9 +213,9 @@ class ExportSpecificationAsserter:
         """校验问答轮次、角色交替与等量匹配"""
         # 提取所有角色标头及其出现位置
         headers = []
-        for m in re.finditer(r"^## 👤 You", content, flags=re.MULTILINE):
+        for m in re.finditer(r"^## 👤 (?:You|你)$", content, flags=re.MULTILINE):
             headers.append((m.start(), "user"))
-        for m in re.finditer(r"^## 🤖 Assistant", content, flags=re.MULTILINE):
+        for m in re.finditer(r"^## 🤖 (?:Assistant|助手)$", content, flags=re.MULTILINE):
             headers.append((m.start(), "model"))
 
         headers.sort(key=lambda x: x[0])
@@ -282,7 +280,7 @@ class ExportSpecificationAsserter:
     def assert_multi_turn_uploads(self, matched_file, content, expected_count):
         """断言多轮用户上传：独立图片存在、MD5 互不相同（无覆盖）、角色归属正确（非 AI 生图）"""
         print(f"   [{matched_file}] 📸 深度断言：多轮用户上传与物理去重 (预期至少 {expected_count} 张)...")
-        parts = re.split(r'^(## 👤 You|## 🤖 Assistant)', content, flags=re.MULTILINE)
+        parts = re.split(_V2_ROLE_HEADING, content, flags=re.MULTILINE)
         user_blocks = []
         model_blocks = []
         for i in range(1, len(parts), 2):
@@ -380,7 +378,7 @@ class ExportSpecificationAsserter:
     def assert_ai_generated_images(self, matched_file, content, min_images=1):
         """断言 AI 生成图片 (Imagen)：模型回复中引用、本地图片物理存在且合法"""
         print(f"   [{matched_file}] 🎨 深度断言：AI 生成图片 (Imagen)...")
-        parts = re.split(r'^(## 👤 You|## 🤖 Assistant)', content, flags=re.MULTILINE)
+        parts = re.split(_V2_ROLE_HEADING, content, flags=re.MULTILINE)
         model_blocks = []
         for i in range(1, len(parts), 2):
             role = parts[i]
@@ -496,6 +494,22 @@ class ExportSpecificationAsserter:
                         self.log_error(matched_file, f"已知会话《{name}》预期包含 Markdown 表格，但未找到")
                 elif syn == "image" and "![" not in matched_content:
                     self.log_error(matched_file, f"已知会话《{name}》预期包含图片附件引用 ('![]')，但未找到")
+
+            # Compare every ordered turn with independent, frozen webpage evidence.
+            fixture_name = gold.get("turn_evidence_fixture")
+            if fixture_name:
+                from pathlib import Path
+                from scripts.framework.assertions import assert_turn_content
+                fixture_path = Path(__file__).resolve().parents[1] / 'fixtures' / fixture_name
+                fixture = json.loads(fixture_path.read_text(encoding='utf-8'))
+                if fixture['conversationId'] != cid:
+                    self.log_error(matched_file, 'Golden turn evidence belongs to another conversation')
+                else:
+                    ok, message = assert_turn_content(matched_content, fixture['turns'])
+                    if ok:
+                        self.log_pass(matched_file, message)
+                    else:
+                        self.log_error(matched_file, message)
 
             # 校验多轮用户上传与 MD5 去重
             exp_upload_imgs = gold.get("expected_upload_images")

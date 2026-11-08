@@ -1,5 +1,7 @@
+import { fixtureKey, fixtureAccountFor } from './helpers/domainFixture.js';
+import { validateParserDomain } from '../src/l2/runtimeValidation.js';
 import { test } from 'node:test';
-import { parseMarkdownAst } from '../src/core/export/canonical/markdown/parseMarkdown.js';
+import { parseMarkdownAst } from '../src/l1/parsers/shared/markdown/parseMarkdown.js';
 import assert from 'node:assert/strict';
 import { extractMarkdownResourceReferences } from '../scripts/extract_markdown_resource_refs.js';
 
@@ -19,33 +21,29 @@ test('syntax helper emits external references for the archive resolver to classi
     ]);
 });
 
-import { renderCanonicalMarkdown } from '../src/core/export/canonical/renderCanonicalMarkdown.js';
-import type { CanonicalConversationBundle } from '../src/core/export/canonical/conversation.js';
+import { renderDocumentMarkdown } from '../src/l4/format/markdown/renderMarkdown.js';
+import { composeDomainDocument } from '../src/l3b/compose/composeDomainDocument.js';
+import type { DomainConversationWithDetail } from '../src/l2/conversation.js';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 test('serialized literal dollars round-trip as text while links and math retain their nodes', () => {
-    const bundle: CanonicalConversationBundle = {
-        schemaVersion: 1, assets: [], citations: [],
-        conversation: {
-            key: { providerId: 'gemini', accountId: 'test', conversationId: 'currency' },
-            messages: [{ id: 'message', role: 'assistant', blocks: [
-                { id: 'paragraph', type: 'paragraph', children: [
+    const domain: DomainConversationWithDetail = { index: { key: fixtureKey(String('currency'), 'gemini'),   titleSource: "derived",   title: 'Currency' }, detail: { key: fixtureKey(String('currency'), 'gemini'), quality: { status: 'unknown' }, assets: [{ id: 'receipt', kind: 'file', name: 'receipt' }], messages: [{ id: 'message', role: 'assistant', content: [
+                { type: 'paragraph', children: [
                     { type: 'text', text: 'The price changed from $5 ' },
-                    { type: 'link', href: 'files/foo.pdf', children: [{ type: 'text', text: 'receipt' }] },
+                    { type: 'link', href: 'https://example.com/receipt', children: [{ type: 'text', text: 'receipt' }] },
                     { type: 'text', text: ' to $10. ' },
                     { type: 'inlineMath', source: 'E = mc^2' },
                 ] },
-                { id: 'math', type: 'math', source: String.raw`\left[W(k)\right](\mathbf{t})` },
-                { id: 'code', type: 'code', language: 'md', code: '[fake](files/missing.pdf)' },
-                { id: 'inline-code', type: 'paragraph', children: [{ type: 'inlineCode', code: '[fake](files/missing.pdf)' }] },
-            ] }],
-        },
-    };
-    const markdown = renderCanonicalMarkdown(bundle);
-    assert.ok(markdown.includes(String.raw`The price changed from \$5 [receipt](files/foo.pdf) to \$10. $E = mc^2$`));
+                { type: 'math', source: String.raw`\left[W(k)\right](\mathbf{t})` },
+                { type: 'file', assetId: 'receipt', label: 'receipt' },
+                { type: 'code', language: 'md', code: '[fake](files/missing.pdf)' },
+                { type: 'paragraph', children: [{ type: 'inlineCode', code: '[fake](files/missing.pdf)' }] },
+            ] }] } };
+    const markdown = renderDocumentMarkdown(composeDomainDocument(validateParserDomain(domain), fixtureAccountFor(validateParserDomain(domain))), { receipt: 'files/foo.pdf' });
+    assert.ok(markdown.includes(String.raw`The price changed from \$5 [receipt](https://example.com/receipt) to \$10. $E = mc^2$`));
     assert.ok(markdown.includes('$$\n' + String.raw`\left[W(k)\right](\mathbf{t})` + '\n$$'));
     const tree = parseMarkdownAst(markdown);
     const paragraph = tree.children.find(node => node.type === 'paragraph' && node.children.some(child => child.type === 'link'));
@@ -54,7 +52,7 @@ test('serialized literal dollars round-trip as text while links and math retain 
     assert.equal(paragraph.children[0].type === 'text' && paragraph.children[0].value, 'The price changed from $5 ');
     assert.equal(paragraph.children[2].type === 'text' && paragraph.children[2].value, ' to $10. ');
     assert.equal(paragraph.children[3].type === 'inlineMath' && paragraph.children[3].value, 'E = mc^2');
-    assert.deepEqual(extractMarkdownResourceReferences(markdown), [{ kind: 'link', reference: 'files/foo.pdf' }]);
+    assert.deepEqual(extractMarkdownResourceReferences(markdown), [{ kind: 'link', reference: 'https://example.com/receipt' }, { kind: 'link', reference: 'files/foo.pdf' }]);
 
     const root = mkdtempSync(join(tmpdir(), 'serialized-resources-'));
     try {
@@ -65,7 +63,7 @@ test('serialized literal dollars round-trip as text while links and math retain 
             assert.equal(result.status, 0, result.stderr);
             return JSON.parse(result.stdout) as string[];
         };
-        assert.equal(validate().length, 1);
+        assert.deepEqual(validate(), ['files/foo.pdf: missing or empty resource: files/foo.pdf']);
         mkdirSync(join(root, 'files'));
         writeFileSync(join(root, 'files/foo.pdf'), 'nonempty attachment');
         assert.deepEqual(validate(), []);

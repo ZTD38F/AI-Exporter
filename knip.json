@@ -1,0 +1,34 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/runtime/background/background.ts!",
+    "src/runtime/content/content.ts!",
+    "src/runtime/content/chatgptContent.ts!",
+    "src/runtime/content/claudeContent.ts!",
+    "src/l1/sniffer/gemini/hookCredentials.ts!",
+    "src/l1/sniffer/chatgpt/hook.ts!",
+    "src/l1/sniffer/claude/hook.ts!",
+    "src/ui/popup/popup.ts!",
+    "src/ui/options/options.ts!",
+    "src/l4/format/pdf/sandbox/typstCompileEntry.ts!",
+    "src/ui/shared/themeBootstrap.js!",
+    "tests/**/*.test.ts",
+    "tests/**/*.spec.ts",
+    "tests/**/*.types.ts",
+    "scripts/chatgpt_network_audit.cjs",
+    "scripts/framework/driver/authored_response.js",
+    "scripts/framework/markdown_evidence.mjs",
+    "scripts/framework/v2_probe.ts",
+    "scripts/release-prepare.js",
+    "scripts/test-l1.cjs",
+    "scripts/test-l3.cjs",
+    "scripts/test-ui.cjs",
+    "scripts/typecheck-l1.cjs",
+    "scripts/typecheck-v2-modules.cjs"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,js}!",
+    "tests/**/*.{ts,tsx,js}",
+    "scripts/**/*.{cjs,mjs,js,ts}"
+  ]
+}

@@ -1,42 +1,16 @@
+import { v2LiveSaveHost, seedLiveDetail, liveKey } from './helpers/v2LiveSaveHost.js';
+import { runLiveSave } from '../src/runtime/background/liveSaveHandler.js';
+import { getExportRecord } from '../src/l3a/storageService.js';
+import { buildExportFileName } from '../src/shared/utils/pathUtils.js';
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { isRateLimited, calculateBackoff } = require('../src/core/engine/export/rateLimiter.js');
-const { formatLiveSaveMarkdown, writeLiveSaveMarkdown } = require('../src/core/engine/liveSaveWriter.js');
+const { calculateBackoff } = require('../src/shared/utils/retryUtils.js');
 
-// ---------------------------------------------------------------------------
-// 429 predicate unification: all previously inlined variants must be caught
-// by the single canonical isRateLimited.
-// ---------------------------------------------------------------------------
 
-test('dedup - isRateLimited catches every previously inlined 429 variant', () => {
-    const positives: Array<[string, any]> = [
-        ['http 429 status', { success: false, status: 429, error: '' }],
-        ['429 in message', { success: false, error: 'request failed: 429' }],
-        ['rate limit words', { success: false, error: 'Rate limit exceeded, retry later' }],
-        ['quota', { success: false, error: 'quota exceeded for model' }],
-        ['too many requests', { success: false, error: 'Too Many Requests' }],
-        // legacy variants previously inlined only in content/messageRouter.ts
-        ['BardErrorInfo', { success: false, error: 'BardErrorInfo: something broke' }],
-        ['1096 code', { success: false, error: 'error 1096 occurred' }],
-        ['resource_exhausted', { success: false, error: 'RESOURCE_EXHAUSTED grpc status' }],
-    ];
-    for (const [label, res] of positives) {
-        assert.strictEqual(isRateLimited(res), true, `should detect: ${label}`);
-    }
+// Ordinary request rate limiting is based on HTTP 429 only.
 
-    const negatives: Array<[string, any]> = [
-        ['success result', { success: true, status: 429 }],
-        ['null', null],
-        ['undefined', undefined],
-        ['unrelated error', { success: false, error: 'network timeout' }],
-        ['empty', { success: false, error: '' }],
-    ];
-    for (const [label, res] of negatives) {
-        assert.strictEqual(isRateLimited(res), false, `should not flag: ${label}`);
-    }
-});
 
 test('dedup - calculateBackoff keeps formula, cap and honors Retry-After', () => {
     // without Retry-After: capped at 30s even for large retry counts
@@ -54,55 +28,39 @@ test('dedup - calculateBackoff keeps formula, cap and honors Retry-After', () =>
     assert.ok(smallAfter >= 2000 * Math.pow(2, 3), `computed delay kept, got ${smallAfter}`);
 });
 
-// ---------------------------------------------------------------------------
 // live-save pipeline unification: both call sites share format + writer.
-// ---------------------------------------------------------------------------
 
-test('dedup - formatLiveSaveMarkdown uses shared filename format and formatter', async () => {
-    const seen: any[] = [];
-    const deps = {
-        buildFileName: (t: string, n: string, e: string) => { seen.push([t, n, e]); return `${t}_${n}.${e}`; },
-        formatter: { formatMarkdownCanonical: async (c: any) => ({ content: `#MOCK#${c.title}#${c.id}`, ext: 'md', mime: 'text/markdown' }) },
-    };
-    const { fileName, markdown } = await formatLiveSaveMarkdown(
-        { chat: { messages: [{ role: 'user', content: 'hi' }] }, safeTitle: 'My Chat', nid: 'abc123' },
-        deps
-    );
-    assert.deepStrictEqual(seen, [['My Chat', 'abc123', 'md']]);
-    assert.strictEqual(fileName, 'My Chat_abc123.md');
-    assert.strictEqual(markdown, '#MOCK#My Chat#abc123');
+test('dedup - Live Save uses the shared Markdown renderer and Packaging filename', async (t: import('node:test').TestContext) => {
+    const host = v2LiveSaveHost(t);
+    await seedLiveDetail('abc123', [], { title: 'Canonical title' });
+    const result = await runLiveSave(liveKey('abc123'));
+    assert.strictEqual(result?.exported, 1);
+    const name = buildExportFileName('Canonical title', 'abc123', 'md');
+    assert.deepStrictEqual([...host.files.keys()], [name]);
+    const markdown = host.files.get(name);
+    assert.ok(typeof markdown === 'string' && markdown.includes('Answer for abc123'));
+    assert.ok(typeof markdown === 'string' && markdown.includes('Canonical title'));
 });
 
-test('dedup - live-save formatting failures propagate without writing a fallback', async () => {
-    let writes = 0;
-    await assert.rejects(writeLiveSaveMarkdown(
-        { init: async () => {}, writeFile: async () => { writes++; } },
-        { chat: {}, safeTitle: 'T', nid: 'n1' },
-        { formatter: { formatMarkdownCanonical: async () => { throw new Error('formatting failed'); } } },
-    ), /formatting failed/);
-    assert.strictEqual(writes, 0);
+test('dedup - Live Save input failure cannot write a fallback or commit a record', async (t: import('node:test').TestContext) => {
+    const host = v2LiveSaveHost(t);
+    await require('../src/application/settings/index.js').updateSettings({ enabledDisk: true, defaultFormat: 'markdown' });
+    // No trustworthy Domain is available; there is no parallel scraper/formatter fallback.
+    const { ingestIndexes } = require('../src/l2/ingestion.js');
+    await ingestIndexes(liveKey('fatal').accountId, [{ conversationId: 'fatal', fields: { title: 'Unavailable', titleSource: 'provider' } }]);
+    const result = await runLiveSave(liveKey('fatal'));
+    assert.deepStrictEqual(result?.failed, [liveKey('fatal')]);
+    assert.strictEqual(host.files.size, 0);
+    assert.strictEqual(await getExportRecord(liveKey('fatal')), null);
 });
 
-test('dedup - writeLiveSaveMarkdown writes via shared writer and honors fileName override', async () => {
-    const writes: any[] = [];
-    const fakeWriter = {
-        init: async () => {},
-        writeFile: async (subDir: string, file: string, data: string) => { writes.push([subDir, file, data]); },
-    };
-    const deps = {
-        buildFileName: (t: string, n: string) => `built_${n}.md`,
-        formatter: { formatMarkdownCanonical: async () => ({ content: 'MD-BODY', ext: 'md', mime: 'text/markdown' }) },
-    };
-
-    const target1 = await writeLiveSaveMarkdown(
-        fakeWriter, { chat: {}, safeTitle: 'T', nid: 'n9' }, deps
-    );
-    assert.strictEqual(target1, 'built_n9.md');
-    assert.deepStrictEqual(writes[0], ['', 'built_n9.md', 'MD-BODY']);
-
-    const target2 = await writeLiveSaveMarkdown(
-        fakeWriter, { chat: {}, safeTitle: 'T', nid: 'n9' }, deps, { fileName: 'custom.md' }
-    );
-    assert.strictEqual(target2, 'custom.md');
-    assert.deepStrictEqual(writes[1], ['', 'custom.md', 'MD-BODY']);
+test('dedup - repeated Live Save replaces the planned file rather than creating a second filename policy', async (t: import('node:test').TestContext) => {
+    const host = v2LiveSaveHost(t);
+    await seedLiveDetail('n9', [], { title: 'Stable title', savedAt: 100 });
+    await runLiveSave(liveKey('n9'));
+    await seedLiveDetail('n9', [], { title: 'Stable title', savedAt: 200 });
+    await runLiveSave(liveKey('n9'));
+    assert.deepStrictEqual([...host.files.keys()], [buildExportFileName('Stable title', 'n9', 'md')]);
+    assert.strictEqual((await getExportRecord(liveKey('n9')))?.chatTime, 200);
+    assert.strictEqual(host.events.filter(event => event.startsWith('close:')).length, 2);
 });

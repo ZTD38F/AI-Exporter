@@ -1,0 +1,48 @@
+name: UI Unit Tests
+
+on:
+  pull_request:
+    branches: [dev/v2]
+    paths:
+      - '.github/workflows/ui-unit.yml'
+      - 'src/ui/**'
+      - 'tests/ui*.test.ts'
+      - 'tests/options_*.test.ts'
+      - 'tests/tour_guide.test.ts'
+      - 'tests/p1_h3_ui.test.ts'
+      - 'tests/seam_s3_ui_timeout.test.ts'
+      - 'tests/helpers/uiPortHarness.ts'
+      - 'tests/helpers/uiV2Mocks.ts'
+      - 'tests/ui-tier1.json'
+      - 'scripts/test-unit.cjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui-unit:
+    name: UI Frozen Contract Unit Suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium for mocked DOM component suites
+        run: npx playwright install --with-deps chromium
+      - name: Permit sandboxed Playwright on Ubuntu
+        run: bash scripts/setup-playwright-sandbox.sh
+      - name: Run UI suites independently of unrelated module type errors
+        run: |
+          node - <<'NODE'
+          const { spawnSync } = require('node:child_process');
+          const { suites } = require('./tests/ui-tier1.json');
+          const result = spawnSync(process.execPath, ['scripts/test-unit.cjs', ...suites], { stdio: 'inherit' });
+          if (result.error) throw result.error;
+          process.exit(result.status ?? 1);
+          NODE

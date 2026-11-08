@@ -1,22 +1,9 @@
 {
-  "schemaVersion": 1,
-  "conversation": {
-    "key": {
-      "providerId": "gemini",
-      "accountId": "acct-parity-001",
-      "conversationId": "conv-long-121-001"
-    },
-    "title": "长会话：121 消息 parity 语料",
-    "createdAt": "2026-09-26T14:00:00-07:00",
-    "updatedAt": "2026-09-26T16:02:00-07:00",
+  "document": {
     "messages": [
       {
-        "id": "u1",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:01-07:00",
         "blocks": [
           {
-            "id": "u1:b0",
             "type": "paragraph",
             "children": [
               {
@@ -25,15 +12,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a1",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:01-07:00",
         "blocks": [
           {
-            "id": "a1:b0",
             "type": "paragraph",
             "children": [
               {
@@ -42,15 +26,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u2",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:02-07:00",
         "blocks": [
           {
-            "id": "u2:b0",
             "type": "paragraph",
             "children": [
               {
@@ -59,15 +40,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a2",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:02-07:00",
         "blocks": [
           {
-            "id": "a2:b0",
             "type": "paragraph",
             "children": [
               {
@@ -76,15 +54,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u3",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:03-07:00",
         "blocks": [
           {
-            "id": "u3:b0",
             "type": "paragraph",
             "children": [
               {
@@ -93,15 +68,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a3",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:03-07:00",
         "blocks": [
           {
-            "id": "a3:b0",
             "type": "paragraph",
             "children": [
               {
@@ -110,15 +82,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u4",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:04-07:00",
         "blocks": [
           {
-            "id": "u4:b0",
             "type": "paragraph",
             "children": [
               {
@@ -127,15 +96,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a4",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:04-07:00",
         "blocks": [
           {
-            "id": "a4:b0",
             "type": "paragraph",
             "children": [
               {
@@ -144,15 +110,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u5",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:05-07:00",
         "blocks": [
           {
-            "id": "u5:b0",
             "type": "paragraph",
             "children": [
               {
@@ -161,15 +124,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a5",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:05-07:00",
         "blocks": [
           {
-            "id": "a5:b0",
             "type": "paragraph",
             "children": [
               {
@@ -178,15 +138,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u6",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:06-07:00",
         "blocks": [
           {
-            "id": "u6:b0",
             "type": "paragraph",
             "children": [
               {
@@ -195,15 +152,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a6",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:06-07:00",
         "blocks": [
           {
-            "id": "a6:b0",
             "type": "paragraph",
             "children": [
               {
@@ -212,15 +166,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u7",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:07-07:00",
         "blocks": [
           {
-            "id": "u7:b0",
             "type": "paragraph",
             "children": [
               {
@@ -230,7 +181,6 @@
             ]
           },
           {
-            "id": "u7:b1",
             "type": "paragraph",
             "children": [
               {
@@ -269,15 +219,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a7",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:07-07:00",
         "blocks": [
           {
-            "id": "a7:b0",
             "type": "paragraph",
             "children": [
               {
@@ -286,15 +233,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u8",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:08-07:00",
         "blocks": [
           {
-            "id": "u8:b0",
             "type": "paragraph",
             "children": [
               {
@@ -303,15 +247,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a8",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:08-07:00",
         "blocks": [
           {
-            "id": "a8:b0",
             "type": "paragraph",
             "children": [
               {
@@ -320,15 +261,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u9",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:09-07:00",
         "blocks": [
           {
-            "id": "u9:b0",
             "type": "paragraph",
             "children": [
               {
@@ -337,15 +275,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a9",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:09-07:00",
         "blocks": [
           {
-            "id": "a9:b0",
             "type": "paragraph",
             "children": [
               {
@@ -354,15 +289,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u10",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:10-07:00",
         "blocks": [
           {
-            "id": "u10:b0",
             "type": "paragraph",
             "children": [
               {
@@ -371,15 +303,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a10",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:10-07:00",
         "blocks": [
           {
-            "id": "a10:b0",
             "type": "paragraph",
             "children": [
               {
@@ -389,20 +318,16 @@
             ]
           },
           {
-            "id": "a10:b1",
             "type": "code",
-            "language": "python",
-            "code": "def round_5():\n    return 'parity-check-5'\n"
+            "code": "def round_5():\n    return 'parity-check-5'\n",
+            "language": "python"
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u11",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:11-07:00",
         "blocks": [
           {
-            "id": "u11:b0",
             "type": "paragraph",
             "children": [
               {
@@ -411,15 +336,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a11",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:11-07:00",
         "blocks": [
           {
-            "id": "a11:b0",
             "type": "paragraph",
             "children": [
               {
@@ -428,15 +350,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u12",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:12-07:00",
         "blocks": [
           {
-            "id": "u12:b0",
             "type": "paragraph",
             "children": [
               {
@@ -445,15 +364,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a12",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:12-07:00",
         "blocks": [
           {
-            "id": "a12:b0",
             "type": "paragraph",
             "children": [
               {
@@ -462,15 +378,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u13",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:13-07:00",
         "blocks": [
           {
-            "id": "u13:b0",
             "type": "paragraph",
             "children": [
               {
@@ -479,15 +392,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a13",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:13-07:00",
         "blocks": [
           {
-            "id": "a13:b0",
             "type": "paragraph",
             "children": [
               {
@@ -496,15 +406,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u14",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:14-07:00",
         "blocks": [
           {
-            "id": "u14:b0",
             "type": "paragraph",
             "children": [
               {
@@ -514,7 +421,6 @@
             ]
           },
           {
-            "id": "u14:b1",
             "type": "paragraph",
             "children": [
               {
@@ -553,15 +459,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a14",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:14-07:00",
         "blocks": [
           {
-            "id": "a14:b0",
             "type": "paragraph",
             "children": [
               {
@@ -570,15 +473,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u15",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:15-07:00",
         "blocks": [
           {
-            "id": "u15:b0",
             "type": "paragraph",
             "children": [
               {
@@ -587,15 +487,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a15",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:15-07:00",
         "blocks": [
           {
-            "id": "a15:b0",
             "type": "paragraph",
             "children": [
               {
@@ -605,70 +502,70 @@
             ]
           },
           {
-            "id": "a15:b2",
             "type": "table",
-            "columns": [
-              {
-                "align": "left"
-              },
-              {
-                "align": "right"
-              }
+            "columnAlignments": [
+              "left",
+              "right"
             ],
             "headerRows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "指标"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "第 8 轮"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "指标"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "第 8 轮"
+                    }
+                  ]
+                }
+              ]
             ],
             "rows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "消息数"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "15"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "消息数"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "15"
+                    }
+                  ]
+                }
+              ]
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u16",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:16-07:00",
         "blocks": [
           {
-            "id": "u16:b0",
             "type": "paragraph",
             "children": [
               {
@@ -677,15 +574,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a16",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:16-07:00",
         "blocks": [
           {
-            "id": "a16:b0",
             "type": "paragraph",
             "children": [
               {
@@ -694,15 +588,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u17",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:17-07:00",
         "blocks": [
           {
-            "id": "u17:b0",
             "type": "paragraph",
             "children": [
               {
@@ -711,15 +602,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a17",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:17-07:00",
         "blocks": [
           {
-            "id": "a17:b0",
             "type": "paragraph",
             "children": [
               {
@@ -728,15 +616,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u18",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:18-07:00",
         "blocks": [
           {
-            "id": "u18:b0",
             "type": "paragraph",
             "children": [
               {
@@ -745,15 +630,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a18",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:18-07:00",
         "blocks": [
           {
-            "id": "a18:b0",
             "type": "paragraph",
             "children": [
               {
@@ -762,15 +644,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u19",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:19-07:00",
         "blocks": [
           {
-            "id": "u19:b0",
             "type": "paragraph",
             "children": [
               {
@@ -779,15 +658,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a19",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:19-07:00",
         "blocks": [
           {
-            "id": "a19:b0",
             "type": "paragraph",
             "children": [
               {
@@ -796,15 +672,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u20",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:20-07:00",
         "blocks": [
           {
-            "id": "u20:b0",
             "type": "paragraph",
             "children": [
               {
@@ -813,15 +686,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a20",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:20-07:00",
         "blocks": [
           {
-            "id": "a20:b0",
             "type": "paragraph",
             "children": [
               {
@@ -831,20 +701,16 @@
             ]
           },
           {
-            "id": "a20:b1",
             "type": "code",
-            "language": "python",
-            "code": "def round_10():\n    return 'parity-check-10'\n"
+            "code": "def round_10():\n    return 'parity-check-10'\n",
+            "language": "python"
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u21",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:21-07:00",
         "blocks": [
           {
-            "id": "u21:b0",
             "type": "paragraph",
             "children": [
               {
@@ -854,7 +720,6 @@
             ]
           },
           {
-            "id": "u21:b1",
             "type": "paragraph",
             "children": [
               {
@@ -893,15 +758,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a21",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:21-07:00",
         "blocks": [
           {
-            "id": "a21:b0",
             "type": "paragraph",
             "children": [
               {
@@ -911,19 +773,15 @@
             ]
           },
           {
-            "id": "a21:b3",
             "type": "math",
             "source": "\\sum_{i=1}^{11} i = 66"
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u22",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:22-07:00",
         "blocks": [
           {
-            "id": "u22:b0",
             "type": "paragraph",
             "children": [
               {
@@ -932,15 +790,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a22",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:22-07:00",
         "blocks": [
           {
-            "id": "a22:b0",
             "type": "paragraph",
             "children": [
               {
@@ -949,15 +804,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u23",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:23-07:00",
         "blocks": [
           {
-            "id": "u23:b0",
             "type": "paragraph",
             "children": [
               {
@@ -966,15 +818,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a23",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:23-07:00",
         "blocks": [
           {
-            "id": "a23:b0",
             "type": "paragraph",
             "children": [
               {
@@ -983,15 +832,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u24",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:24-07:00",
         "blocks": [
           {
-            "id": "u24:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1000,15 +846,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a24",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:24-07:00",
         "blocks": [
           {
-            "id": "a24:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1017,15 +860,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u25",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:25-07:00",
         "blocks": [
           {
-            "id": "u25:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1034,15 +874,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a25",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:25-07:00",
         "blocks": [
           {
-            "id": "a25:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1051,15 +888,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u26",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:26-07:00",
         "blocks": [
           {
-            "id": "u26:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1068,15 +902,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a26",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:26-07:00",
         "blocks": [
           {
-            "id": "a26:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1085,15 +916,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u27",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:27-07:00",
         "blocks": [
           {
-            "id": "u27:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1102,15 +930,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a27",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:27-07:00",
         "blocks": [
           {
-            "id": "a27:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1119,15 +944,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u28",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:28-07:00",
         "blocks": [
           {
-            "id": "u28:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1137,7 +959,6 @@
             ]
           },
           {
-            "id": "u28:b1",
             "type": "paragraph",
             "children": [
               {
@@ -1176,15 +997,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a28",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:28-07:00",
         "blocks": [
           {
-            "id": "a28:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1193,15 +1011,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u29",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:29-07:00",
         "blocks": [
           {
-            "id": "u29:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1210,15 +1025,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a29",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:29-07:00",
         "blocks": [
           {
-            "id": "a29:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1227,15 +1039,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u30",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:30-07:00",
         "blocks": [
           {
-            "id": "u30:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1244,15 +1053,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a30",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:30-07:00",
         "blocks": [
           {
-            "id": "a30:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1262,76 +1068,75 @@
             ]
           },
           {
-            "id": "a30:b1",
             "type": "code",
-            "language": "python",
-            "code": "def round_15():\n    return 'parity-check-15'\n"
+            "code": "def round_15():\n    return 'parity-check-15'\n",
+            "language": "python"
           },
           {
-            "id": "a30:b2",
             "type": "table",
-            "columns": [
-              {
-                "align": "left"
-              },
-              {
-                "align": "right"
-              }
+            "columnAlignments": [
+              "left",
+              "right"
             ],
             "headerRows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "指标"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "第 15 轮"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "指标"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "第 15 轮"
+                    }
+                  ]
+                }
+              ]
             ],
             "rows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "消息数"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "30"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "消息数"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "30"
+                    }
+                  ]
+                }
+              ]
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u31",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:31-07:00",
         "blocks": [
           {
-            "id": "u31:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1340,15 +1145,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a31",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:31-07:00",
         "blocks": [
           {
-            "id": "a31:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1357,15 +1159,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u32",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:32-07:00",
         "blocks": [
           {
-            "id": "u32:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1374,15 +1173,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a32",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:32-07:00",
         "blocks": [
           {
-            "id": "a32:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1391,15 +1187,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u33",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:33-07:00",
         "blocks": [
           {
-            "id": "u33:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1408,15 +1201,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a33",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:33-07:00",
         "blocks": [
           {
-            "id": "a33:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1425,15 +1215,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u34",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:34-07:00",
         "blocks": [
           {
-            "id": "u34:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1442,15 +1229,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a34",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:34-07:00",
         "blocks": [
           {
-            "id": "a34:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1459,15 +1243,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u35",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:35-07:00",
         "blocks": [
           {
-            "id": "u35:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1477,7 +1258,6 @@
             ]
           },
           {
-            "id": "u35:b1",
             "type": "paragraph",
             "children": [
               {
@@ -1516,15 +1296,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a35",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:35-07:00",
         "blocks": [
           {
-            "id": "a35:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1533,15 +1310,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u36",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:36-07:00",
         "blocks": [
           {
-            "id": "u36:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1550,15 +1324,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a36",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:36-07:00",
         "blocks": [
           {
-            "id": "a36:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1567,15 +1338,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u37",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:37-07:00",
         "blocks": [
           {
-            "id": "u37:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1584,15 +1352,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a37",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:37-07:00",
         "blocks": [
           {
-            "id": "a37:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1601,15 +1366,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u38",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:38-07:00",
         "blocks": [
           {
-            "id": "u38:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1618,15 +1380,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a38",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:38-07:00",
         "blocks": [
           {
-            "id": "a38:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1635,15 +1394,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u39",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:39-07:00",
         "blocks": [
           {
-            "id": "u39:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1652,15 +1408,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a39",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:39-07:00",
         "blocks": [
           {
-            "id": "a39:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1669,15 +1422,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u40",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:40-07:00",
         "blocks": [
           {
-            "id": "u40:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1686,15 +1436,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a40",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:40-07:00",
         "blocks": [
           {
-            "id": "a40:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1704,20 +1451,16 @@
             ]
           },
           {
-            "id": "a40:b1",
             "type": "code",
-            "language": "python",
-            "code": "def round_20():\n    return 'parity-check-20'\n"
+            "code": "def round_20():\n    return 'parity-check-20'\n",
+            "language": "python"
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u41",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:41-07:00",
         "blocks": [
           {
-            "id": "u41:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1726,15 +1469,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a41",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:41-07:00",
         "blocks": [
           {
-            "id": "a41:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1743,15 +1483,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u42",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:42-07:00",
         "blocks": [
           {
-            "id": "u42:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1761,7 +1498,6 @@
             ]
           },
           {
-            "id": "u42:b1",
             "type": "paragraph",
             "children": [
               {
@@ -1800,15 +1536,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a42",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:42-07:00",
         "blocks": [
           {
-            "id": "a42:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1818,19 +1551,15 @@
             ]
           },
           {
-            "id": "a42:b3",
             "type": "math",
             "source": "\\sum_{i=1}^{21} i = 231"
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u43",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:43-07:00",
         "blocks": [
           {
-            "id": "u43:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1839,15 +1568,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a43",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:43-07:00",
         "blocks": [
           {
-            "id": "a43:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1856,15 +1582,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u44",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:44-07:00",
         "blocks": [
           {
-            "id": "u44:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1873,15 +1596,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a44",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:44-07:00",
         "blocks": [
           {
-            "id": "a44:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1890,15 +1610,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u45",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:45-07:00",
         "blocks": [
           {
-            "id": "u45:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1907,15 +1624,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a45",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:45-07:00",
         "blocks": [
           {
-            "id": "a45:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1925,70 +1639,70 @@
             ]
           },
           {
-            "id": "a45:b2",
             "type": "table",
-            "columns": [
-              {
-                "align": "left"
-              },
-              {
-                "align": "right"
-              }
+            "columnAlignments": [
+              "left",
+              "right"
             ],
             "headerRows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "指标"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "第 23 轮"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "指标"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "第 23 轮"
+                    }
+                  ]
+                }
+              ]
             ],
             "rows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "消息数"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "45"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "消息数"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "45"
+                    }
+                  ]
+                }
+              ]
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u46",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:46-07:00",
         "blocks": [
           {
-            "id": "u46:b0",
             "type": "paragraph",
             "children": [
               {
@@ -1997,15 +1711,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a46",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:46-07:00",
         "blocks": [
           {
-            "id": "a46:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2014,15 +1725,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u47",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:47-07:00",
         "blocks": [
           {
-            "id": "u47:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2031,15 +1739,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a47",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:47-07:00",
         "blocks": [
           {
-            "id": "a47:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2048,15 +1753,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u48",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:48-07:00",
         "blocks": [
           {
-            "id": "u48:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2065,15 +1767,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a48",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:48-07:00",
         "blocks": [
           {
-            "id": "a48:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2082,15 +1781,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u49",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:49-07:00",
         "blocks": [
           {
-            "id": "u49:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2100,7 +1796,6 @@
             ]
           },
           {
-            "id": "u49:b1",
             "type": "paragraph",
             "children": [
               {
@@ -2139,15 +1834,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a49",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:49-07:00",
         "blocks": [
           {
-            "id": "a49:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2156,15 +1848,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u50",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:50-07:00",
         "blocks": [
           {
-            "id": "u50:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2173,15 +1862,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a50",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:50-07:00",
         "blocks": [
           {
-            "id": "a50:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2191,20 +1877,16 @@
             ]
           },
           {
-            "id": "a50:b1",
             "type": "code",
-            "language": "python",
-            "code": "def round_25():\n    return 'parity-check-25'\n"
+            "code": "def round_25():\n    return 'parity-check-25'\n",
+            "language": "python"
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u51",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:51-07:00",
         "blocks": [
           {
-            "id": "u51:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2213,15 +1895,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a51",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:51-07:00",
         "blocks": [
           {
-            "id": "a51:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2230,15 +1909,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u52",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:52-07:00",
         "blocks": [
           {
-            "id": "u52:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2247,15 +1923,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a52",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:52-07:00",
         "blocks": [
           {
-            "id": "a52:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2264,15 +1937,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u53",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:53-07:00",
         "blocks": [
           {
-            "id": "u53:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2281,15 +1951,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a53",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:53-07:00",
         "blocks": [
           {
-            "id": "a53:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2298,15 +1965,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u54",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:54-07:00",
         "blocks": [
           {
-            "id": "u54:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2315,15 +1979,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a54",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:54-07:00",
         "blocks": [
           {
-            "id": "a54:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2332,15 +1993,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u55",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:55-07:00",
         "blocks": [
           {
-            "id": "u55:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2349,15 +2007,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a55",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:55-07:00",
         "blocks": [
           {
-            "id": "a55:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2366,15 +2021,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u56",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:56-07:00",
         "blocks": [
           {
-            "id": "u56:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2384,7 +2036,6 @@
             ]
           },
           {
-            "id": "u56:b1",
             "type": "paragraph",
             "children": [
               {
@@ -2423,15 +2074,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a56",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:56-07:00",
         "blocks": [
           {
-            "id": "a56:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2440,15 +2088,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u57",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:57-07:00",
         "blocks": [
           {
-            "id": "u57:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2457,15 +2102,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a57",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:57-07:00",
         "blocks": [
           {
-            "id": "a57:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2474,15 +2116,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u58",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:58-07:00",
         "blocks": [
           {
-            "id": "u58:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2491,15 +2130,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a58",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:58-07:00",
         "blocks": [
           {
-            "id": "a58:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2508,15 +2144,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u59",
-        "role": "user",
-        "createdAt": "2026-09-26T14:00:59-07:00",
         "blocks": [
           {
-            "id": "u59:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2525,15 +2158,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a59",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:00:59-07:00",
         "blocks": [
           {
-            "id": "a59:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2542,15 +2172,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u60",
-        "role": "user",
-        "createdAt": "2026-09-26T14:01:00-07:00",
         "blocks": [
           {
-            "id": "u60:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2559,15 +2186,12 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       },
       {
-        "id": "a60",
-        "role": "assistant",
-        "createdAt": "2026-09-26T14:01:00-07:00",
         "blocks": [
           {
-            "id": "a60:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2577,76 +2201,75 @@
             ]
           },
           {
-            "id": "a60:b1",
             "type": "code",
-            "language": "python",
-            "code": "def round_30():\n    return 'parity-check-30'\n"
+            "code": "def round_30():\n    return 'parity-check-30'\n",
+            "language": "python"
           },
           {
-            "id": "a60:b2",
             "type": "table",
-            "columns": [
-              {
-                "align": "left"
-              },
-              {
-                "align": "right"
-              }
+            "columnAlignments": [
+              "left",
+              "right"
             ],
             "headerRows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "指标"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "第 30 轮"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "指标"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "第 30 轮"
+                    }
+                  ]
+                }
+              ]
             ],
             "rows": [
-              {
-                "cells": [
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "消息数"
-                      }
-                    ]
-                  },
-                  {
-                    "children": [
-                      {
-                        "type": "text",
-                        "text": "60"
-                      }
-                    ]
-                  }
-                ]
-              }
+              [
+                {
+                  "column": 0,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "消息数"
+                    }
+                  ]
+                },
+                {
+                  "column": 1,
+                  "colSpan": 1,
+                  "rowSpan": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "60"
+                    }
+                  ]
+                }
+              ]
             ]
           }
-        ]
+        ],
+        "role": "assistant"
       },
       {
-        "id": "u61",
-        "role": "user",
-        "createdAt": "2026-09-26T14:01:01-07:00",
         "blocks": [
           {
-            "id": "u61:b0",
             "type": "paragraph",
             "children": [
               {
@@ -2655,10 +2278,16 @@
               }
             ]
           }
-        ]
+        ],
+        "role": "user"
       }
-    ]
+    ],
+    "metadata": {
+      "id": "long-conversation-121",
+      "provider": "gemini",
+      "updatedAt": 1790380800000
+    },
+    "title": "长会话：121 消息 parity 语料"
   },
-  "assets": [],
-  "citations": []
+  "resourceIds": []
 }

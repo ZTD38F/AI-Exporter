@@ -1,36 +1,28 @@
+import { fixtureKey, fixtureAccountFor } from './helpers/domainFixture.js';
+import { restoreDomainSnapshot } from '../src/l2/runtimeValidation.js';
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
-const { convertMath } = require('../src/core/export/typst/mathConverter.js');
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
+const { composeDomainDocument } = require('../src/l3b/compose/composeDomainDocument.js');
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
+const { convertMathForTest: convertMath } = require('./helpers/mathConversion.js');
 const { extractPdfText } = require('./helpers/pdfTextExtract.js');
 const {
     RealWasmSandboxHost,
     repoRoot,
 } = require('./helpers/realWasmSandbox.js');
 
-function bundle(messages: any[], extra: any = {}) {
-    return {
-        schemaVersion: 1,
-        conversation: {
-            key: { providerId: 'gemini', accountId: 'test-account', conversationId: 'c1' },
-            title: 'Phase B',
-            createdAt: '2026-09-26T10:00:00Z',
-            messages,
-        },
-        assets: [],
-        citations: [],
-        ...extra,
-    };
+function domainFixture(messages: any[], assets: any[] = []) {
+    return restoreDomainSnapshot({ index: { key: fixtureKey(String('c1'), 'gemini'),   titleSource: "derived",   title: 'Fixture', createdAt: Date.parse('2026-09-26T10:00:00Z') }, detail: { key: fixtureKey(String('c1'), 'gemini'), quality: { status: 'unknown' }, assets, messages: messages } });
 }
 
 function msg(id: string, role: string, blocks: any[], extra: any = {}) {
-    return { id, role, blocks, ...extra };
+    return { id, role, content: blocks, ...extra };
 }
 
-const opts = { assetPath: (_a: any) => undefined };
+const opts = {};
 
 function cell(text: string) {
     return { children: [{ type: 'text', text }] };
@@ -41,12 +33,11 @@ function row(...texts: string[]) {
 }
 
 test('multi header rows all reach the transport with no collapse diagnostic', async () => {
-    const b = bundle([msg('m1', 'assistant', [{
-        type: 'table', id: 't1',
-        headerRows: [row('h1a', 'h1b'), row('h2a', 'h2b')],
+    const b = domainFixture([msg('m1', 'assistant', [{
+        type: 'table', headerRows: [row('h1a', 'h1b'), row('h2a', 'h2b')],
         rows: [row('b1a', 'b1b')],
     }])]);
-    const { payload, diagnostics } = toTypstPayload(b, opts);
+    const { payload, diagnostics } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.type, 'table');
     assert.strictEqual(node.headers.length, 2);
@@ -60,11 +51,10 @@ test('multi header rows all reach the transport with no collapse diagnostic', as
 test('colSpan/rowSpan map to native Typst table.cell spans with no warning', async () => {
     const spanned = { children: [{ type: 'text', text: 'wide' }], colSpan: 2 };
     const tall = { children: [{ type: 'text', text: 'tall' }], rowSpan: 2 };
-    const b = bundle([msg('m1', 'assistant', [{
-        type: 'table', id: 't1',
-        rows: [{ cells: [spanned, { children: [{ type: 'text', text: 'b' }] }] }, { cells: [tall, { children: [{ type: 'text', text: 'c' }] }] }],
+    const b = domainFixture([msg('m1', 'assistant', [{
+        type: 'table', rows: [{ cells: [spanned, { children: [{ type: 'text', text: 'b' }] }] }, { cells: [tall, { children: [{ type: 'text', text: 'c' }] }] }],
     }])]);
-    const { payload, diagnostics } = toTypstPayload(b, opts);
+    const { payload, diagnostics } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.rows[0].length, 2);
     assert.strictEqual(node.rows[0][0].colspan, 2);
@@ -74,81 +64,70 @@ test('colSpan/rowSpan map to native Typst table.cell spans with no warning', asy
     assert.ok(!diagnostics.some((d: any) => d.code === 'TYPST_V8_TABLE_SPAN_IGNORED'));
 });
 
-test('message citationIds appends a note to blocks in Typst payload', async () => {
-    const b = bundle(
-        [msg('m1', 'assistant', [], { citationIds: ['c1'] })],
-        { citations: [{ id: 'c1', url: 'https://example.com/a' }] },
+test('message sources append a note to blocks in Typst payload', async () => {
+    const b = domainFixture(
+        [msg('m1', 'assistant', [], { citations: [{ id: 'c1', url: 'https://example.com/a' }] })],
     );
-    const { payload } = toTypstPayload(b, opts);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.type, 'note');
-    assert.ok(!('label' in node));
-    assert.ok((node.children[0].text as string).includes('[1]'));
+    assert.equal(node.label, 'Sources');
+    assert.deepEqual(node.children, [{ type: 'link', url: 'https://example.com/a', children: [{ type: 'text', text: '[1] https://example.com/a' }] }]);
 });
 
 test('file description reaches the transport', async () => {
-    const b = bundle(
+    const b = domainFixture(
         [msg('m1', 'assistant', [{
-            type: 'file', id: 'f1', assetId: 'fa',
+            type: 'file', assetId: 'fa',
             label: 'report.pdf',
             description: [{ type: 'text', text: 'Q3 summary deck' }],
         }])],
-        { assets: [{ id: 'fa', name: 'report.pdf', kind: 'document', mimeType: 'application/pdf', sizeBytes: 2048 }] },
+        [{ id: 'fa', name: 'report.pdf', kind: 'file', mediaType: 'application/pdf', byteLength: 2048 }],
     );
-    const { payload } = toTypstPayload(b, opts);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.type, 'file');
-    assert.strictEqual(node.description, 'Q3 summary deck');
+    assert.deepStrictEqual(node.description, [{ type: 'text', text: 'Q3 summary deck' }]);
 });
 
-test('thought kinds map to note labels', async () => {
-    const cases: Array<[string, string | undefined]> = [
-        ['summary', 'Thinking Summary'],
-        ['progress', 'Thinking Progress'],
-        ['reasoning', 'Thinking Process'],
-        ['unknown', undefined],
-    ];
-    for (const [kind, label] of cases) {
-        const b = bundle([msg('m1', 'assistant', [{
-            type: 'thought', id: 'th1', disclosure: 'providerExposed', kind,
-            blocks: [{ type: 'paragraph', id: 'p1', children: [{ type: 'text', text: 'hmm' }] }],
-        }])]);
-        const { payload } = toTypstPayload(b, opts);
-        const node: any = payload.messages[0].blocks[0];
-        assert.strictEqual(node.type, 'note');
-        assert.strictEqual(node.label, label, `kind=${kind}`);
-    }
+test('reasoning maps to a thinking process note', async () => {
+    const b = domainFixture([msg('m1', 'assistant', [], { reasoning: [{ type: 'paragraph', children: [{ type: 'text', text: 'hmm' }] }] })]);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), {}, opts);
+    const node: any = payload.messages[0].blocks[0];
+    assert.strictEqual(node.type, 'note');
+    assert.strictEqual(node.label, 'Thinking Process');
 });
 
-test('code filename and meta reach the transport', async () => {
-    const b = bundle([msg('m1', 'assistant', [{
-        type: 'code', id: 'c1', code: 'print(1)', language: 'python',
-        filename: 'app.py', meta: 'runnable',
+test('code language and meta reach the transport', async () => {
+    const b = domainFixture([msg('m1', 'assistant', [{
+        type: 'code', code: 'print(1)', language: 'python',
+        meta: 'runnable',
     }])]);
-    const { payload } = toTypstPayload(b, opts);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.strictEqual(node.type, 'code');
-    assert.strictEqual(node.filename, 'app.py');
-    assert.strictEqual(node.meta, 'runnable');
+    assert.strictEqual(node.header, 'python · runnable');
+    assert.ok(!('filename' in node));
+    assert.ok(!('meta' in node));
 });
 
 test('code without filename has no filename field', async () => {
-    const b = bundle([msg('m1', 'assistant', [
-        { type: 'code', id: 'c1', code: 'x', language: 'text' },
+    const b = domainFixture([msg('m1', 'assistant', [
+        { type: 'code', code: 'x', language: 'text' },
     ])]);
-    const { payload } = toTypstPayload(b, opts);
+    const { payload } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), Object.fromEntries(b.detail.assets.map((asset: { id: string }) => [asset.id, `assets/${asset.id}.png`])), opts);
     const node: any = payload.messages[0].blocks[0];
     assert.ok(!('filename' in node));
     assert.ok(!('meta' in node));
 });
 
-async function compileOnce(bundle: any) {
+async function compileOnce(domain: any) {
     const host = new RealWasmSandboxHost(repoRoot());
     const compiler = new TypstSandboxCompiler({ host });
-    const assetPath = (a: any) => `/assets/${a.id}.png`;
-    const { payload: document } = toTypstPayload(bundle, { assetPath, convertMath });
+    const resources = Object.fromEntries(domain.detail.assets.map((asset: { id: string }) => [asset.id, `/assets/${asset.id}.png`]));
+    const { payload: document } = renderTypstFixture(composeDomainDocument(domain, fixtureAccountFor(domain)), resources, { convertMath });
     const context = {
-        bundle,
+
         assets: {
             resolve: async (id: string) => null,
         },
@@ -160,10 +139,9 @@ async function compileOnce(bundle: any) {
         const result = await compiler.compile(
             {
                 rendererSchemaVersion: 1,
-                sourceSchemaVersion: 1,
-                bundle,
+
                 document,
-                assetPaths: new Map((bundle.assets ?? []).map((a: any) => [a.id, assetPath(a)])),
+                assetPaths: new Map(Object.entries(resources)),
             } as never,
             context as never,
         );
@@ -174,34 +152,26 @@ async function compileOnce(bundle: any) {
 }
 
 test('real WASM: phase B features compile with all text selectable', async () => {
-    const b = bundle(
+    const b = domainFixture(
         [msg('m1', 'assistant', [
             {
-                type: 'table', id: 't1',
-                headerRows: [row('hdr-one', 'hdr-two'), row('sub-one', 'sub-two')],
+                type: 'table', headerRows: [row('hdr-one', 'hdr-two'), row('sub-one', 'sub-two')],
                 rows: [row('cell-one', 'cell-two')],
             },
             {
-                type: 'file', id: 'f1', assetId: 'fa',
+                type: 'file', assetId: 'fa',
                 label: 'report.pdf',
                 description: [{ type: 'text', text: 'Q3 summary deck' }],
             },
-            { type: 'heading', id: 'h4', level: 4, children: [{ type: 'text', text: 'fourth level' }] },
-            { type: 'heading', id: 'h5', level: 5, children: [{ type: 'text', text: 'fifth level' }] },
-            { type: 'heading', id: 'h6', level: 6, children: [{ type: 'text', text: 'sixth level' }] },
+            { type: 'heading', level: 4, children: [{ type: 'text', text: 'fourth level' }] },
+            { type: 'heading', level: 5, children: [{ type: 'text', text: 'fifth level' }] },
+            { type: 'heading', level: 6, children: [{ type: 'text', text: 'sixth level' }] },
             {
-                type: 'thought', id: 'th1', disclosure: 'providerExposed', kind: 'progress',
-                blocks: [{ type: 'paragraph', id: 'tp1', children: [{ type: 'text', text: 'working on it' }] }],
+                type: 'code', code: 'print(1)', language: 'python',
+                meta: 'runnable',
             },
-            {
-                type: 'code', id: 'c1', code: 'print(1)', language: 'python',
-                filename: 'app.py', meta: 'runnable',
-            },
-        ], { citationIds: ['c1'] })],
-        {
-            assets: [{ id: 'fa', name: 'report.pdf', kind: 'document', mimeType: 'application/pdf', sizeBytes: 2048 }],
-            citations: [{ id: 'c1', url: 'https://example.com/a', title: 'Key sources' }],
-        },
+        ], { reasoning: [{ type: 'paragraph', children: [{ type: 'text', text: 'working on it' }] }], citations: [{ id: 'c1', url: 'https://example.com/a', title: 'Key sources' }] })],
+        [{ id: 'fa', name: 'report.pdf', kind: 'file', mediaType: 'application/pdf', byteLength: 2048 }],
     );
     const result = await compileOnce(b);
     assert.ok(result.pdfBytes && result.pdfBytes.length > 0, 'compile must produce PDF bytes');
@@ -210,8 +180,8 @@ test('real WASM: phase B features compile with all text selectable', async () =>
         'hdr-one', 'hdr-two', 'sub-one', 'sub-two', 'cell-one', 'cell-two',
         'Key sources', 'report.pdf', 'Q3 summary deck',
         'fourth level', 'fifth level', 'sixth level',
-        'Thinking Progress', 'working on it',
-        'app.py', 'runnable',
+        'Thinking Process', 'working on it',
+        'runnable',
     ]) {
         assert.ok(extracted.text.includes(needle), `missing from PDF text: ${needle}`);
     }

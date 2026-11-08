@@ -1,178 +1,145 @@
-// tests/seam_s4_reinit_cleanup.test.ts - S4 / P1-026: re-injection cleanup
-//
-// A content-script bundle can be re-executed in the same isolated world
-// (extension update / re-injection). Every init() below must leave exactly
-// one active listener after a simulated re-injection — never a duplicate
-// that would double-process messages, and never a stale closure from the
-// previous bundle.
+// Runtime contracts for the content-script listener/cleanup seams.
+// Content-bundle re-execution itself belongs in a browser integration test;
+// source-text regex matching must not be used as a substitute for that flow.
 import test from 'node:test';
-import assert from 'node:assert';
-import * as fs from 'node:fs';
-
-// --- minimal browser doubles -------------------------------------------------
+import assert from 'node:assert/strict';
+import { registerCleanup, runCleanups } from '../src/runtime/content/cleanupRegistry.js';
+import { MessageRouter } from '../src/runtime/content/messageRouter.js';
+import { init as initMessageBridge } from '../src/l1/sniffer/gemini/messageBridge.js';
+import { PageObserver } from '../src/runtime/content/pageObserver.js';
 
 function makeWindow() {
-    const listeners: Record<string, Array<(...a: any[]) => void>> = {};
-    const w: any = {
-        __gemExporterCleanups: [],
-        addEventListener: (type: string, fn: (...a: any[]) => void) => {
-            (listeners[type] = listeners[type] || []).push(fn);
+    const listeners: Record<string, Array<(...args: any[]) => void>> = {};
+    return {
+        __gemExporterCleanups: [] as Array<() => void>,
+        addEventListener(type: string, fn: (...args: any[]) => void) {
+            (listeners[type] ||= []).push(fn);
         },
-        removeEventListener: (type: string, fn: (...a: any[]) => void) => {
-            listeners[type] = (listeners[type] || []).filter(f => f !== fn);
+        removeEventListener(type: string, fn: (...args: any[]) => void) {
+            listeners[type] = (listeners[type] || []).filter(existing => existing !== fn);
         },
-        dispatchEvent: (type: string, ...a: any[]) => {
-            for (const f of (listeners[type] || []).slice()) f(...a);
+        dispatchEvent(event: Event | string) {
+            const type = typeof event === 'string' ? event : event.type;
+            for (const fn of (listeners[type] || []).slice()) fn(event);
         },
-        __listenerCount: (type: string) => (listeners[type] || []).length,
+        listenerCount(type: string) { return (listeners[type] || []).length; },
     };
-    return w;
 }
 
 function makeChrome() {
-    const onMessage: Array<(...a: any[]) => void> = [];
-    const onChanged: Array<(...a: any[]) => void> = [];
-    const chrome: any = {
+    const messages: Array<(...args: any[]) => void> = [];
+    return {
         runtime: {
             onMessage: {
-                addListener: (fn: (...a: any[]) => void) => { onMessage.push(fn); },
-                removeListener: (fn: (...a: any[]) => void) => {
-                    const i = onMessage.indexOf(fn);
-                    if (i >= 0) onMessage.splice(i, 1);
+                addListener: (fn: (...args: any[]) => void) => { messages.push(fn); },
+                removeListener: (fn: (...args: any[]) => void) => {
+                    const index = messages.indexOf(fn);
+                    if (index >= 0) messages.splice(index, 1);
                 },
             },
             getManifest: () => ({ version: '9.9.9-test' }),
-            sendMessage: (..._a: any[]) => {},
+            sendMessage: () => {},
         },
-        storage: {
-            onChanged: {
-                addListener: (fn: (...a: any[]) => void) => { onChanged.push(fn); },
-                removeListener: (fn: (...a: any[]) => void) => {
-                    const i = onChanged.indexOf(fn);
-                    if (i >= 0) onChanged.splice(i, 1);
-                },
-            },
-            local: { get: (_k: any, cb: any) => cb({}), set: (_o: any, cb?: any) => cb && cb() },
-        },
-        __onMessage: onMessage,
-        __onChanged: onChanged,
+        storage: { onChanged: { addListener: () => {}, removeListener: () => {} } },
+        messages,
     };
-    return chrome;
 }
 
-const g = globalThis as any;
+function withMockHost(run: (host: { win: ReturnType<typeof makeWindow>; chrome: ReturnType<typeof makeChrome>;
+    history: { pushState: (...args: any[]) => void; replaceState: (...args: any[]) => void };
+    location: { href: string } }) => void): void {
+    const g = globalThis as any;
+    const keys = ['window', 'chrome', 'history', 'location'] as const;
+    const prior = keys.map(key => Object.getOwnPropertyDescriptor(g, key));
+    const win = makeWindow(), chrome = makeChrome();
+    const history = { pushState: (..._args: any[]) => {}, replaceState: (..._args: any[]) => {} };
+    const location = { href: 'https://gemini.google.com/app/starting' };
+    try {
+        for (const [i, value] of [win, chrome, history, location].entries()) {
+            Object.defineProperty(g, keys[i], { value, configurable: true, writable: true });
+        }
+        run({ win, chrome, history, location });
+    } finally {
+        // Drain registered listeners while the matching mock globals are still installed.
+        runCleanups();
+        PageObserver.cleanup();
+        keys.forEach((key, i) => {
+            if (prior[i]) Object.defineProperty(g, key, prior[i]);
+            else Reflect.deleteProperty(g, key);
+        });
+    }
+}
 
-// --- 1. registry semantics ---------------------------------------------------
-
-test('cleanupRegistry: runs each cleanup once, survives a throwing cleanup', () => {
-    g.window = makeWindow();
-    g.chrome = makeChrome();
-    const { registerCleanup, runCleanups, pendingCleanupCount } =
-        require('../src/content/cleanupRegistry.ts');
-    const calls: string[] = [];
-    registerCleanup(() => { calls.push('a'); });
-    registerCleanup(() => { calls.push('b'); throw new Error('boom'); });
-    registerCleanup(() => { calls.push('c'); });
-    assert.strictEqual(pendingCleanupCount(), 3);
-    runCleanups(); // must not throw
-    assert.deepStrictEqual(calls, ['a', 'b', 'c']);
-    assert.strictEqual(pendingCleanupCount(), 0);
-    runCleanups();
-    assert.deepStrictEqual(calls, ['a', 'b', 'c'], 'second run is a no-op');
+test('cleanup registry runs callbacks once and isolates a throwing cleanup', () => {
+    withMockHost(({ win }) => {
+        const calls: string[] = [];
+        registerCleanup(() => calls.push('first'));
+        registerCleanup(() => { calls.push('throws'); throw new Error('simulated cleanup exception'); });
+        registerCleanup(() => calls.push('last'));
+        assert.equal(win.__gemExporterCleanups.length, 3);
+        assert.doesNotThrow(() => runCleanups());
+        assert.deepEqual(calls, ['first', 'throws', 'last']);
+        assert.equal(win.__gemExporterCleanups.length, 0);
+        runCleanups();
+        assert.deepEqual(calls, ['first', 'throws', 'last'], 'no cleanup runs twice');
+    });
 });
 
-// --- 2. messageRouter: no duplicate onMessage listener -----------------------
-
-test('messageRouter: re-injection leaves exactly one onMessage listener', () => {
-    g.window = makeWindow();
-    g.chrome = makeChrome();
-    const { MessageRouter } = require('../src/content/messageRouter.ts');
-    const { runCleanups } = require('../src/content/cleanupRegistry.ts');
-
-    MessageRouter.init({});
-    assert.strictEqual(g.chrome.__onMessage.length, 1);
-
-    // Simulate bundle re-injection: previous bundle's cleanups run first.
-    runCleanups();
-    assert.strictEqual(g.chrome.__onMessage.length, 0, 'old listener removed');
-
-    MessageRouter.init({});
-    assert.strictEqual(g.chrome.__onMessage.length, 1, 'exactly one listener after re-init');
-
-    // The surviving listener still answers.
-    let resp: any;
-    g.chrome.__onMessage[0]({ action: 'ping' }, {}, (r: any) => { resp = r; });
-    assert.strictEqual(resp && resp.ok, true);
+test('messageRouter re-init replaces a single active Chrome listener and still answers ping', () => {
+    withMockHost(({ chrome }) => {
+        MessageRouter.init();
+        assert.equal(chrome.messages.length, 1);
+        runCleanups();
+        assert.equal(chrome.messages.length, 0);
+        MessageRouter.init();
+        assert.equal(chrome.messages.length, 1);
+        let response: any;
+        chrome.messages[0]({ action: 'ping' }, {}, (result: any) => { response = result; });
+        assert.equal(response?.ok, true);
+    });
 });
 
-// --- 3. messageBridge: no duplicate window message listener ------------------
-
-test('messageBridge: re-injection leaves exactly one window message listener', () => {
-    g.window = makeWindow();
-    g.chrome = makeChrome();
-    const { init } = require('../src/content/messageBridge.ts');
-    const { runCleanups } = require('../src/content/cleanupRegistry.ts');
-
-    init({});
-    assert.strictEqual(g.window.__listenerCount('message'), 1);
-
-    // Re-injection WITHOUT cleanup: window flag must prevent a duplicate.
-    init({});
-    assert.strictEqual(g.window.__listenerCount('message'), 1, 'no duplicate without cleanup');
-
-    // With cleanup: old listener removed, fresh one registered.
-    runCleanups();
-    assert.strictEqual(g.window.__listenerCount('message'), 0, 'old listener removed');
-    init({});
-    assert.strictEqual(g.window.__listenerCount('message'), 1, 'exactly one after re-init');
+test('messageBridge re-init never duplicates its window listener', () => {
+    withMockHost(({ win }) => {
+        initMessageBridge({});
+        assert.equal(win.listenerCount('message'), 1);
+        initMessageBridge({});
+        assert.equal(win.listenerCount('message'), 1, 'calling init twice without cleanup must be idempotent');
+        runCleanups();
+        assert.equal(win.listenerCount('message'), 0);
+        initMessageBridge({});
+        assert.equal(win.listenerCount('message'), 1, 'listener must be re-installed after cleanup');
+    });
 });
 
-// --- 4. pageObserver: stale route closure replaced, no duplicates ------------
+test('pageObserver routes history and popstate events only through the newest callback', () => {
+    withMockHost(({ win, history, location }) => {
+        const seen: string[] = [];
+        PageObserver.hookHistoryEvents(() => seen.push('old'));
+        assert.equal(win.listenerCount('popstate'), 1);
+        assert.equal(win.listenerCount('gemini:locationchange'), 1);
 
-test('pageObserver: hookHistoryEvents replaces stale closure, cleanup removes listeners', () => {
-    g.window = makeWindow();
-    g.history = { pushState: () => {}, replaceState: () => {} };
-    g.location = { href: 'https://gemini.google.com/app/aaa' };
-    g.chrome = makeChrome();
-    const mod = require('../src/content/pageObserver.ts');
-    const { runCleanups } = require('../src/content/cleanupRegistry.ts');
+        location.href = 'https://gemini.google.com/app/first';
+        history.pushState({}, '', '/app/first');
+        assert.deepEqual(seen, ['old'], 'pushState must actually reach the registered callback');
 
-    const seen: string[] = [];
-    mod.hookHistoryEvents(() => { seen.push('old'); });
-    assert.strictEqual(g.window.__listenerCount('popstate'), 1);
-    assert.strictEqual(g.window.__listenerCount('gemini:locationchange'), 1);
+        PageObserver.hookHistoryEvents(() => seen.push('new'));
+        assert.equal(win.listenerCount('popstate'), 1);
+        assert.equal(win.listenerCount('gemini:locationchange'), 1);
+        location.href = 'https://gemini.google.com/app/second';
+        history.replaceState({}, '', '/app/second');
+        assert.deepEqual(seen, ['old', 'new'], 'the old callback must not receive subsequent history events');
 
-    // Second call (new bundle): no duplicates, callback refreshed.
-    mod.hookHistoryEvents(() => { seen.push('new'); });
-    assert.strictEqual(g.window.__listenerCount('popstate'), 1, 'no duplicate popstate listener');
-    g.location.href = 'https://gemini.google.com/app/bbb'; // URL actually changed
-    g.window.dispatchEvent('popstate');
-    assert.deepStrictEqual(seen, ['new'], 'stale closure replaced by new bundle callback');
-
-    // Registry cleanup drops the listeners.
-    runCleanups();
-    assert.strictEqual(g.window.__listenerCount('popstate'), 0);
-    assert.strictEqual(g.window.__listenerCount('gemini:locationchange'), 0);
-
-    // Explicit cleanup() is idempotent and safe.
-    mod.cleanup();
-    assert.strictEqual(g.window.__listenerCount('popstate'), 0);
-});
-
-// --- 5. content.ts wiring (static: re-init runs cleanups first) ---------------
-
-test('content.ts: re-injection path runs runCleanups() before re-registering', () => {
-    const src = fs.readFileSync('src/content/content.ts', 'utf8');
-    const m = src.match(/if \(w\.__gemExporterInjected\) \{([\s\S]*?)\n    \}\n    w\.__gemExporterInjected = true;/);
-    assert.ok(m, 're-init branch found');
-    const branch = m[1];
-    assert.ok(branch.includes('runCleanups()'), 'runCleanups() called in re-init branch');
-    assert.ok(
-        branch.indexOf('runCleanups()') < branch.indexOf('PageObserver.cleanup'),
-        'runCleanups() runs before the explicit observer cleanups'
-    );
-    assert.ok(
-        src.includes('chrome.storage.onChanged.removeListener(onStorageChanged)'),
-        'storage.onChanged listener registered for cleanup'
-    );
+        location.href = 'https://gemini.google.com/app/third';
+        win.dispatchEvent('popstate');
+        assert.deepEqual(seen, ['old', 'new', 'new']);
+        runCleanups();
+        assert.equal(win.listenerCount('popstate'), 0);
+        assert.equal(win.listenerCount('gemini:locationchange'), 0);
+        location.href = 'https://gemini.google.com/app/fourth';
+        win.dispatchEvent('popstate');
+        assert.deepEqual(seen, ['old', 'new', 'new'], 'cleanup must stop future notifications');
+        PageObserver.cleanup();
+        assert.equal(win.listenerCount('popstate'), 0, 'explicit cleanup is idempotent');
+    });
 });

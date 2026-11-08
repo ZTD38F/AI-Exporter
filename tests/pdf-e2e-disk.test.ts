@@ -1,58 +1,30 @@
-/**
- * tests/pdf-e2e-disk.test.ts
- *
- * Item 6 (P0): the true end-to-end PDF disk-write happy path.
- *
- * Everything before this test stopped at "compiler returns bytes" or used a
- * fake in-memory writer. This test drives the REAL production path:
- *
- *   PdfExporter -> pipeline (project/resource/payload/compile/deliver) ->
- *   real Writer (FsWriter / ZipWriter, NOT mocked) -> real bytes on disk in a
- *   temp directory -> reopen from disk and verify.
- *
- * - Single export (useZip: false): real FsWriter (via createWriter('fs'))
- *   over a Node-backed FileSystemDirectoryHandle adapter writing into a temp
- *   dir. Only the browser platform API is adapted; the Writer itself is real.
- * - Batch ZIP (useZip: true, 3 conversations): real ZipWriter (via
- *   createWriter('zip')); the downloadHandler (the production delivery
- *   endpoint) writes the delivered blob to a temp dir; the ZIP is reopened
- *   with JSZip and every PDF re-verified.
- *
- * The compiler is a test-local IPdfCompiler with a distinct name (not the
- * stub) that emits structurally valid PDFs — real xref table + startxref
- * pointer + trailer + %%EOF, so the pipeline's own compile-stage structural
- * verification accepts them — embedding the conversation title and flattened
- * message text. Text is extracted back with the repo's own
- * tests/helpers/pdfTextExtract.ts helper.
- */
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
+/** Physical disk delivery checks. Only the platform host and PDF compiler are
+ * adapted; unified Export, Composer, Packaging, Delivery and records are real. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { historicalFixture } from './helpers/nativeFixture.js';
+import { v2LiveSaveHost } from './helpers/v2LiveSaveHost.js';
+import { v2ExportHost, exportRequest, exportKey } from './helpers/v2ExportHost.js';
+import { TypstSandboxCompiler } from '../src/l4/format/pdf/typst/typstSandboxCompiler.js';
+import { runExport } from '../src/application/export/runExport.js';
+import { ingestDetail } from '../src/l2/ingestion.js';
+import { getExportRecord } from '../src/l3a/storageService.js';
+import { __getZipConstructor, __setZipConstructor } from '../src/l4/packaging/writers/zipWriter.js';
+import { extractPdfText } from './helpers/pdfTextExtract.js';
+const JSZip = require('../lib/jszip.min.js');
+const fixtureDir = path.join(__dirname, 'fixtures', 'provider');
+const sample = JSON.parse(fs.readFileSync(path.join(fixtureDir, 'conversation-sample.json'), 'utf8'));
 
-const { PdfExporter } = require('../src/core/export/pdf/index.js');
-const { createWriter } = require('../src/core/engine/writers/writerInterface.js');
-const { extractPdfText } = require('./helpers/pdfTextExtract.js');
-
-// Production serves JSZip from lib/jszip.min.js as a page global; mirror that
-// here so the REAL ZipWriter resolves its dependency the same way.
-(globalThis as any).self = (globalThis as any).self || {};
-(globalThis as any).self.JSZip = require('../lib/jszip.min.js');
-const JSZip = (globalThis as any).self.JSZip;
-
-const fixtureDir = path.join(__dirname, 'fixtures', 'canonical');
-const sample = JSON.parse(fs.readFileSync(path.join(fixtureDir, 'gemini-normalizer-sample.json'), 'utf8'));
-
-// ---------------------------------------------------------------------------
 // Fixture helpers
-// ---------------------------------------------------------------------------
 
 function makeSample(idSuffix: string, title: string, marker?: string) {
     const c = JSON.parse(JSON.stringify(sample));
     c.id = `pdf-e2e-disk-${idSuffix}`;
     c.title = title;
+    c.titles = { [c.titleSource || 'legacy']: title };
     if (marker) {
         // Distinct body text per conversation so per-PDF text correctness is
         // verifiable (flows through the real normalizer into the bundle).
@@ -65,7 +37,7 @@ function makeSample(idSuffix: string, title: string, marker?: string) {
     return c;
 }
 
-/** Recursively collect plain text from canonical bundle inline/block nodes. */
+/** Recursively collect plain text from the prepared display transport inline/block nodes. */
 function flattenText(node: any): string {
     if (!node) return '';
     if (typeof node === 'string') return node;
@@ -73,12 +45,13 @@ function flattenText(node: any): string {
     if (typeof node === 'object') {
         if (typeof node.text === 'string') return node.text;
         if (Array.isArray(node.children)) return node.children.map(flattenText).join('');
+        return Object.values(node).filter(value=>typeof value==='object').map(flattenText).join(' ');
     }
     return '';
 }
 
-function bundleBodyText(bundle: any, maxLen = 600): string {
-    const msgs = bundle?.conversation?.messages ?? [];
+function documentBodyText(document: any, maxLen = 600): string {
+    const msgs = document?.messages ?? [];
     const parts: string[] = [];
     for (const m of msgs) {
         for (const b of m?.blocks ?? []) parts.push(flattenText(b));
@@ -130,19 +103,14 @@ function buildTextPdf(title: string, body: string): Uint8Array {
 class TitleTextPdfCompiler {
     readonly name = 'title-text-test-compiler';
     async compile(payload: any, _context: any) {
-        const title =
-            payload?.document?.title ??
-            payload?.bundle?.conversation?.title ??
-            'untitled';
-        const body = bundleBodyText(payload?.bundle);
+        const title = payload.document.title;
+        const body = documentBodyText(payload.document);
         return { pdfBytes: buildTextPdf(String(title), body), diagnostics: [] };
     }
 }
 
-// ---------------------------------------------------------------------------
 // Node-backed FileSystemDirectoryHandle adapter for the REAL FsWriter.
 // Only the browser platform API is adapted; FsWriter itself is untouched.
-// ---------------------------------------------------------------------------
 
 function makeNodeDirHandle(absDir: string): any {
     return {
@@ -197,170 +165,52 @@ function pdfFilesRecursive(dir: string): string[] {
     return out;
 }
 
-// ---------------------------------------------------------------------------
-// Single export: PdfExporter -> real FsWriter -> real file on disk
-// ---------------------------------------------------------------------------
 
-test('e2e-disk: single PDF export lands a real, parseable file on disk', async () => {
-    const tmp = freshTempDir('pdf-e2e-disk-single-');
-    try {
-        const title = 'E2E Disk Single Chat';
-        const conv = makeSample('single', title);
-        // Real writer, not a mock: createWriter('fs') + Node dirHandle adapter.
-        const writer = createWriter('fs', {
-            dirHandle: makeNodeDirHandle(tmp),
-            folderName: 'gemini_export',
-        });
-        assert.strictEqual(writer.constructor.name, 'FsWriter', 'must be the real FsWriter');
-
-        const exporter = new PdfExporter(new TitleTextPdfCompiler() as any);
-        const exported: any[] = [];
-        const result = await exporter.run(
-            {
-                selected: [{ id: conv.id, title: conv.title }],
-                conversations: [conv],
-                useZip: false,
-                writer,
-            },
-            { onItemExported: (id: string, record: any) => exported.push({ id, record }) }
-        );
-
-        assert.strictEqual(result.total, 1);
-        assert.strictEqual(result.succeeded, 1, 'export must succeed');
-        assert.strictEqual(result.failed.length, 0);
-
-        // The proof: a real file on a real disk, found via the filesystem.
-        const pdfs = pdfFilesRecursive(tmp);
-        assert.strictEqual(pdfs.length, 1, `exactly one PDF on disk, got: ${pdfs.join(', ')}`);
-        const pdfPath = pdfs[0];
-        const stat = fs.statSync(pdfPath);
-        assert.ok(stat.size > 0, 'file is non-empty');
-        const bytes = fs.readFileSync(pdfPath);
-        assert.ok(
-            bytes.slice(0, 5).toString('latin1') === '%PDF-',
-            'file starts with the %PDF- magic header'
-        );
-
-        // Reopen and parse: title + conversation text must be inside.
-        const extracted = extractPdfText(new Uint8Array(bytes));
-        assert.ok(extracted.pageCount >= 1, 'PDF has at least one page');
-        assert.ok(
-            extracted.text.includes(title),
-            `PDF text contains the conversation title ${JSON.stringify(title)}`
-        );
-        assert.ok(
-            extracted.text.includes('Shopping list'),
-            'PDF text contains conversation body text from the fixture'
-        );
-        assert.ok(extracted.text.includes('milk'), 'PDF text contains body detail text');
-
-        // The export record points at the file that actually landed.
-        assert.strictEqual(exported.length, 1);
-        assert.strictEqual(exported[0].record.status, 'ok');
-        assert.ok(
-            (exported[0].record.fileName as string).endsWith('.pdf'),
-            'record names the delivered PDF'
-        );
-        assert.strictEqual(exported[0].record.bytesWritten, stat.size, 'record size matches disk size');
-    } finally {
-        fs.rmSync(tmp, { recursive: true, force: true });
-    }
+async function seed(conv: ReturnType<typeof makeSample>) {
+    const parsed=historicalFixture(conv);const {index,detail}=parsed.conversation;
+    await ingestDetail(index.key.accountId,index.key.conversationId,detail,index);
+    return index.key.conversationId;
+}
+function compiler(t: import('node:test').TestContext) {
+    const instance=new TitleTextPdfCompiler();
+    t.mock.method(TypstSandboxCompiler.prototype,'compile',instance.compile.bind(instance));
+}
+test('e2e-disk: unified PDF Folder Writer creates a parseable physical file',async t=>{
+    const h=v2LiveSaveHost(t);compiler(t);const tmp=freshTempDir('pdf-e2e-disk-single-');
+    try{
+        h.directory(makeNodeDirHandle(tmp));const title='E2E Disk Single Chat';
+        const id=await seed(makeSample('single',title));
+        const result=await runExport(exportRequest([id],{format:'pdf',delivery:'folderWriter',includeAssets:true}));
+        assert.equal(result.exported,1);assert.deepEqual(result.failed,[]);
+        const pdfs=pdfFilesRecursive(tmp);assert.equal(pdfs.length,1);
+        const bytes=fs.readFileSync(pdfs[0]);assert.ok(bytes.length>0);assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+        const extracted=extractPdfText(bytes);assert.ok(extracted.pageCount>=1);assert.ok(extracted.text.includes(title));
+        assert.ok(extracted.text.includes('Shopping list'));assert.ok(extracted.text.includes('milk'));
+        const record=await getExportRecord(exportKey(id));assert.equal(record?.format,'pdf');assert.equal(record?.status,'partial');
+        assert.deepEqual(Object.keys(record!).sort(),['attachmentIssues','exportedAt','folderBaseName','format','otherContentMissing','status']);
+        assert.equal(record?.folderBaseName, path.basename(pdfs[0], '.pdf'));
+        assert.ok(record!.attachmentIssues!.length > 0, 'persist attachment reasons for the delivered partial PDF');
+    }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
-
-// ---------------------------------------------------------------------------
-// Batch ZIP: PdfExporter -> real ZipWriter -> downloadHandler writes the ZIP
-// to disk -> reopen with JSZip, every PDF re-verified
-// ---------------------------------------------------------------------------
-
-test('e2e-disk: batch ZIP of 3 conversations lands a real ZIP with 3 parseable PDFs', async () => {
-    const tmp = freshTempDir('pdf-e2e-disk-zip-');
-    try {
-        const specs = [
-            { suffix: 'batch-a', title: 'E2E Batch Chat Alpha', marker: 'UNIQUE-MARKER-ALPHA-7f3a' },
-            { suffix: 'batch-b', title: 'E2E Batch Chat Beta', marker: 'UNIQUE-MARKER-BETA-9c1e' },
-            { suffix: 'batch-c', title: 'E2E Batch Chat Gamma', marker: 'UNIQUE-MARKER-GAMMA-42bd' },
-        ];
-        const conversations = specs.map((s) => makeSample(s.suffix, s.title, s.marker));
-
-        // Real writer, not a mock.
-        const writer = createWriter('zip', { folderName: 'gemini_export' });
-        assert.strictEqual(writer.constructor.name, 'ZipWriter', 'must be the real ZipWriter');
-
-        let delivered: { blob: Blob; filename: string } | null = null;
-        const exporter = new PdfExporter(new TitleTextPdfCompiler() as any);
-        const result = await exporter.run(
-            {
-                selected: conversations.map((c) => ({ id: c.id, title: c.title })),
-                conversations,
-                useZip: true,
-                writer,
-                // The production delivery endpoint: in the browser this triggers
-                // the download; here it writes the delivered bytes to disk.
-                downloadHandler: async (blob: Blob, filename: string) => {
-                    const buf = Buffer.from(await blob.arrayBuffer());
-                    fs.writeFileSync(path.join(tmp, filename), buf);
-                    delivered = { blob, filename };
-                },
-            },
-            {}
-        );
-
-        assert.strictEqual(result.total, 3);
-        assert.strictEqual(result.succeeded, 3, 'all 3 exports must succeed');
-        assert.strictEqual(result.failed.length, 0);
-        assert.ok(delivered, 'ZIP was delivered through downloadHandler');
-        assert.ok(result.zipDelivery, 'result carries the ZIP delivery proof');
-
-        // The proof: a real ZIP file on disk.
-        const zipPath = path.join(tmp, (delivered as any).filename);
-        assert.ok(fs.existsSync(zipPath), 'ZIP file exists on disk');
-        const zipStat = fs.statSync(zipPath);
-        assert.ok(zipStat.size > 0, 'ZIP is non-empty');
-        assert.strictEqual(
-            result.zipDelivery!.bytesWritten,
-            zipStat.size,
-            'delivery proof size matches the ZIP on disk'
-        );
-
-        // Reopen the ZIP and verify every entry.
-        const zip = await JSZip.loadAsync(fs.readFileSync(zipPath));
-        const pdfEntries = Object.values(zip.files).filter(
-            (f: any) => !f.dir && f.name.endsWith('.pdf')
-        ) as any[];
-        assert.strictEqual(pdfEntries.length, 3, `ZIP contains 3 PDFs, got: ${pdfEntries.map((f) => f.name).join(', ')}`);
-
-        const seenMarkers = new Set<string>();
-        for (const entry of pdfEntries) {
-            const data: Uint8Array = await entry.async('uint8array');
-            assert.ok(data.length > 0, `${entry.name} is non-empty`);
-            assert.ok(
-                Buffer.from(data.slice(0, 5)).toString('latin1') === '%PDF-',
-                `${entry.name} starts with the %PDF- magic header`
-            );
-            const extracted = extractPdfText(data);
-            assert.ok(extracted.pageCount >= 1, `${entry.name} has at least one page`);
-            // Each PDF must carry ITS OWN title and ITS OWN marker text.
-            const spec = specs.find((s) => extracted.text.includes(s.title));
-            assert.ok(
-                spec,
-                `${entry.name} contains one of the expected conversation titles; got text: ${JSON.stringify(extracted.text.slice(0, 120))}`
-            );
-            assert.ok(
-                extracted.text.includes(spec!.marker),
-                `${entry.name} contains its own body marker ${spec!.marker}`
-            );
-            for (const other of specs) {
-                if (other !== spec) {
-                    assert.ok(
-                        !extracted.text.includes(other.marker),
-                        `${entry.name} must not contain another conversation's marker ${other.marker}`
-                    );
-                }
-            }
-            seenMarkers.add(spec!.marker);
+test('e2e-disk: Browser batch ZIP reopens from disk with three distinct parseable PDFs',async t=>{
+    const h=v2ExportHost(t);compiler(t);const tmp=freshTempDir('pdf-e2e-disk-zip-');
+    const previous=__getZipConstructor();__setZipConstructor(JSZip);t.after(()=>__setZipConstructor(previous));
+    try{
+        const specs=[{suffix:'a',title:'E2E Batch Chat Alpha',marker:'UNIQUE-MARKER-ALPHA-7f3a'},
+            {suffix:'b',title:'E2E Batch Chat Beta',marker:'UNIQUE-MARKER-BETA-9c1e'},
+            {suffix:'c',title:'E2E Batch Chat Gamma',marker:'UNIQUE-MARKER-GAMMA-42bd'}];
+        const ids=[];for(const spec of specs)ids.push(await seed(makeSample(spec.suffix,spec.title,spec.marker)));
+        const result=await runExport(exportRequest(ids,{format:'pdf',includeAssets:false}));
+        assert.equal(result.exported,3);assert.deepEqual(result.failed,[]);assert.equal(h.clicks(),1);assert.equal(h.blobs.length,1);
+        const zipPath=path.join(tmp,h.filenames[0]);fs.writeFileSync(zipPath,Buffer.from(await h.blobs[0].arrayBuffer()));assert.ok(fs.statSync(zipPath).size>0);
+        const zip=await JSZip.loadAsync(fs.readFileSync(zipPath));
+        const entries=Object.values(zip.files).filter((f:any)=>!f.dir&&f.name.endsWith('.pdf')) as any[];assert.equal(entries.length,3);
+        const seen=new Set<string>();for(const entry of entries){
+            const data=await entry.async('uint8array');assert.equal(Buffer.from(data.subarray(0,5)).toString(),'%PDF-');
+            const extracted=extractPdfText(data);assert.ok(extracted.pageCount>=1);
+            const spec=specs.find(s=>extracted.text.includes(s.title));assert.ok(spec);assert.ok(extracted.text.includes(spec.marker));
+            for(const other of specs)if(other!==spec)assert.ok(!extracted.text.includes(other.marker));seen.add(spec.marker);
         }
-        assert.strictEqual(seenMarkers.size, 3, 'all 3 conversations are distinctly represented');
-    } finally {
-        fs.rmSync(tmp, { recursive: true, force: true });
-    }
+        assert.equal(seen.size,3);for(const id of ids)assert.equal((await getExportRecord(exportKey(id)))?.format,'pdf');
+    }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });

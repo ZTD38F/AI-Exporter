@@ -1,7 +1,7 @@
 /**
  * tests/local-font-provider.test.ts
  * Tier 1 tests for the Phase D local-first font provider
- * (src/core/export/typst/fonts/localFontProvider.ts).
+ * (src/l4/format/pdf/typst/fonts/localFontProvider.ts).
  *
  * Covers (all with a mocked queryLocalFonts -- no real browser needed):
  *  - pure font matching: exact family, postscript heuristic, style priority,
@@ -16,14 +16,14 @@ const assert = require('node:assert');
 
 const {
     rankLocalFontCandidates,
-    bestCandidateForFamily,
     queryLocalFontsProvider,
     resolveLocalFonts,
     warmLocalFontCache,
     getCachedLocalFonts,
     clearLocalFontCache,
     CJK_FONT_STACK,
-} = require('../src/core/export/typst/fonts/localFontProvider.js');
+    MONO_FONT_STACK,
+} = require('../src/l4/format/pdf/typst/fonts/localFontProvider.js');
 
 function mockEntry(family: string, postscriptName: string, style: string): any {
     return {
@@ -104,15 +104,20 @@ test('matcher: case-insensitive, no match returns empty', () => {
     assert.strictEqual(rankLocalFontCandidates(entries, ['Comic Sans']).length, 0);
 });
 
-test('bestCandidateForFamily returns the Regular-first candidate', () => {
+test('ranked candidates place each family Regular-first', () => {
     const entries = [
         mockEntry('Arial', 'Arial-Bold', 'Bold'),
+        mockEntry('Arial Black', 'Arial-Black', 'Regular'),
+        mockEntry('PingFang SC', 'PingFangSC-Light', 'Light'),
+        mockEntry('PingFang SC', 'PingFangSC-Regular', 'Regular'),
         mockEntry('Arial', 'ArialMT', 'Regular'),
     ];
-    const cands = rankLocalFontCandidates(entries, ['Arial']);
-    const best = bestCandidateForFamily(cands, 'Arial');
+    const cands = rankLocalFontCandidates(entries, ['Arial', 'PingFang SC']);
+    const best = cands.find((candidate: { requestedFamily: string }) => candidate.requestedFamily === 'Arial');
     assert.strictEqual(best && best.postscriptName, 'ArialMT');
-    assert.strictEqual(bestCandidateForFamily(cands, 'Missing'), undefined);
+    const bestCjk = cands.find((candidate: { requestedFamily: string }) => candidate.requestedFamily === 'PingFang SC');
+    assert.strictEqual(bestCjk && bestCjk.postscriptName, 'PingFangSC-Regular');
+    assert.strictEqual(cands.some((candidate: { requestedFamily: string }) => candidate.requestedFamily === 'Missing'), false);
 });
 
 test('provider: API absent returns api-unavailable, does not throw', async () => {
@@ -214,7 +219,7 @@ test('resolve: one font file is never mounted twice across CJK/Latin stacks', as
         mockEntry('Noto Sans', 'NotoSans-Regular', 'Regular'),
     ]);
     try {
-        const res: any = await resolveLocalFonts({ cjk: ['Noto Sans'], latin: ['Noto Sans'] });
+        const res: any = await resolveLocalFonts({ cjk: ['Noto Sans'], latin: ['Noto Sans'], mono: [] });
         // The single installed file is claimed by CJK; Latin must not mount it again.
         assert.strictEqual(res.fonts.length, 1);
         assert.strictEqual(res.fonts[0].postscriptName, 'NotoSans-Regular');
@@ -342,5 +347,95 @@ test('cache: clearLocalFontCache resets cached entries and allows re-query', asy
         assert.strictEqual(callCount, 2);
     } finally {
         restore();
+    }
+});
+
+test('mono selection: mirrors the Typst font-mono family stack', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const theme = fs.readFileSync(path.join(__dirname, '../src/l4/format/typst/templates/theme.typ'), 'utf8');
+    const declaration = /#let font-mono = \(([\s\S]*?)\)/.exec(theme);
+    if (!declaration) throw new Error('PDF template should declare font-mono');
+    assert.deepStrictEqual([...declaration[1].matchAll(/"([^"]+)"/g)].map((match: RegExpMatchArray) => match[1]),
+        [...MONO_FONT_STACK, 'Noto Sans Mono', 'Noto Sans CJK SC', 'Noto Emoji']);
+});
+
+test('mono selection: default eight-font limit always reserves one installed real mono face', async () => {
+    const requested = [
+        ['Noto Sans CJK SC', 'NotoSansCJKsc-Regular'],
+        ['Noto Sans CJK', 'NotoSansCJK-Regular'],
+        ['PingFang SC', 'PingFangSC-Regular'],
+        ['PingFang TC', 'PingFangTC-Regular'],
+        ['PingFang HK', 'PingFangHK-Regular'],
+        ['Microsoft YaHei', 'MicrosoftYaHei-Regular'],
+        ['Microsoft JhengHei', 'MicrosoftJhengHei-Regular'],
+        ['Source Han Sans SC', 'SourceHanSansSC-Regular'],
+        ['DejaVu Sans', 'DejaVuSans-Regular'],
+        ['DejaVu Sans Mono', 'DejaVuSansMono-Regular'],
+    ];
+    const restore = stubQueryLocalFonts(async () =>
+        requested.map(([family, ps]) => mockEntry(family, ps, 'Regular')));
+    try {
+        const res: any = await resolveLocalFonts();
+        assert.strictEqual(res.fonts.length, 8, 'keep the same default size budget');
+        assert.deepStrictEqual(res.fonts.slice(0, 7).map((font: any) => font.family),
+            requested.slice(0, 7).map(([family]) => family));
+        assert.strictEqual(res.fonts[7].family, 'DejaVu Sans Mono', 'the mono face must survive truncation');
+        assert.ok(res.fallbackChain.some((name: string) => name.includes('DejaVu Sans Mono (local,')));
+        assert.ok(res.diagnostics.some((d: any) => d.code === 'TYPST_LOCAL_FONTS_TRUNCATED'));
+        assert.deepStrictEqual([...new Set(res.fonts.map((font: any) => font.postscriptName))].length, res.fonts.length);
+    } finally {
+        restore();
+    }
+});
+
+test('mono selection: no mono installed retains CJK/Latin priority without a fake mono', async () => {
+    const restore = stubQueryLocalFonts(async () => [
+        mockEntry('Noto Sans CJK SC', 'NotoSansCJKsc-Regular', 'Regular'),
+        mockEntry('DejaVu Sans', 'DejaVuSans-Regular', 'Regular'),
+    ]);
+    try {
+        const res: any = await resolveLocalFonts();
+        assert.deepStrictEqual(res.fonts.map((font: any) => font.family), ['Noto Sans CJK SC', 'DejaVu Sans']);
+        assert.ok(res.diagnostics.some((d: any) => d.code === 'TYPST_LOCAL_FONTS_MISSING' && d.message.includes('Mono')));
+    } finally {
+        restore();
+    }
+});
+
+test('mono selection: a one-font explicit budget still favors prose, or Mono if prose is absent', async () => {
+    const restore = stubQueryLocalFonts(async () => [
+        mockEntry('Noto Sans CJK SC', 'NotoSansCJKsc-Regular', 'Regular'),
+        mockEntry('Menlo', 'Menlo-Regular', 'Regular'),
+    ]);
+    try {
+        const res: any = await resolveLocalFonts({ limit: 1 });
+        assert.deepStrictEqual(res.fonts.map((font: any) => font.family), ['Noto Sans CJK SC']);
+        const monoOnly: any = await resolveLocalFonts({ cjk: [], latin: [], limit: 1 });
+        assert.deepStrictEqual(monoOnly.fonts.map((font: any) => font.family), ['Menlo']);
+    } finally {
+        restore();
+    }
+});
+
+test('optional font permission prompt never blocks export or requests native fonts', async () => {
+    const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    let queries = 0;
+    const restore = stubQueryLocalFonts(async () => { queries++; return new Promise(() => {}); });
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
+        permissions: { query: async () => ({ state: 'prompt' }) },
+    } });
+    try {
+        await warmLocalFontCache();
+        const result = await queryLocalFontsProvider();
+        assert.strictEqual(result.ok, false);
+        assert.strictEqual(result.reason, 'permission-denied');
+        const resolution = await resolveLocalFonts();
+        assert.strictEqual(resolution.localFontsAvailable, false);
+        assert.strictEqual(queries, 0);
+    } finally {
+        restore();
+        if (saved) Object.defineProperty(globalThis, 'navigator', saved);
+        else Reflect.deleteProperty(globalThis, 'navigator');
     }
 });

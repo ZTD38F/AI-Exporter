@@ -65,10 +65,10 @@ def wait_for_ready(cdp, max_wait=30):
     return CDPActions.wait_for_gemini_ready(cdp, max_wait=max_wait)
 
 
-def send_turn(cdp, prompt_text, max_wait=180, is_image=False):
+def send_turn(cdp, prompt_text, max_wait=180):
     from scripts.framework.driver.gemini_driver import GeminiPlatformDriver
     driver = GeminiPlatformDriver(cdp)
-    return driver.execute_turn_pipeline(prompt_text, max_wait=max_wait, is_image=is_image)
+    return driver.execute_turn_pipeline(prompt_text, max_wait=max_wait)
 
 
 def get_current_chat_id(cdp):
@@ -106,8 +106,8 @@ def run_scenarios(dataset_path, port=CDP_DEFAULT_PORT, delay=2, only_id=None):
     results = []
 
     try:
-        # 严格校验并锁定模型为 3.8 Flash + Extended thinking
-        print("🔒 校验锁定模型环境 (3.8 Flash + Extended thinking)...")
+        # 严格校验并锁定模型为 3.8 Flash + High
+        print("🔒 校验锁定模型环境 (3.8 Flash + High)...")
         driver.ensure_model(target_model="3.8 Flash", target_thinking=True)
 
         for idx, sc in enumerate(scenarios, 1):
@@ -136,8 +136,7 @@ def run_scenarios(dataset_path, port=CDP_DEFAULT_PORT, delay=2, only_id=None):
                 preview = (prompt[:45] + "...") if len(prompt) > 45 else prompt
                 print(f"    ▶️ 轮次 {turn_idx}/{len(turns)}: \"{preview}\"")
 
-                is_img = any(kw in prompt.lower() for kw in ["生成一张", "绘制一张", "画一张", "generate an image", "draw an image", "create an image"])
-                ok, msg = driver.execute_turn_pipeline(prompt, max_wait=180, is_image=is_img)
+                ok, msg = driver.execute_turn_pipeline(prompt, max_wait=180)
                 if ok:
                     successful_turns += 1
                     chat_id = driver.get_current_chat_id() or chat_id

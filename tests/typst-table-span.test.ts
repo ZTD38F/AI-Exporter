@@ -1,59 +1,49 @@
+import { fixtureKey, fixtureAccountFor } from './helpers/domainFixture.js';
 export {};
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { toTypstPayload } = require('../src/core/export/typst/payload.js');
-const { renderCanonicalHtml } = require('../src/core/export/canonical/renderCanonicalHtml.js');
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
-const { convertMath } = require('../src/core/export/typst/mathConverter.js');
+const { renderTypstFixture } = require('./helpers/renderTypstFixture.js');
+const { composeDomainDocument } = require('../src/l3b/compose/composeDomainDocument.js');
+const { renderDocumentHtml } = require('../src/l4/format/html/renderHtml.js');
+const { TypstSandboxCompiler } = require('../src/l4/format/pdf/typst/typstSandboxCompiler.js');
+const { convertMathForTest: convertMath } = require('./helpers/mathConversion.js');
 const { extractPdfText } = require('./helpers/pdfTextExtract.js');
 const {
     RealWasmSandboxHost,
     repoRoot,
 } = require('./helpers/realWasmSandbox.js');
 
-function bundle(blocks: any[], extra: any = {}) {
-    return {
-        schemaVersion: 1,
-        conversation: {
-            key: { providerId: 'gemini', accountId: 'test-account', conversationId: 'c1' },
-            title: 'Span',
-            createdAt: '2026-09-26T10:00:00Z',
-            messages: [{ id: 'm1', role: 'assistant', blocks }],
-        },
-        assets: [],
-        citations: [],
-        ...extra,
-    };
+function domainFixture(blocks: any[], assets: any[] = []) {
+    return { index: { key: fixtureKey(String('c1'), 'gemini'),   titleSource: "derived",   title: 'Fixture', createdAt: '2026-09-26T10:00:00Z' }, detail: { key: fixtureKey(String('c1'), 'gemini'), quality: { status: 'unknown' }, assets, messages: [{ id: 'm1', role: 'assistant', content: blocks }] } };
 }
 
 function msg(id: string, role: string, blocks: any[]) {
-    return { id, role, blocks };
+    return { id, role, content: blocks };
 }
 
 const txt = (text: string) => ({ type: 'text', text });
 const cell = (text: string, extra: any = {}) => ({ children: [txt(text)], ...extra });
 const row = (...cells: any[]) => ({ cells });
 
-const opts = { assetPath: (a: any) => `assets/${a.id}.png` };
+const opts = {};
 
 function typstOf(blocks: any[]) {
-    const { payload, diagnostics } = toTypstPayload(bundle(blocks), opts);
+    const { payload, diagnostics } = renderTypstFixture(composeDomainDocument(domainFixture(blocks), fixtureAccountFor(domainFixture(blocks))), {}, opts);
     return { node: payload.messages[0].blocks[0] as any, diagnostics: diagnostics as any[] };
 }
 
 function htmlOf(blocks: any[]) {
-    return renderCanonicalHtml(bundle(blocks), {}).html as string;
+    return renderDocumentHtml(composeDomainDocument(domainFixture(blocks), fixtureAccountFor(domainFixture(blocks))), {}).html as string;
 }
 
 async function compileOnce(blocks: any[]) {
-    const b = bundle(blocks);
+    const b = domainFixture(blocks);
     const host = new RealWasmSandboxHost(repoRoot());
     const compiler = new TypstSandboxCompiler({ host });
-    const assetPath = (a: any) => `/assets/${a.id}.png`;
-    const { payload: document } = toTypstPayload(b, { assetPath, convertMath });
+    const { payload: document } = renderTypstFixture(composeDomainDocument(b, fixtureAccountFor(b)), {}, { convertMath });
     const context = {
-        bundle: b,
+
         assets: { resolve: async (id: string) => null },
         locale: 'en' as const,
         signal: new AbortController().signal,
@@ -63,8 +53,7 @@ async function compileOnce(blocks: any[]) {
         return await compiler.compile(
             {
                 rendererSchemaVersion: 1,
-                sourceSchemaVersion: 1,
-                bundle: b,
+
                 document,
                 assetPaths: new Map(),
             } as never,
@@ -129,8 +118,7 @@ test('span parity: HTML colspan/rowspan matches Typst transport', async () => {
 
 test('real WASM: colspan table compiles with all text selectable', async () => {
     const result = await compileOnce([{
-        type: 'table', id: 't1',
-        headerRows: [row(cell('alpha'), cell('beta'))],
+        type: 'table', headerRows: [row(cell('alpha'), cell('beta'))],
         rows: [
             row(cell('wide-cell', { colSpan: 2 })),
             row(cell('left'), cell('right')),
@@ -145,8 +133,7 @@ test('real WASM: colspan table compiles with all text selectable', async () => {
 
 test('real WASM: rowspan and combined spans compile with all text selectable', async () => {
     const result = await compileOnce([{
-        type: 'table', id: 't1',
-        rows: [
+        type: 'table', rows: [
             row(cell('tall-cell', { rowSpan: 2 }), cell('top-right')),
             row(cell('bottom-right')),
             row(cell('big-cell', { colSpan: 2, rowSpan: 1 })),
@@ -161,8 +148,7 @@ test('real WASM: rowspan and combined spans compile with all text selectable', a
 
 test('real WASM: header span and oversized span compile without data loss', async () => {
     const result = await compileOnce([{
-        type: 'table', id: 't1',
-        headerRows: [row(cell('merged-header', { colSpan: 2 }))],
+        type: 'table', headerRows: [row(cell('merged-header', { colSpan: 2 }))],
         rows: [
             row(cell('oversized', { colSpan: 5 }), cell('b')),
             row(cell('c'), cell('d')),
@@ -182,8 +168,7 @@ test('real WASM: multi-cell staggered rowspan occupancy compiles and retains all
     // Row 2: R2C0 (1 row), R2C2 (col 1 occupied by R0C1)
     // Row 3: R3C0, R3C1, R3C2 (all 1 row)
     const blocks = [{
-        type: 'table', id: 't_staggered',
-        rows: [
+        type: 'table', rows: [
             row(cell('R0C0-span2', { rowSpan: 2 }), cell('R0C1-span3', { rowSpan: 3 }), cell('R0C2')),
             row(cell('R1C2')),
             row(cell('R2C0'), cell('R2C2')),
@@ -210,8 +195,7 @@ test('real WASM: 2x2 multi-cell block span occupancy compiles cleanly', async ()
     // Row 1: R1C2 (cols 0, 1 occupied by 2x2-block)
     // Row 2: R2C0, R2C1, R2C2
     const blocks = [{
-        type: 'table', id: 't_block2x2',
-        rows: [
+        type: 'table', rows: [
             row(cell('block-2x2', { rowSpan: 2, colSpan: 2 }), cell('R0C2-side')),
             row(cell('R1C2-side')),
             row(cell('R2C0-base'), cell('R2C1-base'), cell('R2C2-base')),

@@ -1,250 +1,147 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-const LiveSaveCoordinator = require('../src/content/liveSaveCoordinator.js');
-const AssetFetcher = require('../src/content/assetFetcher.js');
+/**
+ * V2 native Live Save media coverage: L2 asset IDs -> L3b AST -> Application
+ * acquisition -> L4 relative paths/FsWriter -> one committed ExportRecord.
+ * Legacy coordinator injection, DOM reparse and mock AssetPipeline are retired.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { runLiveSave } from '../src/runtime/background/liveSaveHandler.js';
+import { readConversation } from '../src/l2/readConversation.js';
+import { getExportRecord } from '../src/l3a/storageService.js';
+import { FsWriter } from '../src/l4/delivery/writers/fsWriter.js';
+import { liveKey, seedLiveDetail, v2LiveSaveHost } from './helpers/v2LiveSaveHost.js';
 
-test('liveSaveCoordinator - multimodal image pipeline (user uploads & Imagen generated)', async () => {
-    let writtenFiles: Record<string, any> = {};
-    let fetchedUrls: string[] = [];
+const paragraph = (text: string) => ({ type: 'paragraph' as const, children: [{ type: 'text' as const, text }] });
+const entries = (files: Map<string, string | Uint8Array>) => [...files.entries()];
+function mainMarkdown(files: Map<string, string | Uint8Array>): string {
+    const item = entries(files).find(([name]) => name.endsWith('.md') && !name.startsWith('files/'));
+    assert.ok(item);
+    assert.equal(typeof item[1], 'string');
+    return item[1] as string;
+}
 
-    const mockStorage = {
-        getLiveConfig: async () => ({
-            enabledDisk: true,
-            format: 'markdown',
-            includeAssets: true,
-            updateIndex: true,
-            dirName: 'ObsidianVault'
-        }),
-        getLiveDirHandle: async () => ({
-            name: 'ObsidianVault'
-        }),
-        setLiveConfig: async () => {}
-    };
+test('v2 Live Save preserves user-upload and generated Imagen bytes as distinct resources with Markdown relative links', async t => {
+    const host = v2LiveSaveHost(t);
+    const id = '1122334455667788';
+    const userUrl = 'https://lh3.googleusercontent.com/user-photo-123';
+    const modelUrl = 'https://lh3.googleusercontent.com/generated-photo-456';
+    const upload = Uint8Array.of(1, 2, 3, 4, 5);
+    const generated = Uint8Array.of(6, 7, 8, 9, 10, 11);
+    const assets = [
+        { id: 'uploaded', kind: 'image' as const, name: 'cute-cat.jpg', sourceUri: userUrl, mediaType: 'image/jpeg' },
+        { id: 'imagen', kind: 'image' as const, name: 'cyberpunk-cat.png', sourceUri: modelUrl,
+            mediaType: 'image/png', generation: { prompt: 'Make this cat cyberpunk', imageOrdinal: 0, imageCount: 1 } },
+    ];
+    await seedLiveDetail(id, assets, { title: 'Multimodal Cat & Cyberpunk Art', messages: [
+        { role: 'user', content: [paragraph('Enhance this cat photo'),
+            { type: 'image', assetId: 'uploaded', alt: 'Cat upload' }] },
+        { role: 'assistant', content: [paragraph('Here is the generated cat'),
+            { type: 'image', assetId: 'imagen', alt: 'Generated cyberpunk cat' }] },
+    ] });
+    const before = await readConversation(liveKey(id));
+    host.source(userUrl, upload, 'image/jpeg');
+    host.source(modelUrl, generated, 'image/png');
 
-    const mockScraper = {
-        parseDoc: (doc: any, id: string) => ({
-            id,
-            title: 'Multimodal Cat & Cyberpunk Art',
-            messages: [
-                {
-                    role: 'user',
-                    content: 'Can you enhance this cat photo into a cyberpunk style?',
-                    attachments: [
-                        {
-                            type: 'image',
-                            name: 'cute_cat.jpg',
-                            alt: 'Cute Cat Photo',
-                            src: 'https://lh3.googleusercontent.com/user_cat_photo_123',
-                            isImage: true
-                        }
-                    ]
-                },
-                {
-                    role: 'model',
-                    content: 'Here is your cyberpunk cat!\n\n![Generated Cyberpunk Cat](https://lh3.googleusercontent.com/imagen_cat_artwork_456)',
-                    images: [
-                        {
-                            url: 'https://lh3.googleusercontent.com/imagen_cat_artwork_456',
-                            fileName: 'cyberpunk_cat.png',
-                            name: 'cyberpunk_cat.png',
-                            alt: 'Generated Cyberpunk Cat',
-                            isGenerated: true,
-                            isImage: true
-                        }
-                    ],
-                    attachments: [
-                        {
-                            type: 'image',
-                            name: 'cyberpunk_cat.png',
-                            fileName: 'cyberpunk_cat.png',
-                            alt: 'Generated Cyberpunk Cat',
-                            src: 'https://lh3.googleusercontent.com/imagen_cat_artwork_456',
-                            isImage: true
-                        }
-                    ]
-                }
-            ],
-            timestamp: 1710000000000
-        })
-    };
-
-    class MockFsWriter {
-        dirHandle: any;
-        folderName: string;
-        constructor(handle: any, folder: string) {
-            this.dirHandle = handle;
-            this.folderName = folder;
-        }
-        async init() {}
-        async writeFile(relativePath: string, content: any) {
-            writtenFiles[relativePath] = content;
-            return relativePath;
-        }
-    }
-
-    const mockAssetFetcher = {
-        fetchImageBuffer: async (url: string) => {
-            fetchedUrls.push(url);
-            if (url.includes('user_cat_photo_123')) {
-                const buf = new Uint8Array([1, 2, 3, 4, 5]).buffer;
-                return { buffer: buf, mimeType: 'image/jpeg', ext: 'jpg' };
-            }
-            if (url.includes('imagen_cat_artwork_456')) {
-                const buf = new Uint8Array([6, 7, 8, 9, 10, 11]).buffer;
-                return { buffer: buf, mimeType: 'image/png', ext: 'png' };
-            }
-            return null;
-        }
-    };
-
-    LiveSaveCoordinator.init({
-        storageManager: mockStorage,
-        scraper: mockScraper,
-        fsWriterClass: MockFsWriter,
-        assetFetcher: mockAssetFetcher,
-        clientClass: null
-    });
-
-    const success = await LiveSaveCoordinator.executeLiveSave('c_1122334455667788', 'turn_complete');
-    assert.strictEqual(success, true);
-
-    // 1. Verify all images were fetched
-    assert.strictEqual(fetchedUrls.length, 2);
-    assert.ok(fetchedUrls.includes('https://lh3.googleusercontent.com/user_cat_photo_123'));
-    assert.ok(fetchedUrls.includes('https://lh3.googleusercontent.com/imagen_cat_artwork_456'));
-
-    // 3. Verify images were saved into assets/
-    const assetFiles = Object.keys(writtenFiles).filter(k => k.startsWith('assets/'));
-    assert.strictEqual(assetFiles.length, 2);
-
-    const userCatFile = assetFiles.find(f => f.includes('cute_cat.jpg') || f.includes('t1_'));
-    assert.ok(userCatFile, 'User cat photo should be saved in assets/');
-    assert.strictEqual((writtenFiles[userCatFile!] as ArrayBuffer).byteLength, 5);
-
-    const imagenFile = assetFiles.find(f => f.includes('cyberpunk_cat.png') || f.includes('t2_'));
-    assert.ok(imagenFile, 'Imagen generated artwork should be saved in assets/');
-    assert.strictEqual((writtenFiles[imagenFile!] as ArrayBuffer).byteLength, 6);
-
-    // 4. Verify Markdown file content has relative assets/ paths
-    const mdFile = 'Multimodal Cat & Cyberpunk Art_667788.md';
-    assert.ok(mdFile in writtenFiles, 'Markdown file should be written');
-    const mdContent = writtenFiles[mdFile];
-
-    assert.ok(mdContent.includes(userCatFile), `Markdown should link to user image at ${userCatFile}`);
-    assert.ok(mdContent.includes(imagenFile), `Markdown should link to model image at ${imagenFile}`);
-    assert.ok(!mdContent.includes('https://lh3.googleusercontent.com/imagen_cat_artwork_456'), 'Online Imagen URL should be rewritten to relative assets path');
+    const result = await runLiveSave(liveKey(id));
+    assert.equal(result?.exported, 1);
+    assert.equal(result?.partial, 0);
+    assert.deepEqual(result?.failed, []);
+    assert.deepEqual(host.requests, [userUrl, modelUrl]);
+    const imageFiles = entries(host.files).filter(([name]) => name.startsWith('assets/'));
+    assert.equal(imageFiles.length, 2);
+    const savedUser = imageFiles.find(([name]) => name.endsWith('cute-cat.jpg'));
+    const savedModel = imageFiles.find(([name]) => name.endsWith('cyberpunk-cat.png'));
+    assert.ok(savedUser && savedModel);
+    assert.deepEqual(savedUser[1], upload);
+    assert.deepEqual(savedModel[1], generated);
+    assert.notEqual(savedUser[0], savedModel[0]);
+    const markdown = mainMarkdown(host.files);
+    assert.ok(markdown.includes(savedUser[0]));
+    assert.ok(markdown.includes(savedModel[0]));
+    assert.doesNotMatch(markdown, /https:\/\/lh3\.googleusercontent\.com/);
+    assert.match(markdown, /Enhance this cat photo/);
+    assert.match(markdown, /Here is the generated cat/);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'ok');
+    assert.deepEqual(await readConversation(liveKey(id)), before, 'task resource binding cannot mutate persisted Domain facts');
 });
 
-test('liveSaveCoordinator - image download error tolerance & graceful fallback', async () => {
-    let writtenFiles: Record<string, any> = {};
-
-    const mockStorage = {
-        getLiveConfig: async () => ({
-            enabledDisk: true,
-            format: 'markdown',
-            includeAssets: true,
-            updateIndex: false,
-            dirName: 'Vault'
-        }),
-        getLiveDirHandle: async () => ({ name: 'Vault' }),
-        setLiveConfig: async () => {}
-    };
-
-    const mockScraper = {
-        parseDoc: (doc: any, id: string) => ({
-            id,
-            title: 'Failing Image Test',
-            messages: [
-                {
-                    role: 'user',
-                    content: 'Image with network failure: ![Broken](https://example.com/broken_image.jpg)'
-                }
-            ],
-            timestamp: 1710000000000
-        })
-    };
-
-    class MockFsWriter {
-        dirHandle: any;
-        folderName: string;
-        constructor(handle: any, folder: string) {
-            this.dirHandle = handle;
-            this.folderName = folder;
-        }
-        async init() {}
-        async writeFile(relativePath: string, content: any) {
-            writtenFiles[relativePath] = content;
-            return relativePath;
-        }
-    }
-
-    const mockAssetFetcher = {
-        fetchImageBuffer: async () => {
-            // Simulate network timeout / 404
-            return null;
-        }
-    };
-
-    LiveSaveCoordinator.init({
-        storageManager: mockStorage,
-        scraper: mockScraper,
-        fsWriterClass: MockFsWriter,
-        assetFetcher: mockAssetFetcher,
-        clientClass: null
-    });
-
-    const success = await LiveSaveCoordinator.executeLiveSave('c_aabbccddeeff0011', 'turn_complete');
-    assert.strictEqual(success, true, 'Save should succeed even when image download fails');
-
-    // Verify Markdown visibly represents unavailable images without remote embedding
-    const mdFile = 'Failing Image Test_ff0011.md';
-    assert.ok(mdFile in writtenFiles);
-    assert.ok(writtenFiles[mdFile].includes('[Image unavailable: Broken]'));
-    assert.ok(!writtenFiles[mdFile].includes('https://example.com/broken_image.jpg'));
-    // assets/ should have 0 files
-    const assetFiles = Object.keys(writtenFiles).filter(k => k.startsWith('assets/'));
-    assert.strictEqual(assetFiles.length, 0);
-});
-
-test('assetFetcher - inferImageExt correctly detects MIME and URL extensions', () => {
-    assert.strictEqual(AssetFetcher.inferImageExt('image/png'), 'png');
-    assert.strictEqual(AssetFetcher.inferImageExt('image/webp'), 'webp');
-    assert.strictEqual(AssetFetcher.inferImageExt('image/gif'), 'gif');
-    assert.strictEqual(AssetFetcher.inferImageExt('image/jpeg'), 'jpg');
-    assert.strictEqual(AssetFetcher.inferImageExt(undefined, 'https://example.com/pic.png?alr=yes'), 'png');
-    assert.strictEqual(AssetFetcher.inferImageExt(undefined, 'https://example.com/unknown'), 'jpg');
-});
-
-test('liveSaveHandler - withLiveSaveLock serializes concurrent writes targeting the same key', async () => {
-    const { withLiveSaveLock } = require('../src/background/liveSaveHandler.js');
-
-    const executionOrder: string[] = [];
-
-    const task1 = withLiveSaveLock('test_concurrency_file.md', async () => {
-        executionOrder.push('task1_start');
-        await new Promise(r => setTimeout(r, 20));
-        executionOrder.push('task1_end');
-        return 'res1';
-    });
-
-    const task2 = withLiveSaveLock('test_concurrency_file.md', async () => {
-        executionOrder.push('task2_start');
-        await new Promise(r => setTimeout(r, 10));
-        executionOrder.push('task2_end');
-        return 'res2';
-    });
-
-    const [r1, r2] = await Promise.all([task1, task2]);
-    assert.strictEqual(r1, 'res1');
-    assert.strictEqual(r2, 'res2');
-
-    // Task 1 must fully finish before Task 2 starts
-    assert.deepStrictEqual(executionOrder, [
-        'task1_start',
-        'task1_end',
-        'task2_start',
-        'task2_end'
+test('v2 Live Save renders failed image visibly as unavailable without a dangling sidecar or remote image embedding', async t => {
+    const host = v2LiveSaveHost(t), id = 'failing-images';
+    const good = 'https://example.test/good.png', bad = 'https://example.test/broken.png';
+    await seedLiveDetail(id, [
+        { id: 'good', kind: 'image', name: 'good.png', sourceUri: good, mediaType: 'image/png' },
+        { id: 'broken', kind: 'image', name: 'broken.png', sourceUri: bad, mediaType: 'image/png' },
     ]);
+    const bytes = Uint8Array.of(91, 92, 93);
+    host.source(good, bytes);
+    host.source(bad, null);
+    const result = await runLiveSave(liveKey(id));
+    assert.equal(result?.exported, 1);
+    assert.equal(result?.partial, 1);
+    assert.equal((await getExportRecord(liveKey(id)))?.status, 'partial');
+    assert.deepEqual(host.requests, [good, bad]);
+    const imageFiles = entries(host.files).filter(([name]) => name.startsWith('assets/'));
+    assert.equal(imageFiles.length, 1);
+    assert.deepEqual(imageFiles[0][1], bytes);
+    const markdown = mainMarkdown(host.files);
+    assert.ok(markdown.includes(imageFiles[0][0]));
+    assert.match(markdown, /\[Open source\]\(https:\/\/example\.test\/broken\.png\)/);
+    assert.doesNotMatch(markdown, /!\[[^\]]*\]\(https:/);
+    assert.doesNotMatch(markdown, /\]\(assets\/[^)]*broken\.png\)/,
+        'failed media may have a visible placeholder but never a missing relative file link');
+    assert.match(markdown, /broken\.png|Image unavailable/i);
+});
+
+test('L3b reference dedup means one source fetch and sidecar despite multiple image occurrences', async t => {
+    const host = v2LiveSaveHost(t), id = 'repeated-image', url = 'https://example.test/same.png';
+    await seedLiveDetail(id, [{ id: 'same', kind: 'image', name: 'same.png', sourceUri: url, mediaType: 'image/png' }], {
+        messages: [
+            { role: 'user', content: [paragraph('Please explain this diagram')] },
+            { role: 'assistant', content: [paragraph('Repeated illustration'),
+                { type: 'image', assetId: 'same' }, { type: 'image', assetId: 'same' }] },
+        ],
+    });
+    host.source(url, Uint8Array.of(1, 3, 3, 7));
+    const result = await runLiveSave(liveKey(id));
+    assert.equal(result?.partial, 0);
+    assert.equal(result?.exported, 1);
+    assert.deepEqual(host.requests, [url]);
+    const [asset] = entries(host.files).filter(([name]) => name.startsWith('assets/'));
+    assert.ok(asset);
+    assert.equal(entries(host.files).filter(([name]) => name.startsWith('assets/')).length, 1);
+    assert.equal(mainMarkdown(host.files).split(asset[0]).length - 1, 2);
+});
+
+test('L4 FsWriter serializes concurrent writes targeting the same physical path', async () => {
+    const order: string[] = [];
+    let unblock!: () => void, started!: () => void;
+    const waiting = new Promise<void>(resolve => { unblock = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    let current = '', createCount = 0;
+    const directory = {
+        async queryPermission() { return 'granted'; },
+        async getFileHandle(name: string) {
+            assert.equal(name, 'same-file.md');
+            const ordinal = ++createCount;
+            return { async createWritable() { return {
+                async write(content: string) {
+                    order.push('start:' + content);
+                    if (ordinal === 1) { started(); await waiting; }
+                    current = content;
+                    order.push('end:' + content);
+                },
+                async close() { order.push('close:' + ordinal); },
+            }; } };
+        },
+    } as unknown as FileSystemDirectoryHandle;
+    const writer = new FsWriter(directory);
+    await writer.init();
+    const first = writer.writeFile('same-file.md', 'first');
+    await entered;
+    const second = writer.writeFile('same-file.md', 'second');
+    unblock();
+    assert.deepEqual(await Promise.all([first, second]), ['same-file.md', 'same-file.md']);
+    assert.deepEqual(order, ['start:first', 'end:first', 'close:1', 'start:second', 'end:second', 'close:2']);
+    assert.equal(current, 'second');
 });
 

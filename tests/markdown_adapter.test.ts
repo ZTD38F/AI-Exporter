@@ -1,7 +1,7 @@
 /**
  * tests/markdown_adapter.test.ts
  *
- * Layer M1 (MDAST -> Canonical AST Adapter Unit Tests) &
+ * Layer M1 (MDAST -> Content AST Adapter Unit Tests) &
  * Layer M2 (Integration Smoke Tests for micromark / mdast-util-from-markdown pipeline)
  *
  * Conforms to Section 8 of the Parser Migration & Validation Plan.
@@ -12,33 +12,40 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const {
-    parseMarkdownToBlocks,
-    parseMarkdownToInlines,
+    parseMarkdownToBlocks: parseGenericMarkdownToBlocks,
     mdastRootToBlocks,
     adaptInlines,
     mergeAdjacentTextNodes,
-} = require('../src/core/export/canonical/markdown/index.js');
-const { newAssetLinkIndex, indexAssetRef } = require('../src/core/export/canonical/gemini/normalizeAssets.js');
+} = require('../src/l1/parsers/shared/markdown/index.js');
+
+const { preprocessGeminiMarkdown } = require('../src/l1/parsers/gemini/shared/markdownCompatibility.js');
+// This corpus includes captured Gemini compatibility evidence; preprocess at its input boundary.
+function parseMarkdownToBlocks(text: string, prefix: string, ctx: any) {
+    return parseGenericMarkdownToBlocks(preprocessGeminiMarkdown(text), prefix, ctx);
+}
 
 function createTestContext(overrides: any = {}) {
-    let blockSeq = 0;
     const diagnostics: any[] = [];
     const inlineAssets: any[] = [];
-    const assetIndex = newAssetLinkIndex();
+    const assetIndex = new Map<string, string>();
     const ctx = {
         idPrefix: 'test-msg',
-        nextBlockId: () => `test-msg-b${blockSeq++}`,
         diagnostics,
         inlineAssets,
         assetIndex,
         sourceRef: { providerId: 'test-provider', locator: 'test.0' },
         ...overrides,
     };
+    Object.assign(ctx, { resolveImage: (ref: string, alt: string, title?: string) => {
+        let assetId = assetIndex.get(ref);
+        if (!assetId) { assetId = `inline-${inlineAssets.length}`; assetIndex.set(ref, assetId); inlineAssets.push({ id: assetId, uri: ref }); }
+        return { type: 'image', assetId, alt, ...(title ? { title } : {}) };
+    } });
     return { ctx, diagnostics, inlineAssets, assetIndex };
 }
 
 // =========================================================================
-// Layer M1: Adapter Unit Tests (Direct MDAST -> Canonical Mapping)
+// Layer M1: Adapter Unit Tests (Direct MDAST -> Content Mapping)
 // =========================================================================
 
 test('Layer M1: Text node coalescing merges adjacent text nodes', () => {
@@ -189,7 +196,7 @@ test('Layer M1: mdastRootToBlocks maps table alignments and cell structures', ()
     assert.strictEqual(blocks.length, 1);
     const table = blocks[0] as any;
     assert.strictEqual(table.type, 'table');
-    assert.deepStrictEqual(table.columns.map((c: any) => c.align), ['left', 'center', 'right', 'default']);
+    assert.deepStrictEqual(table.columns.map((c: any) => c.align), ['left', 'center', 'right', undefined]);
     assert.strictEqual(table.headerRows.length, 1);
     assert.strictEqual(table.rows.length, 1);
     assert.strictEqual(table.headerRows[0].cells[0].children[0].text, 'H1');
@@ -231,7 +238,7 @@ test('Layer M1: Task list checkbox prepends marker to item text', () => {
 });
 
 // =========================================================================
-// Layer M2: Integration Smoke Tests (micromark -> mdast -> Canonical AST)
+// Layer M2: Integration Smoke Tests (micromark -> mdast -> Content AST)
 // =========================================================================
 
 test('Layer M2: Smoke test - Headings, paragraphs, and standard inlines', () => {
@@ -359,7 +366,7 @@ test('Layer M2: Smoke test - Standalone single-line $$...$$ is recognized as Mat
 
 test('Layer M2: Smoke test - Asset index link matching for inline images', () => {
     const { ctx, assetIndex } = createTestContext();
-    indexAssetRef(assetIndex, 'https://example.com/photo.png', 'asset-img-001');
+    assetIndex.set('https://example.com/photo.png', 'asset-img-001');
 
     const doc = 'Here is an image: ![A mountain](https://example.com/photo.png "Mountain peak")';
     const blocks = parseMarkdownToBlocks(doc, 'smoke', ctx);
@@ -371,10 +378,12 @@ test('Layer M2: Smoke test - Asset index link matching for inline images', () =>
     assert.strictEqual(img.title, 'Mountain peak');
 });
 
-test('Layer M2: Smoke test - parseMarkdownToInlines returns inline list', () => {
+test('Layer M2: parsed Markdown paragraph retains inline nodes', () => {
     const { ctx } = createTestContext();
     const text = 'Simple **bold** and *italic* text';
-    const inlines = parseMarkdownToInlines(text, 'smoke', ctx);
+    const [paragraph] = parseMarkdownToBlocks(text, 'smoke', ctx);
+    assert.strictEqual(paragraph.type, 'paragraph');
+    const inlines = paragraph.children;
     assert.strictEqual(inlines.length, 5);
     assert.strictEqual(inlines[0].text, 'Simple ');
     assert.strictEqual(inlines[1].type, 'strong');
@@ -463,13 +472,13 @@ test('Reference Nodes: Definition lifetime is isolated per parse run (no leakage
     assert.ok(link2, 'Second link must be resolved');
     assert.strictEqual(link2.href, 'https://example.com/B');
 
-    // Also test inline parse with the same ctx
-    const inlines1 = parseMarkdownToInlines('[x]\n\n[x]: https://example.com/A', 'inline1', ctx);
+    // Also test additional short parses with the same ctx
+    const inlines1 = parseMarkdownToBlocks('[x]\n\n[x]: https://example.com/A', 'inline1', ctx)[0].children;
     const inlineLink1 = inlines1.find((c: any) => c.type === 'link');
     assert.ok(inlineLink1);
     assert.strictEqual((inlineLink1 as any).href, 'https://example.com/A');
 
-    const inlines2 = parseMarkdownToInlines('[x]\n\n[x]: https://example.com/B', 'inline2', ctx);
+    const inlines2 = parseMarkdownToBlocks('[x]\n\n[x]: https://example.com/B', 'inline2', ctx)[0].children;
     const inlineLink2 = inlines2.find((c: any) => c.type === 'link');
     assert.ok(inlineLink2);
     assert.strictEqual((inlineLink2 as any).href, 'https://example.com/B');
@@ -477,7 +486,7 @@ test('Reference Nodes: Definition lifetime is isolated per parse run (no leakage
 
 test('Reference Nodes: Image reference resolves definition and asset linking', () => {
     const { ctx, assetIndex } = createTestContext();
-    indexAssetRef(assetIndex, 'https://example.com/diagram.png', 'asset-diag-42');
+    assetIndex.set('https://example.com/diagram.png', 'asset-diag-42');
 
     const doc = [
         'Architecture: ![System Diagram][diag-ref]',
@@ -629,6 +638,48 @@ test('unsupported blocks retain raw slices, visible values, image alt text and e
     assert.strictEqual(diagnostics.filter((d: any) => d.code === 'MDAST_UNKNOWN_BLOCK').length, 4);
 });
 
+test('unsupported inline fallback ignores malformed fields while preserving nested text and breaks', () => {
+    const { ctx, diagnostics, inlineAssets } = createTestContext();
+    const node = {
+        type: 'customInline',
+        value: { unexpected: 'not visible' },
+        children: [null, 7, false, { type: 'customLeaf', value: 42, alt: 'diagram' },
+            { type: 'break' }, { type: 'customLeaf', children: 'invalid', source: 'x^2' }],
+    };
+    const before = structuredClone(node);
+    assert.deepStrictEqual(adaptInlines([node], ctx), [
+        { type: 'text', text: 'diagram' },
+        { type: 'lineBreak', kind: 'soft' },
+        { type: 'text', text: 'x^2' },
+    ]);
+    assert.deepStrictEqual(node, before);
+    assert.deepStrictEqual(diagnostics[0].details, { nodeType: 'customInline' });
+    assert.strictEqual(inlineAssets.length, 0);
+});
+
+test('unsupported block fallback tolerates malformed descendants and positions without losing visible text', () => {
+    const { ctx, diagnostics, inlineAssets } = createTestContext();
+    const nodes = [
+        { type: 'widget', position: { start: null, end: { offset: 9 } }, children: [
+            null, 7, false, { type: 'paragraph', children: [
+                { type: 'text', value: 'see ' }, { type: 'image', value: 12, alt: 'diagram' },
+            ] }, { type: 'widget', value: { unexpected: true }, label: 'second paragraph' },
+        ] },
+        { type: 'widget', position: { start: { offset: '0' }, end: { offset: 9 } }, value: 'visible value' },
+        { type: 'widget', children: { unexpected: true } },
+    ];
+    const before = structuredClone(nodes);
+    const blocks = mdastRootToBlocks({ type: 'root', children: nodes }, ctx, 'raw slice');
+    assert.deepStrictEqual(blocks, [
+        { type: 'unknown', sourceType: 'widget', text: 'see diagram\nsecond paragraph' },
+        { type: 'unknown', sourceType: 'widget', text: 'visible value' },
+        { type: 'unknown', sourceType: 'widget', text: '[Unsupported block: widget]' },
+    ]);
+    assert.deepStrictEqual(nodes, before);
+    assert.strictEqual(diagnostics.filter((d: { code: string }) => d.code === 'MDAST_UNKNOWN_BLOCK').length, 3);
+    assert.strictEqual(inlineAssets.length, 0);
+});
+
 test('Unknown != Disappear: Unsupported block node collapses visible content to text and records diagnostic', () => {
     const { ctx, diagnostics } = createTestContext();
     const root: any = {
@@ -652,7 +703,7 @@ test('Unknown != Disappear: Unsupported block node collapses visible content to 
     const unknownBlock = blocks[0] as any;
     assert.strictEqual(unknownBlock.sourceType, 'customCalloutBox');
     assert.strictEqual(unknownBlock.text, 'Inside callout');
-    assert.deepStrictEqual(Object.keys(unknownBlock).sort(), ['id', 'sourceType', 'text', 'type']);
+    assert.deepStrictEqual(Object.keys(unknownBlock).sort(), ['sourceType', 'text', 'type']);
 
     const diag = diagnostics.find((d: any) => d.code === 'MDAST_UNKNOWN_BLOCK');
     assert.ok(diag, 'Must record MDAST_UNKNOWN_BLOCK diagnostic');
@@ -695,3 +746,19 @@ test('GM-MD-001 Regression: Attached multiline display math fences do not swallo
     assert.strictEqual(blocks[4].type, 'thematicBreak');
 });
 
+
+test('MDAST HTML containing an hr tag preserves authored text; a lone hr remains a break', () => {
+    const { ctx } = createTestContext();
+    const mixed = mdastRootToBlocks({ type: 'root', children: [{ type: 'html', value: 'Before<hr>After' }] }, ctx, '');
+    assert.deepStrictEqual(mixed, [{ type: 'paragraph', children: [{ type: 'text', text: 'Before<hr>After' }] }]);
+    const lone = mdastRootToBlocks({ type: 'root', children: [{ type: 'html', value: '  <hr class="rule" />  ' }] }, ctx, '');
+    assert.deepStrictEqual(lone, [{ type: 'thematicBreak' }]);
+});
+
+test('MDAST mathflow accepts longer dollar fences without treating internal $$ as a closing fence', () => {
+    const { ctx } = createTestContext();
+    const parsed = parseGenericMarkdownToBlocks('$$$\nx = 1\n$$\ny = 2\n$$$', 'long-math-fence', ctx);
+    assert.strictEqual(parsed.length, 1);
+    assert.strictEqual(parsed[0].type, 'math');
+    assert.strictEqual((parsed[0] as any).source, 'x = 1\n$$\ny = 2');
+});

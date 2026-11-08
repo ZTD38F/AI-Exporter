@@ -1,3 +1,4 @@
+import { fixtureAccount, fixtureKey } from './helpers/domainFixture.js';
 /**
  * tests/parser_corpus.test.ts
  *
@@ -30,6 +31,10 @@ test('Parser Migration Corpus: Segmentation & admission policy assertions', () =
 
     // Strict Rule: ONLY real_gemini_output may justify compatibility rules
     assert.ok(data.admissionPolicy?.real_gemini_output?.includes('ONLY'), 'Admission policy must restrict compat rules to real_gemini_output');
+    // A policy string is documentation, not proof of provenance. Real examples require source evidence.
+    for (const doc of data.corpusSets.real_gemini_output.documents) {
+        assert.ok(doc.evidenceFile && doc.originalHash, `Real Gemini fixture ${doc.id} must carry provenance`);
+    }
 
     // Scenario inputs & synthetic sets must have documents
     assert.ok(data.corpusSets.scenario_inputs.documents.length >= 100, 'Expected >= 100 scenario input docs');
@@ -37,18 +42,19 @@ test('Parser Migration Corpus: Segmentation & admission policy assertions', () =
 });
 
 test('Parser Migration Corpus: Injectable runner executes with real Typst compilation gate', async () => {
-    // 1. Run with genuine Typst WASM compilation gate enabled
     const report = await runCorpus({
         corpusPath: CORPUS_PATH,
         outputPath: REPORT_PATH,
         compileTypst: true,
     });
 
-    assert.strictEqual(report.markdown.documents >= 100, true);
+    assert.ok(report.markdown.documents >= 100);
+    assert.ok(report.markdown.baseline.blockDistribution.paragraph > 0, 'Baseline must actually parse nonempty Markdown blocks');
     assert.strictEqual(report.markdown.parseFailures, 0, 'Markdown parsing must produce zero crashes');
     assert.strictEqual(report.markdown.baseline.parseFailures, 0, 'Production markdown parser must produce zero crashes');
     assert.strictEqual(report.markdown.baseline.fallbacks, 0, 'Production markdown parser must produce zero unknown block fallbacks');
-    assert.strictEqual(report.math.expressions >= 50, true);
+    assert.ok(report.math.expressions >= 50);
+    assert.strictEqual(report.math.baseline.converted, report.math.expressions, 'Every baseline math expression must have a conversion before the compile gate');
     assert.strictEqual(report.math.baseline.compileFailures, 0, 'Baseline converted expressions must compile cleanly in Typst WASM');
     assert.strictEqual(report.math.compileFailures, 0);
     assert.ok(report.math.candidate, 'Candidate math report must be populated');
@@ -67,7 +73,6 @@ test('Parser Migration Corpus: Injectable runner executes with real Typst compil
     assert.strictEqual(diskReport.math.candidate?.conversionFailures, 0);
     assert.strictEqual(diskReport.math.candidate?.compileFailures, 0);
 
-    // 2. Test candidate parser injection capability
     let candidateParserCalled = false;
     let candidateConverterCalled = false;
     const diffReport = await runCorpus({
@@ -76,8 +81,8 @@ test('Parser Migration Corpus: Injectable runner executes with real Typst compil
         compileTypst: true,
         candidateParser: async (content: string, id: string) => {
             candidateParserCalled = true;
-            return {
-                bundle: { conversation: { messages: [{ blocks: [{ type: 'paragraph', children: [{ type: 'text', text: content }] }] }] } },
+            return { account: fixtureAccount(),
+                conversation: { index: { key: fixtureKey(String(id), 'gemini'),   titleSource: "derived",  title: '',  }, detail: { key: fixtureKey(String(id), 'gemini'), quality: { status: 'unknown' }, assets: [], messages: [{ role: 'user', content: [{ type: 'paragraph', children: [{ type: 'text', text: content }] }] }] } },
                 diagnostics: [],
             };
         },
@@ -93,7 +98,14 @@ test('Parser Migration Corpus: Injectable runner executes with real Typst compil
     assert.ok(diffReport.markdown.candidate, 'Candidate markdown report must be populated when candidate parser provided');
     assert.strictEqual(diffReport.markdown.candidate.parseFailures, 0);
     assert.strictEqual(diffReport.markdown.candidate.fallbacks, 0);
-    assert.strictEqual(typeof diffReport.markdown.diffCount, 'number');
+    assert.ok(diffReport.markdown.diffCount > 0, 'Intentionally different candidate parser must be detected, not merely invoked');
+    assert.strictEqual(
+        Object.values(diffReport.markdown.diffsByCategory).reduce((sum: number, count: any) => sum + Number(count), 0),
+        diffReport.markdown.diffCount,
+        'Every parser disagreement must be classified'
+    );
     assert.ok(diffReport.math.candidate, 'Candidate math report must be populated when candidate converter provided');
     assert.strictEqual(diffReport.math.candidate.compileFailures, 0, 'Candidate compiled expressions in WASM');
+    assert.strictEqual(diffReport.math.candidate.converted, diffReport.math.expressions);
+    assert.ok(diffReport.math.diffCount > 0, 'Intentionally different math converter must trigger a differential result');
 });

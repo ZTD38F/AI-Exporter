@@ -1,4 +1,3 @@
-# scripts/framework/environment.py
 """
 Unified Test Environment Lifecycle Manager for Tier 2 and Tier 3.
 Provides deterministic environment preparation:
@@ -77,6 +76,7 @@ class TestEnvironment:
         self.repo_path = os.path.abspath(repo_path or os.path.join(os.path.dirname(__file__), "..", ".."))
         self.output_dir = os.path.abspath(output_dir or os.path.join(self.repo_path, "tests", "output", "live_export"))
         self.viewport_size = viewport_size
+        self._await_install_options = False
         self.ext_id: Optional[str] = None
         self.browser_cdp: Optional[CDPConnection] = None
         os.makedirs(self.output_dir, exist_ok=True)
@@ -126,6 +126,7 @@ class TestEnvironment:
         new_id = CDPActions.reinstall_extension(port=self.port, repo_path=self.repo_path)
         if new_id:
             self.ext_id = new_id
+            self._await_install_options = True
         return new_id
 
     def get_extension_id(self) -> Optional[str]:
@@ -155,25 +156,39 @@ class TestEnvironment:
                 print(f"   ⚠️ 自动创建 Gemini 标签页异常: {e}")
         return tab or self.get_gemini_tab()
 
-    def get_options_tab(self) -> Optional[Dict[str, Any]]:
+    def _get_extension_tab(self, path: str) -> Optional[Dict[str, Any]]:
+        """Only resolve pages belonging to the extension selected for this run."""
         ext_id = self.get_extension_id()
-        tabs = self.get_tabs()
-        if ext_id:
-            options_url = f"chrome-extension://{ext_id}/src/ui/options/options.html"
-            tab = next((t for t in tabs if t.get("type", "page") == "page" and options_url in t.get("url", "")), None)
-            if tab:
+        if not ext_id:
+            return None
+        for tab in self.get_tabs():
+            url = urllib.parse.urlsplit(tab.get("url", ""))
+            if (tab.get("type", "page") == "page"
+                    and url.scheme == "chrome-extension"
+                    and url.netloc == ext_id and url.path == path):
                 return tab
-        return next((t for t in tabs if t.get("type", "page") == "page" and "options.html" in t.get("url", "")), None)
+        return None
+
+    def get_options_tab(self) -> Optional[Dict[str, Any]]:
+        return self._get_extension_tab("/src/ui/options/options.html")
 
     def ensure_options_tab(self) -> Optional[Dict[str, Any]]:
         """发现或幂等创建 Options 导出工作台标签页"""
         tab = self.get_options_tab()
+        if self._await_install_options:
+            # onInstalled opens the tour asynchronously; never race it with a duplicate.
+            deadline = time.monotonic() + 20
+            while not tab and time.monotonic() < deadline:
+                time.sleep(0.1)
+                tab = self.get_options_tab()
+            if not tab:
+                raise RuntimeError('Fresh installation did not open its onboarding page')
+            self._await_install_options = False
         if not tab:
             ext_id = self.get_extension_id()
-            if ext_id:
-                base_url = f"chrome-extension://{ext_id}/src/ui/options/options.html"
-            else:
-                base_url = "src/ui/options/options.html"
+            if not ext_id:
+                return None
+            base_url = f"chrome-extension://{ext_id}/src/ui/options/options.html"
             try:
                 new_url = f"http://127.0.0.1:{self.port}/json/new?{base_url}"
                 req = urllib.request.Request(new_url, method="PUT")
@@ -185,34 +200,57 @@ class TestEnvironment:
         return tab or self.get_options_tab()
 
     def get_popup_tab(self) -> Optional[Dict[str, Any]]:
-        """获取当前活跃的 Popup 标签页"""
+        """Resolve an action popup, excluding standalone tabs of the same URL."""
         ext_id = self.get_extension_id()
-        tabs = self.get_tabs()
-        if ext_id:
-            popup_url = f"chrome-extension://{ext_id}/src/ui/popup/popup.html"
-            tab = next((t for t in tabs if t.get("type", "page") == "page" and popup_url in t.get("url", "")), None)
-            if tab:
-                return tab
-        return next((t for t in tabs if t.get("type", "page") == "page" and "popup.html" in t.get("url", "")), None)
+        if not ext_id:
+            return None
+        for tab in self.get_tabs():
+            url = urllib.parse.urlsplit(tab.get('url', ''))
+            if (tab.get('type', 'page') != 'page' or url.scheme != 'chrome-extension'
+                    or url.netloc != ext_id or url.path != '/src/ui/popup/popup.html'
+                    or not tab.get('webSocketDebuggerUrl')):
+                continue
+            cdp = CDPConnection(tab['webSocketDebuggerUrl'])
+            try:
+                if cdp.eval('chrome.tabs.getCurrent().then(tab => !tab)', await_promise=True):
+                    return tab
+            finally:
+                cdp.close()
+        return None
 
     def ensure_popup_tab(self) -> Optional[Dict[str, Any]]:
-        """发现或幂等创建 Popup 动作中心标签页"""
+        """Open Chrome's real action popup against a supported source tab.
+
+        A popup.html tab makes tabs.query(active/currentWindow) resolve itself,
+        so it cannot exercise the current-conversation flow.
+        """
         tab = self.get_popup_tab()
-        if not tab:
-            ext_id = self.get_extension_id()
-            if ext_id:
-                base_url = f"chrome-extension://{ext_id}/src/ui/popup/popup.html"
-            else:
-                base_url = "src/ui/popup/popup.html"
-            try:
-                new_url = f"http://127.0.0.1:{self.port}/json/new?{base_url}"
-                req = urllib.request.Request(new_url, method="PUT")
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    tab = json.loads(resp.read().decode("utf-8"))
-                    time.sleep(1.0)
-            except Exception as e:
-                print(f"   ⚠️ 自动创建 Popup 标签页异常: {e}")
-        return tab or self.get_popup_tab()
+        if tab:
+            return tab
+        options = self.ensure_options_tab()
+        if not options:
+            return None
+        cdp = CDPConnection(options['webSocketDebuggerUrl'])
+        try:
+            cdp.eval("""(async () => {
+                const tabs = await chrome.tabs.query({});
+                const sources = tabs.filter(tab => tab.url &&
+                    ['gemini.google.com', 'chatgpt.com', 'claude.ai', 'grok.com'].includes(new URL(tab.url).hostname));
+                const source = sources.find(tab => tab.active) ||
+                    sources.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+                if (source) await chrome.tabs.update(source.id, {active: true});
+                const windowId = source?.windowId || (await chrome.windows.getLastFocused()).id;
+                await chrome.action.openPopup({windowId});
+            })()""", await_promise=True, user_gesture=True)
+        finally:
+            cdp.close()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            tab = self.get_popup_tab()
+            if tab:
+                return tab
+            time.sleep(0.1)
+        raise RuntimeError('Chrome action popup did not open; refusing standalone popup.html fallback')
 
     def ensure_tab(self, target: str) -> Optional[Dict[str, Any]]:
         """统一按逻辑名解析并确保标签页就绪 (gemini|chat, options|workbench, 或 popup)"""
@@ -241,7 +279,6 @@ class TestEnvironment:
     def connect_options(self) -> CDPConnection:
         self.setup_permissions()
         conn = self.connect_tab("options")
-        # 预热并缓存本地字体至 window.__geminiLocalFontsCache
         try:
             conn.eval("""
             (async () => {
@@ -360,7 +397,6 @@ class TestEnvironment:
         4. 全局下载路径拦截
         5. 活动连接视口与行为标准化
         """
-        # 1. 扩展卸载与纯净重装
         if reinstall:
             print("\n🔄 [环境初始化] 通过 CDP 原生卸载并纯净安装当前工作区扩展代码...")
             ext_id = self.reinstall_extension()
@@ -374,7 +410,6 @@ class TestEnvironment:
         gemini_tab = None
         options_tab = None
 
-        # 2. 准备标签页
         for page in target_pages:
             norm = "gemini" if page.lower() in ("gemini", "chat") else "options"
             if norm == "gemini":
@@ -385,11 +420,9 @@ class TestEnvironment:
             elif norm == "options":
                 options_tab = self.ensure_options_tab()
 
-        # 3. 设置全局下载
         if setup_download:
             self.setup_download_behavior(self.output_dir)
 
-        # 4. 连接活动标签页
         active_tab = None
         active_cdp = None
         if active_target:

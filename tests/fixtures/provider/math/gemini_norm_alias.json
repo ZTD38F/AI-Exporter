@@ -1,0 +1,5 @@
+{
+  "provenance": "Tier 2 computational_geometry_polygon_clipping_robust_predicates; conversation 8aa64c1788b24fda, turn 2; independent webpage data-math evidence and physically downloaded MaZiqc Markdown, 2026-10-11",
+  "domSource": "\\kappa \\sim \\frac{\\Vert{}\\vec{ab}\\Vert{} \\cdot \\Vert{}\\vec{ac}\\Vert{}}{|D(a, b, c)|}",
+  "rpcSource": "\\kappa \\sim \\frac{\\|\\vec{ab}\\| \\cdot \\|\\vec{ac}\\|}{|D(a, b, c)|}"
+}

@@ -28,50 +28,54 @@ class TestImpactAnalyzer(unittest.TestCase):
     def setUpClass(cls):
         cls.graph = DependencyGraph(base_dir=BASE_DIR)
 
-    def test_graph_has_nodes(self):
-        self.assertGreater(len(self.graph.dependencies), 10)
-        self.assertGreater(len(self.graph.dependents), 10)
-
     def test_storage_service_transitive_dependencies(self):
         """核心断言：修改底层 storageService.ts 必须传递影响所有依赖它的模块与测试"""
-        target = "src/core/storage/storageService.ts"
+        target = "src/l3a/storageService.ts"
         affected = self.graph.get_transitive_dependents({target})
 
         # 直接引用
-        self.assertIn("src/content/syncEngine.ts", affected)
+        self.assertIn("src/l1/sniffer/gemini/messageBridge.ts", affected)
         self.assertIn("src/ui/options/options.ts", affected)
-        self.assertIn("tests/storage_service.test.ts", affected)
+        self.assertIn("tests/application_export.test.ts", affected)
 
         # 传递间接引用 (via syncEngine or options)
-        self.assertIn("tests/p1_d_regressions.test.ts", affected)
-        self.assertIn("tests/takeout_and_limit_guidance.test.ts", affected)
+        self.assertIn("tests/six-module-integration.test.ts", affected)
+        self.assertIn("tests/ui_v2.test.ts", affected)
 
         # 影响分析结果断言
         res = analyze_impact({target}, graph=self.graph, base_dir=BASE_DIR)
         self.assertFalse(res.is_all_affected)
         self.assertFalse(res.is_docs_only)
         self.assertGreaterEqual(len(res.target_unit_tests), 15)
-        self.assertIn("tests/storage_service.test.ts", res.target_unit_tests)
-        self.assertIn("tests/takeout_and_limit_guidance.test.ts", res.target_unit_tests)
+        self.assertIn("tests/application_export.test.ts", res.target_unit_tests)
+        self.assertIn("tests/ui_v2.test.ts", res.target_unit_tests)
         # core 变动应触发所有 E2E
         self.assertEqual(len(res.target_e2e_specs), len(res.all_e2e_specs))
 
     def test_localized_badge_view_impact(self):
         """修改局部的 badgeView.ts 只应该影响 content 相关的少数测试，不应全量执行"""
-        target = "src/content/badgeView.ts"
+        target = "src/ui/badge/badgeView.ts"
         res = analyze_impact({target}, graph=self.graph, base_dir=BASE_DIR)
         self.assertFalse(res.is_all_affected)
         self.assertFalse(res.is_docs_only)
 
         # 仅影响少数几个单元测试
         self.assertLess(len(res.target_unit_tests), len(res.all_unit_tests) // 3)
-        self.assertIn("tests/ui_views.test.ts", res.target_unit_tests)
+        self.assertIn("tests/ui_v2.test.ts", res.target_unit_tests)
         self.assertNotIn("tests/takeout_engine.test.ts", res.target_unit_tests)
 
         # 仅影响 content 相关的 E2E
-        self.assertIn("tests/e2e/page_sync.spec.ts", res.target_e2e_specs)
-        self.assertIn("tests/e2e/live_save.spec.ts", res.target_e2e_specs)
-        self.assertNotIn("tests/e2e/workbench_ui.spec.ts", res.target_e2e_specs)
+        self.assertIn("tests/e2e/production_v2.spec.ts", res.target_e2e_specs)
+        self.assertIn("tests/e2e/account_registry.spec.ts", res.target_e2e_specs)
+        self.assertNotIn("tests/e2e/native_parser.spec.ts", res.target_e2e_specs)
+
+    def test_tsx_component_dependencies_reach_the_workbench(self):
+        target = "src/ui/options/views/conversationList.tsx"
+        self.assertEqual(resolve_import_path("src/ui/options/views/listView.ts", "./conversationList.js", BASE_DIR), target)
+        self.assertIn("src/ui/options/views/listView.ts", self.graph.get_transitive_dependents({target}))
+        self.assertIn("src/ui/options/options.ts", self.graph.get_transitive_dependents({target}))
+        # Scanning TSX's own imports matters when a lower-level dependency changes.
+        self.assertIn(target, self.graph.get_transitive_dependents({"src/ui/shared/exportSummary.ts"}))
 
     def test_global_config_fallback_triggers_all(self):
         """修改 package.json 或 tsconfig.json 等核心配置必须兜底触发全量测试"""

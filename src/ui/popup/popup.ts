@@ -1,378 +1,213 @@
-import { GeminiUtils, cleanTitle } from '../../core/utils/utils.js';
-import { StorageService } from '../../core/storage/storageService.js';
-import { ensureStorageReady } from '../../core/storage/schemaMigration.js';
-import { __resolveModule } from '../../core/utils/moduleOverrides.js';
-import { FormatStore } from '../../core/storage/formatStore.js';
-import { ChatFormatter } from '../../core/engine/chatFormatter.js';
-import {
-    isGeminiUrl,
-    detectSlotFromUrl,
-    extractConversationIdFromUrl,
-    buildExportFileName
-} from '../../core/utils/pathUtils.js';
-import { $, getI18n } from '../uiCommon.js';
-import { sendTypedMessage } from '../../core/utils/messaging.js';
-import { ProgressView } from '../views/progressView.js';
-import { STORAGE_KEYS } from '../../core/utils/constants.js';
+import { showRatingPromptIfEligible } from '../shared/ratingPrompt.js';
+import { createBackoffNotice } from '../shared/backoffNotice.js';
+import { elementById as el, requiredElement as control } from '../shared/elements.js';
+import { exportSummary } from '../shared/exportSummary.js';
+import { sendTabMessage } from '../../runtime/capabilities/tabService.js';
+import { isAccountId } from '../../l2/accountRegistry.js';
+import { PLATFORM_HOSTS, ACTIVE_SOURCE_PLATFORMS, type SourcePlatform } from '../../shared/platformHosts.js';
+import { hasPlatformAccess } from '../../runtime/capabilities/platformAuthorization.js';
+import { mountPlatformAuthorization } from '../shared/platformAuthorization.js';
+import { AUTHORIZATION_STEP } from '../guidance/tourSteps.js';
+import { conversationKey, type ConversationKey } from '../../l2/conversationKey.js';
+import { getIndex } from '../../l3a/storageService.js';
+import { updateSettings, type GlobalSettings } from '../../application/settings/index.js';
+import { ensureV2Ready } from '../../runtime/api/runtimeReady.js';
+import { warmLocalFontCache } from '../../l4/format/pdf/typst/fonts/localFontProvider.js';
+import { runExport } from '../options/controllers/exportController.js';
+import { EXPORT_FORMATS, readSettings, observeSettings, useSettings, text, errorText, labelPage, labelThemeToggle } from '../shared/settings.js';
 
-const getStorage = () => __resolveModule('StorageService', StorageService);
-
-let _activeConvId: string | null = null;
-let _activeSlot: string = 'u0';
-let _activeChatTitle: string = '';
-let _activeFormat = 'markdown';
-
-function updateFormatTabsUI(targetFormat: string, isDev?: boolean): void {
-    _activeFormat = targetFormat || 'markdown';
-    const tabBtns = document.querySelectorAll('#formatTabs .tab-btn') as NodeListOf<HTMLButtonElement>;
-    tabBtns.forEach(btn => {
-        const val = btn.getAttribute('data-value');
-        if (val === _activeFormat) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-        if (val === 'json_raw') {
-            btn.style.display = isDev ? '' : 'none';
-        }
-    });
-    $('formatTabs')?.classList.toggle('has-dev', !!isDev);
-    const activeLabel = $('activeFormatLabel');
-    if (activeLabel) {
-        const activeBtn = document.querySelector(`#formatTabs .tab-btn[data-value="${_activeFormat}"]`) as HTMLButtonElement | null;
-        activeLabel.textContent = activeBtn?.textContent?.trim() || _activeFormat;
-    }
-    const formatSelect = $('format') as HTMLSelectElement | null;
-    if (formatSelect && formatSelect.value !== _activeFormat) {
-        formatSelect.value = _activeFormat;
-    }
-}
-
-const log = (msg: string): void => {
+/** Only the explicitly opened Popup inspects its active tab; URLs never establish Account identity. */
+export function platformForTabUrl(url: string | undefined): SourcePlatform | null {
+    if (!url) return null;
     try {
-        if (typeof console !== 'undefined') console.log('[GemExporter:popup]', msg);
-        const el = document.getElementById('log');
-        if (el) {
-            el.style.display = '';
-            const line = document.createElement('div');
-            line.textContent = msg;
-            el.appendChild(line);
-            el.scrollTop = el.scrollHeight;
-        }
-    } catch {}
-};
-
-function updateUiForTabState(isGemini: boolean): void {
-    const btnCurrent = $('btnCurrent') as HTMLButtonElement | null;
-    const notGeminiNotice = $('notGeminiNotice');
-    const currentChatContent = $('currentChatContent');
-    const countBadge = $('countBadge');
-    const i18n = getI18n();
-
-    if (!isGemini) {
-        const notGeminiTip = i18n.t('popupNotGemini');
-        if (btnCurrent) {
-            btnCurrent.disabled = true;
-            btnCurrent.title = notGeminiTip;
-        }
-        if (notGeminiNotice) notGeminiNotice.style.display = '';
-        if (currentChatContent) currentChatContent.style.display = 'none';
-        if (countBadge) countBadge.classList.add('inactive');
-    } else {
-        if (btnCurrent) {
-            btnCurrent.disabled = false;
-            btnCurrent.title = '';
-        }
-        if (notGeminiNotice) notGeminiNotice.style.display = 'none';
-        if (currentChatContent) currentChatContent.style.display = '';
-        if (countBadge) countBadge.classList.remove('inactive');
-    }
+        const origin = new URL(url).origin;
+        return ACTIVE_SOURCE_PLATFORMS.find(platform =>
+            PLATFORM_HOSTS[platform].pages.some(page => new URL(page).origin === origin)) ?? null;
+    } catch { return null; }
 }
 
-async function updateCount(): Promise<void> {
-    try {
-        let slot = 'u0';
-        let isGemini = false;
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-        if (tab?.url && isGeminiUrl(tab.url)) {
-            isGemini = true;
-            slot = detectSlotFromUrl(tab.url);
-            _activeSlot = slot;
-            _activeConvId = extractConversationIdFromUrl(tab.url);
-        } else {
-            _activeConvId = null;
-        }
-        updateUiForTabState(isGemini);
-
-        const currentChatTitleEl = $('currentChatTitle');
-        const chatTurnBadgeEl = $('chatTurnBadge');
-        const i18n = getI18n();
-
-        if (isGemini && _activeConvId) {
-            const list = getStorage() ? await getStorage().getConversations(slot) : [];
-            const found = list.find((c: any) => c.id === _activeConvId || c.id === `c_${_activeConvId}`);
-            if (found && found.title) {
-                _activeChatTitle = cleanTitle(found.title);
-            } else if (tab?.title) {
-                _activeChatTitle = cleanTitle(tab.title.replace(/ - Gemini$/, ''));
-            } else {
-                _activeChatTitle = _activeConvId;
-            }
-
-            if (currentChatTitleEl) {
-                currentChatTitleEl.textContent = _activeChatTitle;
-                currentChatTitleEl.title = _activeChatTitle;
-            }
-
-            const msgCount = found?.messageCount || found?.messages?.length || 0;
-            if (chatTurnBadgeEl) {
-                chatTurnBadgeEl.textContent = msgCount > 0
-                    ? (i18n.t('chatMessagesCount', msgCount))
-                    : (i18n.t('chatNoMessages'));
-            }
-        } else if (isGemini) {
-            if (currentChatTitleEl) {
-                currentChatTitleEl.textContent = i18n.t('chatNoMessages');
-            }
-            if (chatTurnBadgeEl) {
-                chatTurnBadgeEl.textContent = i18n.t('chatNoMessages');
-            }
-        }
-
-        let count = 0;
-        const convs = await getStorage().getConversations(slot);
-        count = convs.length;
-        if (!count) {
-            const syncInfo = await getStorage().getLastSync(slot);
-            count = syncInfo?.count || 0;
-        }
-        const badge = $('countBadge');
-        if (badge) {
-            const text = i18n.t('syncedBadge', count);
-            const label = slot === 'u0' ? text : `${text} (${slot.toUpperCase()})`;
-            const offlineLabel = i18n.t('badgeOffline');
-            badge.textContent = isGemini ? label : `${label} (${offlineLabel})`;
-        }
-    } catch (e) {
-        console.warn('[popup] updateCount err', e);
+/** Current source identity comes only from trusted Content; never infer Account from a tab URL. */
+async function readActiveSource(activeTab?: chrome.tabs.Tab): Promise<{ accountId: string; key: ConversationKey | null } | null> {
+    const tab = activeTab ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+    if (tab?.id === undefined) return null;
+    const expectedProvider = platformForTabUrl(tab.url);
+    if (!expectedProvider) return null;
+    const response: unknown = await sendTabMessage(tab.id, { action: 'getAccountContext' }, 3000);
+    if (!response || typeof response !== 'object' || !('ok' in response) || response.ok !== true
+        || !('accountContext' in response) || !response.accountContext || typeof response.accountContext !== 'object')
+        return null;
+    const context = response.accountContext;
+    if (!('accountId' in context) || !isAccountId(context.accountId)
+        || !('providerId' in context) || context.providerId !== expectedProvider) return null;
+    const rawId = 'conversationId' in response ? response.conversationId : null;
+    let key: ConversationKey | null = null;
+    if (typeof rawId === 'string') {
+        try { key = conversationKey(context.accountId, rawId); }
+        catch { /* A malformed conversation ID must not discard the verified Account. */ }
     }
+    return { accountId: context.accountId, key };
 }
 
-const handleLangChange = async (targetLang: string): Promise<void> => {
-    const i18n = getI18n();
-    if (i18n && typeof i18n.setLang === 'function') {
-        await i18n.setLang(targetLang);
-        document.documentElement.lang = targetLang === 'zh' ? 'zh-CN' : 'en';
-        if (typeof i18n.applyI18n === 'function') i18n.applyI18n();
-        if (typeof i18n.applyLangToggleUI === 'function') i18n.applyLangToggleUI();
-        const isDev = document.body.classList.contains('dev-mode');
-        updateFormatTabsUI(_activeFormat, isDev);
-        await updateCount();
-    }
-};
+export async function readActiveKey(activeTab?: chrome.tabs.Tab): Promise<ConversationKey | null> {
+    return (await readActiveSource(activeTab))?.key ?? null;
+}
 
-function initPopupEvents(): void {
-    const langToggle = $('langToggle') as HTMLInputElement | null;
-    langToggle?.addEventListener('change', (e: Event) => {
-        void handleLangChange((e.target as HTMLInputElement).checked ? 'en' : 'zh');
-    });
-
-    $('labelLangZh')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (langToggle) langToggle.checked = false;
-        void handleLangChange('zh');
-    });
-
-    $('labelLangEn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (langToggle) langToggle.checked = true;
-        void handleLangChange('en');
-    });
-
-    $('langTogglePill')?.addEventListener('click', (e) => {
-        const target = e.target as HTMLElement | null;
-        if (target && (target.id === 'langToggle' || target.id === 'labelLangZh' || target.id === 'labelLangEn')) {
-            return;
+export async function initPopup(): Promise<void> {
+    const button = control('button', 'btnCurrent');
+    const status = el('status');
+    let currentStatus: (() => string) | null = null;
+    const showStatus = (message: () => string) => { currentStatus = message; status.textContent = message(); };
+    const showError = (error: unknown) => {
+        console.error('[Popup]', error);
+        showStatus(() => errorText(error));
+    };
+    let settings: GlobalSettings;
+    let key: ConversationKey | null = null;
+    let indexTitle: string | null = null;
+    let identityLoaded = false;
+    let busy = false, active = true;
+    let themeSaving = false;
+    let permissionPlatform: SourcePlatform | null = null;
+    let stopPermission: (() => void) | null = null;
+    const buttons = [...document.getElementsByTagName('button')].filter(button => button.dataset.format !== undefined);
+    const formatName: Record<GlobalSettings['defaultFormat'], string> = { markdown: 'Markdown', html: 'HTML', pdf: 'PDF', docx: 'Word', json: 'JSON' };
+    const render = () => {
+        labelPage();
+        if (permissionPlatform) {
+            el('popupPermissionTitle').textContent = AUTHORIZATION_STEP.title();
+            el('popupPermissionDescription').textContent = AUTHORIZATION_STEP.description();
         }
-        const i18n = getI18n();
-        const current = i18n && typeof i18n.getLang === 'function' ? i18n.getLang() : 'zh';
-        const nextLang = current === 'zh' ? 'en' : 'zh';
-        if (langToggle) langToggle.checked = (nextLang === 'en');
-        void handleLangChange(nextLang);
-    });
-
-    const formatStore = __resolveModule('FormatStore', FormatStore);
-    const formatSelect = $('format') as HTMLSelectElement | null;
-    if (formatStore && formatStore.loadFormat) {
-        void formatStore.loadFormat(formatSelect).then(({ format, isDev }: { format: string; isDev: boolean }) => {
-            if (isDev) document.body.classList.add('dev-mode');
-            updateFormatTabsUI(format, isDev);
-        });
-    }
-
-    const tabBtns = document.querySelectorAll('#formatTabs .tab-btn') as NodeListOf<HTMLButtonElement>;
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const val = btn.getAttribute('data-value');
-            if (val) {
-                const fStore = __resolveModule('FormatStore', FormatStore);
-                if (fStore && typeof fStore.saveFormat === 'function') {
-                    await fStore.saveFormat(val);
-                }
-                const isDev = document.body.classList.contains('dev-mode');
-                updateFormatTabsUI(val, isDev);
-            }
-        });
-    });
-
-    formatSelect?.addEventListener('change', (e: Event) => {
-        const val = (e.target as HTMLSelectElement).value;
-        const fStore = __resolveModule('FormatStore', FormatStore);
-        if (fStore && typeof fStore.saveFormat === 'function') {
-            void fStore.saveFormat(val);
+        labelThemeToggle(control('button', 'btnThemeToggle'), settings);
+        // Appearance is independent of exporting or updating another preference.
+        control('button', 'btnThemeToggle').disabled = !settings || themeSaving;
+        if (identityLoaded) el('currentChatTitle').textContent = indexTitle || (key
+            ? text('Current conversation', '当前对话')
+            : text('No current supported conversation', '当前没有受支持的对话'));
+        button.disabled = busy || !key;
+        for (const btn of buttons) {
+            const current = btn.dataset.format === settings?.defaultFormat;
+            btn.disabled = busy || !settings;
+            btn.classList.toggle('active', current);
+            btn.setAttribute('aria-pressed', String(current));
         }
-        const isDev = document.body.classList.contains('dev-mode');
-        updateFormatTabsUI(val, isDev);
-    });
-
-    $('btnOptions')?.addEventListener('click', () => chrome.runtime.openOptionsPage());
-
-    let __exportingCurrentPage = false;
-    $('btnCurrent')?.addEventListener('click', async () => {
-        const btnCurrentEl = $('btnCurrent') as HTMLButtonElement | null;
-        const i18n = getI18n();
-        if (__exportingCurrentPage) {
-            log(i18n && typeof i18n.t === 'function' ? i18n.t('popupExportBusy') : '正在导出当前页，请稍候…');
-            return;
+        if (settings) {
+            el('activeFormatLabel').textContent = formatName[settings.defaultFormat];
         }
-        __exportingCurrentPage = true;
-        if (btnCurrentEl) btnCurrentEl.disabled = true;
-
-        const __releaseExportGuard = (): void => {
-            __exportingCurrentPage = false;
-            if (btnCurrentEl) btnCurrentEl.disabled = false;
-        };
-
-        const currentFormatSelect = $('format') as HTMLSelectElement | null;
-        let format: string = _activeFormat || currentFormatSelect?.value || 'markdown';
-        ProgressView.show(10);
-
-        try {
-            if (!_activeConvId) {
-                log(i18n.t('popupNoChatId'));
-                __releaseExportGuard();
-                return;
-            }
-            if (format === 'pdf') {
-                log(i18n.t('popupPdfUseOptions'));
-                __releaseExportGuard();
-                return;
-            }
-            sendTypedMessage({ action: 'fetchChat', conversationId: _activeConvId, accountSlot: _activeSlot }, 40000).then(async (res: any) => {
-                try {
-                    if (!res || !res.success) {
-                        log(i18n.t('popupFetchFailed', res?.error || '未知错误'));
-                        return;
-                    }
-
-                    ProgressView.update(80);
-                    const chat = res.data || res;
-                    if (!chat.id) chat.id = _activeConvId;
-                    chat.title = cleanTitle(chat.title || _activeChatTitle);
-
-                    let formatted;
-                    if (format === 'html') {
-                        formatted = await ChatFormatter.formatHtmlCanonical(chat);
-                    } else if (format === 'markdown') {
-                        formatted = await ChatFormatter.formatMarkdownCanonical(chat);
-                    } else {
-                        formatted = ChatFormatter.formatContent(chat, format);
-                    }
-                    const fileName = buildExportFileName(chat.title || chat.id, _activeConvId, formatted.ext);
-                    const blob = new Blob([formatted.content], { type: formatted.mime });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = fileName;
-                    a.click();
-                    setTimeout(() => URL.revokeObjectURL(url), 3000);
-
-                    ProgressView.complete();
-                    log(i18n.t('popupExported', fileName, chat.messages?.length || 0));
-                } finally {
-                    __releaseExportGuard();
-                }
-            }).catch((err: any) => {
-                __releaseExportGuard();
-                log(i18n.t('popupFetchFailed', err?.message || String(err)));
+        if (currentStatus) status.textContent = currentStatus();
+    };
+    const refresh = async () => { settings = await readSettings(); if (active) render(); };
+    const stop = observeSettings(() => { void refresh().catch(e => { showError(e); }); });
+    window.addEventListener('pagehide', () => { active = false; stop(); stopPermission?.(); }, { once: true });
+    el('btnOptions').addEventListener('click', () => {
+        void readActiveSource().catch(() => null).then(source =>
+            chrome.runtime.sendMessage({ action: 'openOptions', accountId: source?.accountId ?? null }))
+            .catch(showError);
+    });
+    const changeSettings = (patch: Partial<GlobalSettings>) => {
+        if (busy) return;
+        const prior = settings;
+        busy = true; settings = { ...settings, ...patch }; useSettings(settings); render();
+        void updateSettings(patch).then(refresh).catch(e => {
+            settings = prior; useSettings(prior); showError(e);
+        }).finally(() => { busy = false; render(); });
+    };
+    control('button', 'btnThemeToggle').addEventListener('click', () => {
+        if (!settings || themeSaving) return;
+        const previousTheme = settings.theme;
+        const theme = previousTheme === 'light' ? 'dark' : 'light';
+        themeSaving = true;
+        settings = { ...settings, theme };
+        useSettings(settings); render();
+        void updateSettings({ theme }).then(refresh)
+            .catch(error => {
+                settings = { ...settings, theme: previousTheme };
+                useSettings(settings);
+                showError(error);
+            })
+            .finally(() => { themeSaving = false; render(); });
+    });
+    for (const btn of buttons) btn.addEventListener('click', () => {
+        const format = EXPORT_FORMATS.find(value => value === btn.dataset.format);
+        if (format) changeSettings({ defaultFormat: format });
+    });
+    button.addEventListener('click', () => {
+        if (busy || !key || !settings) return;
+        const format = settings.defaultFormat;
+        // Local Font Access starts inside this gesture, before any await.
+        const fonts = format === 'pdf' ? warmLocalFontCache() : Promise.resolve();
+        busy = true; render();
+        const backoff = createBackoffNotice();
+        const exportMessage = () => backoff.message() ?? text('Preparing export…', '正在准备导出…');
+        showStatus(exportMessage);
+        const backoffTimer = setInterval(() => { if (active && backoff.message()) showStatus(exportMessage); }, 1000);
+        void (async () => {
+            const [current, latest] = await Promise.all([readActiveKey(), readSettings(), fonts]);
+            if (!current) { key = null; throw new Error('No trusted current conversation'); }
+            const result = await runExport({ keys: [current], format, delivery: 'browserDownload',
+                includeAssets: latest.includeAssets, skipUnchanged: false }, {
+                onDiagnostic: diagnostic => {
+                    backoff.observe(diagnostic);
+                    if (active && (['CHATGPT_BACKOFF_WAIT', 'CHATGPT_BACKOFF_END', 'CHATGPT_RATE_LIMITED', 'CHATGPT_COOLDOWN_ACTIVE'].includes(diagnostic.code))) showStatus(exportMessage);
+                },
             });
-        } catch (e: any) {
-            __releaseExportGuard();
-            log(i18n.t('popupExportError', e?.message));
-        }
+            if (!active) return;
+            showStatus(() => result.rateLimitedUntil ? exportSummary(result) : result.aborted ? text('Cancelled', '已取消')
+                : result.failed.length || !result.exported ? text('Export failed. Try Options.', '导出失败，请在工作台重试。')
+                : result.partial ? exportSummary(result)
+                : text('Download initiated', '已发起下载'));
+            if (result.exported > 0 && !result.partial && !result.failed.length && !result.aborted) void showRatingPromptIfEligible().catch(error => console.warn('[Rating prompt]', error));
+        })().catch(e => { if (active) showError(e); })
+            .finally(() => {
+                clearInterval(backoffTimer);
+                if (active) { busy = false; render(); }
+            });
     });
-
-    chrome.runtime.onMessage.addListener((msg: any) => {
-        const i18n = getI18n();
-        if (msg.action === 'syncUpdate') {
-            const badge = $('countBadge');
-            if (badge) badge.textContent = i18n.t('syncedBadge', msg.count);
-        }
-        if (msg.action === 'exportProgress' || msg.action === 'scanProgress') {
-            let pct = typeof msg.percent === 'number' ? msg.percent : (msg.total ? Math.floor((msg.done / msg.total) * 100) : 50);
-            ProgressView.update(Math.min(Math.max(pct, 5), 100));
-            if (msg.title) log(msg.title);
-        }
-    });
-
-    const i18n = getI18n();
-    i18n.initLanguage().then(async () => {
-        i18n.applyI18n();
-        i18n.applyLangToggleUI();
-        i18n.onLanguageChange(() => i18n.applyLangToggleUI());
+    const showCurrentConversation = async (tab?: chrome.tabs.Tab) => {
+        permissionPlatform = null;
+        stopPermission?.();
+        stopPermission = null;
+        key = null;
+        indexTitle = null;
         try {
-            await ensureStorageReady();
-            void updateCount();
-        } catch (e) {
-            console.warn('[popup] storage not ready', e);
+            key = await readActiveKey(tab);
+            const index = key ? await getIndex(key) : null;
+            indexTitle = index?.title || null;
+            if (!key) showStatus(() => text('Open a supported conversation first', '请先打开受支持的对话'));
+        } catch (error) {
+            showError(error);
         }
-    });
-
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-        chrome.storage.onChanged.addListener((changes, area) => {
-            if (area === 'local') {
-                if (changes[STORAGE_KEYS.LANG]) {
-                    const newLang = String(changes[STORAGE_KEYS.LANG].newValue || 'zh');
-                    const i18nInst = getI18n();
-                    if (i18nInst && typeof i18nInst.getLang === 'function' && i18nInst.getLang() !== newLang) {
-                        void handleLangChange(newLang);
-                    }
-                }
-                if (changes[STORAGE_KEYS.FORMAT]) {
-                    const newFmt = String(changes[STORAGE_KEYS.FORMAT].newValue || 'markdown');
-                    const isDev = document.body.classList.contains('dev-mode');
-                    updateFormatTabsUI(newFmt, isDev);
-                }
-                if (changes[STORAGE_KEYS.DEV_MODE]) {
-                    const isDev = !!changes[STORAGE_KEYS.DEV_MODE].newValue;
-                    if (isDev) document.body.classList.add('dev-mode');
-                    else document.body.classList.remove('dev-mode');
-                    updateFormatTabsUI(_activeFormat, isDev);
-                }
-                if (changes.gemini_conversations || changes.gemini_last_count || changes.gemini_last_sync) {
-                    void updateCount();
-                }
-            }
-        });
+        if (!active) return;
+        identityLoaded = true;
+        el('popupPermission').hidden = true;
+        el('popupMain').hidden = false;
+        render();
+    };
+    render();
+    try {
+        await ensureV2Ready();
+        await refresh();
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const platform = platformForTabUrl(tab?.url);
+        if (platform && !await hasPlatformAccess(platform)) {
+            permissionPlatform = platform;
+            el('popupMain').hidden = true;
+            el('popupPermission').hidden = false;
+            stopPermission = mountPlatformAuthorization(el('popupPermissionControls'), {
+                selectedPlatforms: [platform],
+                granted: selected => {
+                    if (selected.includes(platform)) void showCurrentConversation(tab);
+                },
+            });
+        } else {
+            await showCurrentConversation(tab);
+        }
+    } catch (error) {
+        el('popupPermission').hidden = true;
+        el('popupMain').hidden = false;
+        showError(error);
     }
-    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.onUpdated) {
-        chrome.tabs.onUpdated.addListener(() => updateCount());
-    }
+    render();
 }
-
-initPopupEvents();
-
-export {};
+const start = () => { void initPopup(); };
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+else start();

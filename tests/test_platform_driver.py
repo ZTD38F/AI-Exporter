@@ -65,7 +65,6 @@ class ConcreteTestDriver(ChatPlatformDriver):
         self,
         prompt_text: str,
         max_wait: int = 300,
-        is_image: bool = False,
         cooldown_seconds: float = 6.0
     ) -> List[Any]:
         return []

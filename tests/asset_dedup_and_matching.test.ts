@@ -1,179 +1,82 @@
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
+import { useIndexStorage } from './helpers/indexStorage.js';
+useIndexStorage();
+import type { DomainAsset } from '../src/l2/conversationDetail.js';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { importTakeout } from '../src/l1/imports/takeout/importTakeout.js';
+import { createSourceResourceContext } from '../src/l1/resources/sourceResources.js';
+import { getDetail } from '../src/l3a/storageService.js';
+import { prepareExportResources } from '../src/application/export/prepareExportResources.js';
+import { buildExportFiles } from '../src/l4/packaging/index.js';
 
-const TakeoutEngine = require('../src/core/engine/takeoutEngine.js');
-const { GeminiResponseParserClass } = require('../src/core/api/geminiParser.js');
-const { BatchWorker } = require('../src/core/engine/export/batchWorker.js');
+test('asset_dedup - ZIP import preserves exact image bytes and per-turn Domain ownership', async () => {
+    const slot = '10000000-0000-4000-8000-000000000001';
+    const id = 'chat_multi_img_123';
+    const g = globalThis;
+    const resources = createSourceResourceContext();
+    const key = { accountId: slot, conversationId: id };
+    const originalJSZip = Object.getOwnPropertyDescriptor(g, 'JSZip');
+    const JSZip = require('../lib/jszip.min.js');
+    Object.defineProperty(g, 'JSZip', { value: JSZip, configurable: true, writable: true });
 
-test('asset_dedup - Takeout getTakeoutFallbackMedia retrieves exact image among multiple image-*.png files', async () => {
-    (global as any).JSZip = require('../lib/jszip.min.js');
-    const zip = new (global as any).JSZip();
+    try {
+        const zip = new JSZip();
+        const images = [
+            { filename: 'image-adb659a48f83024b.png', bytes: [10, 20, 30] },
+            { filename: 'image-088981d4885e6166.png', bytes: [40, 50, 60] },
+            { filename: 'image-b70178f36ab8ed17.png', bytes: [70, 80, 90] },
+        ];
+        const html = `<html><body>${images.map((image, i) => `
+            <div class="outer-cell">
+              <a href="https://gemini.google.com/app/${id}">Chat Multi</a>
+              <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">Prompted Question ${i + 1}<br>
+                Attached 1 file.<br>
+                - <a href="${image.filename}">image.png</a><br>
+                <p>Response ${i + 1}</p></div>
+            </div>`).join('')}</body></html>`;
+        zip.file('Takeout/Gemini/MyActivity.html', html);
+        for (const image of images) zip.file(`Takeout/Gemini/${image.filename}`, new Uint8Array(image.bytes));
+        zip.file('Takeout/Gemini/unreferenced.png', new Uint8Array([97, 98, 99]));
 
-    const htmlContent = `
-    <html><body>
-      <div class="outer-cell">
-        <a href="https://gemini.google.com/app/chat_multi_img_123">Chat Multi</a>
-        Prompted Question 1<br>
-        Attached 1 file.<br>
-        - <a href="image-adb659a48f83024b.png">image.png</a><br>
-        <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1"><p>Response 1</p></div>
-      </div>
-      <div class="outer-cell">
-        <a href="https://gemini.google.com/app/chat_multi_img_123">Chat Multi</a>
-        Prompted Question 2<br>
-        Attached 1 file.<br>
-        - <a href="image-088981d4885e6166.png">image.png</a><br>
-        <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1"><p>Response 2</p></div>
-      </div>
-      <div class="outer-cell">
-        <a href="https://gemini.google.com/app/chat_multi_img_123">Chat Multi</a>
-        Prompted Question 3<br>
-        Attached 1 file.<br>
-        - <a href="image-b70178f36ab8ed17.png">image.png</a><br>
-        <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1"><p>Response 3</p></div>
-      </div>
-    </body></html>
-    `;
-
-    zip.file('Takeout/Gemini/MyActivity.html', htmlContent);
-    const data1 = new Uint8Array([10, 20, 30]);
-    const data2 = new Uint8Array([40, 50, 60]);
-    const data3 = new Uint8Array([70, 80, 90]);
-    zip.file('Takeout/Gemini/image-adb659a48f83024b.png', data1);
-    zip.file('Takeout/Gemini/image-088981d4885e6166.png', data2);
-    zip.file('Takeout/Gemini/image-b70178f36ab8ed17.png', data3);
-
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-    TakeoutEngine.clearTakeoutData();
-    await TakeoutEngine.parseTakeoutZip(zipBuffer);
-
-    // 1. Exact requests must return respective distinct byte buffers
-    const res1 = await TakeoutEngine.getTakeoutFallbackMedia('chat_multi_img_123', 'image-adb659a48f83024b.png');
-    assert.ok(res1, 'Should find image-adb659a48f83024b.png');
-    assert.deepStrictEqual(Array.from(res1), [10, 20, 30]);
-
-    const res2 = await TakeoutEngine.getTakeoutFallbackMedia('chat_multi_img_123', 'image-088981d4885e6166.png');
-    assert.ok(res2, 'Should find image-088981d4885e6166.png');
-    assert.deepStrictEqual(Array.from(res2), [40, 50, 60], 'Should NOT return data of first image');
-
-    const res3 = await TakeoutEngine.getTakeoutFallbackMedia('chat_multi_img_123', 'image-b70178f36ab8ed17.png');
-    assert.ok(res3, 'Should find image-b70178f36ab8ed17.png');
-    assert.deepStrictEqual(Array.from(res3), [70, 80, 90], 'Should NOT return data of first image');
-
-    // 2. Ambiguous generic request 'image.png' when multiple media exist must return null (not hijack first image)
-    const resGeneric = await TakeoutEngine.getTakeoutFallbackMedia('chat_multi_img_123', 'image.png');
-    assert.strictEqual(resGeneric, null, 'Must NOT arbitrarily pick first image when multiple exist');
-});
-
-test('asset_dedup - parseDetail across multiple turns with same rawFileName assigns distinct unique localNames', () => {
-    // 3 turns where each turn has user image with rawFileName "image.png"
-    const turns = [
-        [
-            ['c_testchat998877', 'r1'],
-            null,
-            [['Question 1', null, null, null, null, [null, 1, 'image.png', 'https://lh3.googleusercontent.com/user_img_1', null, 'tok1']]],
-            [[['rc1', [['Answer 1']]]]]
-        ],
-        [
-            ['c_testchat998877', 'r2'],
-            null,
-            [['Question 2', null, null, null, null, [null, 1, 'image.png', 'https://lh3.googleusercontent.com/user_img_2', null, 'tok2']]],
-            [[['rc2', [['Answer 2']]]]]
-        ],
-        [
-            ['c_testchat998877', 'r3'],
-            null,
-            [['Question 3', null, null, null, null, [null, 1, 'image.png', 'https://lh3.googleusercontent.com/user_img_3', null, 'tok3']]],
-            [[['rc3', [['Answer 3']]]]]
-        ]
-    ];
-
-    const inner = [turns, null, 'Multi-Turn Sudoku'];
-    const top = [['wrb.fr', 'hNvQHb', JSON.stringify(inner)]];
-    const text = `)]}'\n\n${JSON.stringify(top)}`;
-
-    const parsed = GeminiResponseParserClass.parseDetail(text, 'testchat998877');
-    assert.ok(parsed && parsed.messages, 'parseDetail should return messages');
-
-    const userMsgs = parsed.messages.filter((m: any) => m.role === 'user');
-    assert.strictEqual(userMsgs.length, 3);
-
-    const localNames = userMsgs.map((m: any) => m.images[0].localName);
-    assert.strictEqual(localNames.length, 3);
-
-    // All localNames must be distinct
-    const nameSet = new Set(localNames);
-    assert.strictEqual(nameSet.size, 3, `Expected 3 unique localNames, got ${JSON.stringify(localNames)}`);
-});
-
-test('asset_dedup - batchWorker resolveChat only supplements genuine AI generated media', async () => {
-    const mockTakeoutEngine = {
-        getTakeoutOfflineChat: () => null,
-        getTakeoutMediaForChat: () => [
-            { filename: 'user_upload_photo.png', isGenerated: false },
-            { filename: 'ai_artwork_generated.png', isGenerated: true }
-        ]
-    };
-
-    const chat = {
-        id: 'test_chat_batch_worker',
-        title: 'Art Creation',
-        messages: [
-            { role: 'user', content: 'Draw an artwork' },
-            { role: 'model', content: 'Here is your artwork:' }
-        ]
-    };
-
-    const requested = { id: 'test_chat_batch_worker', title: 'Art Creation' };
-    const res = await BatchWorker.resolveChat(chat, requested, null, mockTakeoutEngine, 'u0');
-
-    assert.ok(res.chat, 'resolveChat should return chat');
-    const modelMsg = res.chat.messages.find((m: any) => m.role === 'model');
-    assert.ok(modelMsg, 'Model message must exist');
-
-    // Should include ai_artwork_generated.png as generated media
-    assert.ok(modelMsg.content.includes('ai_artwork_generated.png'), 'Generated media should be added');
-
-    // Should NOT include user_upload_photo.png as generated media
-    assert.ok(!modelMsg.content.includes('user_upload_photo.png'), 'User upload should NOT be added as generated image');
-});
-
-test('asset_dedup - AssetPipeline preserves byteOffset and byteLength for sliced buffers', async () => {
-    const { AssetPipeline } = require('../src/core/engine/assetPipeline.js');
-    let writtenBytes: any = null;
-    let writtenPath = '';
-
-    const mockWriter = {
-        writeFile: async (path: string, content: any) => {
-            writtenPath = path;
-            writtenBytes = content;
-            return path;
+        const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+        const imported = await importTakeout(zipBuffer as unknown as File, slot, undefined, resources);
+        assert.equal(imported.imported, 1);
+        const detail = await getDetail(key);
+        assert.ok(detail, 'real ZIP import must persist the admitted Domain Detail');
+        assert.equal(detail.assets.length, 3, 'unreferenced files must not become Domain assets');
+        const userMessages = detail.messages.filter(message => message.role === 'user');
+        assert.equal(userMessages.length, images.length);
+        const owned = new Set<string>();
+        for (let i = 0; i < images.length; i++) {
+            const ids = userMessages[i].attachmentIds || [];
+            assert.strictEqual(ids.length, 1, `turn ${i + 1} must own one source image`);
+            assert.strictEqual(owned.has(ids[0]), false, 'distinct source images must not share an asset ID');
+            owned.add(ids[0]);
+            const asset: DomainAsset | undefined = detail.assets.find(candidate => candidate.id === ids[0]);
+            assert.ok(asset);
+            assert.deepEqual((await resources.acquire(key, asset)).bytes, new Uint8Array(images[i].bytes),
+                'each turn must resolve its exact archive bytes, not a similarly named image');
         }
-    };
-
-    const pipeline = new AssetPipeline({
-        useZip: true,
-        writer: mockWriter,
-        fetchAssetDelegate: async () => {
-            const slab = new Uint8Array([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
-            const slice = new Uint8Array(slab.buffer, 3, 4);
-            return {
-                success: true,
-                dataBuffer: slice,
-                mime: 'image/png'
-            };
+        for (const sourceUri of ['image.png', 'unreferenced.png']) {
+            await assert.rejects(resources.acquire(key, { id: '', kind: 'image', sourceUri }), /No supported source locator/,
+                'generic or unused archive names must not select a sibling resource');
         }
-    });
-
-    const item = { localName: 'assets/sliced.png', url: 'https://example.com/sliced.png' };
-    const chat = { id: 'chat1', title: 'Test Chat' };
-    const res = await pipeline.processAsset(item, chat, { isImage: true });
-
-    assert.strictEqual(res.saved, true);
-    assert.strictEqual(writtenPath, 'assets/sliced.png');
-    assert.ok(writtenBytes instanceof Uint8Array, 'Written content must be Uint8Array');
-    assert.strictEqual(writtenBytes.byteLength, 4, `Expected byteLength 4, got ${writtenBytes.byteLength}`);
-    assert.deepStrictEqual(Array.from(writtenBytes), [30, 40, 50, 60], 'Should only write slice contents, not slab');
+    } finally {
+        resources.release();
+        if (originalJSZip) Object.defineProperty(g, 'JSZip', originalJSZip);
+        else Reflect.deleteProperty(g, 'JSZip');
+    }
 });
 
+test('asset_dedup - resource preparation and Packaging preserve sliced buffer bounds', async () => {
+    const slab = new Uint8Array([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
+    const prepared = await prepareExportResources([{ id: 'sliced', kind: 'image', mediaType: 'image/png' }],
+        new Set(['sliced']), async () => ({ bytes: new Uint8Array(slab.buffer, 3, 4) }));
+    const files = buildExportFiles('markdown', {
+        fileName: 'chat.md', resources: { sliced: 'assets/sliced.png' }, externalResourceIds: new Set(['sliced']),
+    }, 'conversation', prepared);
+    const resource = files.find(file => file.fileName === 'assets/sliced.png');
+    assert.ok(resource?.content instanceof Uint8Array);
+    assert.equal(resource.content.byteLength, 4);
+    assert.deepEqual(Array.from(resource.content), [30, 40, 50, 60]);
+});

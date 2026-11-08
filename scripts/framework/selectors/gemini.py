@@ -10,7 +10,9 @@ class GeminiSelectors:
     """Gemini 网页端 (gemini.google.com) DOM 选择器中央注册表 — 单点修改，全局生效"""
 
     # ─── 输入与发帖区域 ───
-    EDITOR: str = 'rich-textarea div.ql-editor, div[contenteditable="true"]'
+    # Canvas documents and Quill clipboard buffers are also editable. Only the
+    # prompt textbox may receive automated messages.
+    EDITOR: str = 'rich-textarea [role="textbox"][contenteditable="true"]'
     FILE_PREVIEW: str = 'uploader-file-preview-container, uploader-file-preview, gem-attachment, .uploader-file-preview'
     SEND_BTN: str = 'button[aria-label*="Send" i], button[aria-label*="发送"], gem-icon-button.send-button button, button.send-button'
     SEND_BTN_NOT_STOP: str = 'button[aria-label*="Send"]:not(.stop), gem-icon-button.send-button:not(.stop)'
@@ -19,6 +21,7 @@ class GeminiSelectors:
     # ─── 流式生成与状态指示器 ───
     STREAMING_INDICATORS: str = '.streaming-text, .loading-dots, [data-is-streaming="true"], spark-progress'
     MODEL_RESPONSE: str = 'model-response'
+    MODEL_RESPONSE_BODY: str = 'model-response-content'
     MODEL_RESPONSE_ALL: str = (
         'message-content.model-response-text, model-response, [data-test-id="model-response"], '
         '.model-response, message-content.model-message, .response-container, '
@@ -45,13 +48,14 @@ class GeminiSelectors:
 
     # ─── 弹窗与确认交互 ───
     DIALOG: str = 'mat-dialog-container, [role="dialog"], .mat-mdc-dialog-container'
-    RETRY_BTN: str = 'button[aria-label*="Retry"], button[aria-label*="重试"]'
+    RETRY_BTN: str = ('button[aria-label*="Retry"], button[aria-label*="重试"], '
+                      'response-failure-notice [data-test-id="banner-action-button"] button')
     TOAST: str = 'toast-content, .toast, .error-message, [role="alert"]'
 
     # ─── 模型与推理开关菜单 ───
     MODE_MENU_BTN: str = '[data-test-id="bard-mode-menu-button"], button.input-area-switch'
     MODE_MENU: str = 'gem-menu[data-test-id="gem-mode-menu"], [role="menu"]'
-    MODE_MENU_ITEM: str = 'gem-menu-item, [role="menuitem"], [role="menuitemcheckbox"]'
+    MODE_MENU_ITEM: str = 'gem-menu-item, [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]'
 
     # ─── 页面端悬浮导出徽标 ───
     INPAGE_EXPORT_BADGE: str = '#geminiExportBadge, #gemini-export-badge, .gemini-export-badge, [data-test-id="gemini-export-badge"]'
@@ -70,15 +74,12 @@ class WorkbenchSelectors:
     ITEM: str = '#list .item'
     CHECKBOX: str = 'input[type=checkbox]'
     CHECKED_CHECKBOX: str = '#list input[type=checkbox]:checked'
-    BADGE_UPDATED: str = '.badge-updated'
-    BADGE_EXPORTED: str = '.badge-exported'
-    ITEM_TITLE: str = '.chat-title, .title'
+    ITEM_TITLE: str = 'span'
 
     BTN_SELECT_ALL: str = '#btnSelectAll'
-    BTN_SELECT_NONE: str = '#btnSelectNone'
-    BTN_DEEP_SCAN: str = '#btnDeepScan'
+    BTN_SYNC_ALL: str = '#btnSyncAll'
     BTN_EXPORT: str = '#btnExport'
-    LOG: str = '#log'
+    LOG: str = '#status'
 
     TOUR_POPOVER: str = '.tour-popover'
     TOUR_BADGE: str = '.tour-step-badge'

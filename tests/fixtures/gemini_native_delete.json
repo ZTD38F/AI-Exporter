@@ -1,0 +1,5 @@
+{
+  "description": "Sanitized native deletion captured 2026-10-20. Successful target-bound GzXR5e returns an empty JSON result; no echoed conversation ID.",
+  "requestBody": "f.req=%5B%5B%5B%22GzXR5e%22%2C%22%5B%5C%22c_deadbeef00112233%5C%22%5D%22%2Cnull%2C%22generic%22%5D%5D%5D",
+  "responseText": ")]}'\n\n108\n[[\"wrb.fr\",\"GzXR5e\",\"[]\",null,null,null,\"generic\"],[\"di\",275],[\"af.httprm\",275,\"10000000000000000000\",10]]\n25\n[[\"e\",4,null,null,144]]\n"
+}

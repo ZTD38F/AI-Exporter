@@ -1,201 +1,233 @@
 import test from 'node:test';
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { mockAccountRegistry, mockConversationKey, assertRuntimeUnitBoundary, v2IndexFixtures } from './helpers/runtimeV2ContractMocks.js';
 
-// S2: background router fail-closed (unknown action, empty tab response).
+const Module = require('node:module');
+const root = path.resolve(__dirname, '..');
+const A = '12345678-1234-4234-8234-123456789abc';
+const B = '87654321-4321-4321-8321-cba987654321';
+const account = { id: A, providerId: 'gemini', providerAccountId: 'gaia' };
+const sender = { id: 'ext', tab: { id: 7 }, frameId: 0, url: 'https://gemini.google.com/app', documentId: 'doc-1' };
+const key = { accountId: A, conversationId: 'abcdef123456' };
 
-const msgListeners: Array<(msg: any, sender: any, sendResponse: any) => any> = [];
-const sessionData: Record<string, any> = {};
-
-// Controls what chrome.tabs.sendMessage delivers to the background.
-let tabReply: any = { success: true, data: { id: 'c_1', messages: [] } };
-let tabResponder: ((_msg: any, cb: any) => void) | null = null;
-
-(global as any).chrome = {
-    runtime: {
-        onMessage: { addListener: (fn: any) => { msgListeners.push(fn); } },
-        onInstalled: { addListener: () => {} },
-        setUninstallURL: (_u: string, cb?: any) => { if (cb) cb(); },
-        getURL: (p: string) => `chrome-extension://test/${p}`,
-        getPlatformInfo: (cb: any) => { if (cb) cb({}); },
-        sendMessage: async () => {},
-        lastError: null,
-    },
-    storage: {
-        local: {
-            get: async (_keys: any) => ({ gemini_schema_version: 1 }),
-            set: async (_obj: any) => {},
-            remove: async (_keys: any) => {},
-        },
-        session: {
-            get: async (keys: any) => {
-                if (keys === null) return { ...sessionData };
-                if (typeof keys === 'string') return { [keys]: sessionData[keys] };
-                return {};
-            },
-            set: async (obj: any) => { Object.assign(sessionData, obj); },
-            remove: async (keys: any) => {
-                const arr = Array.isArray(keys) ? keys : [keys];
-                for (const k of arr) delete sessionData[k];
-            },
-            setAccessLevel: async () => {},
-        },
-    },
-    tabs: {
-        onActivated: { addListener: () => {} },
-        onUpdated: { addListener: () => {} },
-        query: async () => [{ id: 42, url: 'https://gemini.google.com/app', active: true }],
-        sendMessage: (_tabId: number, msg: any, cb: any) => { if (tabResponder) tabResponder(msg, cb); else cb(tabReply); },
-    },
-    action: {
-        setIcon: async () => {},
-        setTitle: async () => {},
-    },
-};
-
-// tabService.ts 末尾 `module.exports = TabService` 覆盖了 esbuild 具名导出，
-// ts_register 下 `import { TabService }` 会拿到 undefined（生产 bundle 走 ESM
-// 不受影响）。沿用 p1_c_regressions.test.ts 的做法：给 require 缓存打补丁，仅用于测试。
-const tabServiceMod: any = require('../src/core/utils/tabService.js');
-if (tabServiceMod && !tabServiceMod.TabService) tabServiceMod.TabService = tabServiceMod;
-
-require('../src/background/background.ts');
-
-function lastListener() {
-    return msgListeners[msgListeners.length - 1];
+function load(file: string, stubs: Record<string, unknown> = {}) {
+    const original = Module._load;
+    const ports = { 'src/l2/accountRegistry.js': mockAccountRegistry([A, B]),
+        'src/l1/client/grok/grokSource.js': { hasGrokAccess: async () => true },
+        'src/l1/client/claude/claudeSource.js': { hasClaudeAccess: async () => true },
+        'src/runtime/capabilities/platformInjection.js': { syncAllPlatformContentScripts: async () => [] },
+        'src/l1/client/chatgpt/chatgptAccess.js': { hasChatGPTAccess: async () => true },
+        'src/l2/conversationKey.js': mockConversationKey([A, B]), ...stubs };
+    Module._load = function(request: string, parent: { filename: string }, ...args: unknown[]) {
+        const resolved = request.startsWith('.') ? path.resolve(path.dirname(parent.filename), request).replace(/\.ts$/, '.js') : request;
+        const key = Object.keys(ports).find(name => resolved === path.resolve(root, name).replace(/\.ts$/, '.js'));
+        if (key) return ports[key as keyof typeof ports];
+        if (request.startsWith('.')) assertRuntimeUnitBoundary(resolved, root);
+        return original.call(this, request, parent, ...args);
+    };
+    try {
+        const filename = path.resolve(root, file);
+        delete require.cache[require.resolve(filename)];
+        return require(filename);
+    } finally { Module._load = original; }
 }
 
-async function dispatch(msg: any, waitMs = 2000): Promise<{ responses: any[]; returned: any }> {
-    const responses: any[] = [];
-    const returned = lastListener()(msg, {}, (r: any) => { responses.push(r); });
-    const deadline = Date.now() + waitMs;
-    while (responses.length === 0 && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 25));
+function setup(t: { after: (fn: () => void) => void }, overrides: {
+    ready?: () => Promise<void>;
+    indexes?: (accountId: string) => Promise<unknown[]>;
+    export?: (key: unknown) => Promise<unknown>;
+    settings?: (patch: unknown) => Promise<void>;
+} = {}) {
+    const originalChrome = Object.getOwnPropertyDescriptor(globalThis, 'chrome');
+    const listeners: Function[] = [];
+    const effects: string[] = [];
+    let currentAccountId = A;
+    let receivedAccount: unknown;
+    const indexQueries: string[] = [];
+    (globalThis as any).chrome = {
+        runtime: {
+            id: 'ext',
+            onMessage: { addListener: (listener: Function) => { listeners.push(listener); } },
+            openOptionsPage: async () => { effects.push('openOptions'); },
+        },
+        storage: { session: { set: async (value: { openOptionsAccountId: string | null }) => {
+            effects.push('handoff:' + (value.openOptionsAccountId ?? 'none'));
+        } } },
+        tabs: {
+            create: async ({ url }: { url: string }) => {
+                assert.equal(url, 'https://gemini.google.com/app');
+                effects.push('openGemini');
+                return { id: 80 };
+            },
+            get: async (tabId: number) => ({ id: tabId, url: tabId === 80 ? 'https://gemini.google.com/app' : 'https://other.example/app' }),
+            reload: async (tabId: number) => { effects.push('reload:' + tabId); },
+            sendMessage: (tabId: number, message: unknown, options: unknown, callback: Function) => {
+                assert.equal(tabId, 7);
+                assert.deepEqual(message, { action: 'getAccountContext' });
+                assert.deepEqual(options, { frameId: 0, documentId: 'doc-1' });
+                callback({ ok: true, accountContext: { accountId: currentAccountId, providerId: 'gemini' } });
+            },
+        },
+    };
+    const security = load('src/runtime/background/contentSender.ts', {
+        'src/l3a/storageService.js': { getAccount: async (id: string) => id === A ? account : null },
+    });
+    const domainCalls: unknown[] = [], registryCalls: unknown[] = [];
+    const handlers = {
+        'src/runtime/background/domainStorageHandler.js': {
+            handleDomainIngestionMessage: (message: any, from: unknown, reply: Function) => {
+                if (message?.action !== 'domainIngest') return false;
+                domainCalls.push(message);
+                reply({ ok: true });
+                return true;
+            },
+        },
+        'src/runtime/background/accountRegistryHandler.js': {
+            handleAccountRegistryMessage: (message: any, from: unknown, reply: Function) => {
+                if (message?.action !== 'accountRegistry') return false;
+                registryCalls.push(message);
+                reply({ ok: true, value: account });
+                return true;
+            },
+        },
+        'src/runtime/background/lifecycle.js': {
+            initSessionAccessLevel: () => effects.push('initAccess'),
+            initLifecycleListeners: () => effects.push('initLifecycle'),
+            initUninstallUrl: () => effects.push('initUninstall'),
+        },
+        'src/runtime/background/tabAction.js': { initTabActionListeners: () => effects.push('initTabAction') },
+        'src/runtime/background/readiness.js': { ensureV2Ready: overrides.ready || (async () => {}) },
+        'src/runtime/background/contentSender.js': security,
+        'src/l3a/storageService.js': { getAccount: async (id: string) => id === A ? account : null,
+            listIndexes: async (id: string) => {
+            indexQueries.push(id);
+            return overrides.indexes ? overrides.indexes(id) : v2IndexFixtures(id);
+        } },
+        'src/application/settings/index.js': { updateSettings: overrides.settings || (async patch => {
+            receivedAccount = patch;
+        }) },
+        'src/runtime/background/liveSaveHandler.js': { runLiveSave: overrides.export || (async () => null) },
+    };
+    load('src/runtime/background/background.ts', handlers);
+    assert.equal(listeners.length, 1);
+    assert.deepEqual(effects.slice(0, 4), ['initAccess', 'initLifecycle', 'initUninstall', 'initTabAction']);
+    t.after(() => {
+        if (originalChrome) Object.defineProperty(globalThis, 'chrome', originalChrome);
+        else Reflect.deleteProperty(globalThis, 'chrome');
+    });
+    async function dispatch(message: unknown, origin: unknown = sender) {
+        let replied = 0;
+        let finish!: (value: any) => void;
+        const response = new Promise<any>(resolve => { finish = resolve; });
+        const handled = listeners[0](message, origin, (value: unknown) => { replied++; finish(value); });
+        if (handled !== true) return { handled, count: replied, result: undefined };
+        const result = await response;
+        await Promise.resolve();
+        assert.equal(replied, 1, 'one response for each owned action');
+        return { handled, count: replied, result };
     }
-    await new Promise((r) => setTimeout(r, 50));
-    return { responses, returned };
+    return { dispatch, listeners, effects, indexQueries, domainCalls, registryCalls,
+        getPatch: () => receivedAccount, changeAccount: (id: string) => { currentAccountId = id; } };
 }
 
-test('S2 - unknown action keeps the intentional "not for me" contract (no response)', async () => {
-    // entrypoints.test.ts locks this: background must not reject unknown
-    // actions synchronously. Senders only await responses for owned actions.
-    const { responses, returned } = await dispatch({ action: 'noSuchAction' }, 300);
-    assert.strictEqual(responses.length, 0, 'unknown actions get no response by design');
-    assert.ok(!returned, 'listener returns falsy for unowned actions');
-});
-
-test('S2 - fetchChat with undefined tab response fails closed', async () => {
-    tabReply = undefined;
-    try {
-        const { responses } = await dispatch({ action: 'fetchChat', id: 'c_1' });
-        assert.strictEqual(responses.length, 1, 'sender must get a response');
-        const r = responses[0];
-        assert.strictEqual(r.ok, false);
-        assert.strictEqual(r.success, false);
-        assert.ok(String(r.error).includes('empty response'));
-    } finally {
-        tabReply = { success: true, data: { id: 'c_1', messages: [] } };
+test('Background does not register a second v1 Batch/Abort/Scan execution path', t => {
+    const { dispatch, listeners } = setup(t);
+    for (const action of ['fetchChat', 'fetchBatch', 'cancelExport', 'abortSync', 'scanProgress', 'liveSaveViaHandle', 'domainStorage', 'unknown']) {
+        let replies = 0;
+        assert.equal(listeners[0]({ action }, sender, () => { replies++; }), false);
+        assert.equal(replies, 0);
     }
 });
 
-test('S2 - fetchChat passes a real tab response through untouched', async () => {
-    const { responses } = await dispatch({ action: 'fetchChat', id: 'c_1' });
-    assert.strictEqual(responses.length, 1);
-    assert.strictEqual(responses[0].success, true);
-    assert.strictEqual(responses[0].data.id, 'c_1');
+test('Background delegates Domain ingestion and Registry requests to exactly one owning handler', async t => {
+    const { dispatch, domainCalls, registryCalls } = setup(t);
+    const domain = { action: 'domainIngest', operation: 'indexes', accountId: A, items: [] };
+    const registry = { action: 'accountRegistry', command: 'get', accountId: A };
+    assert.deepEqual((await dispatch(domain)).result, { ok: true });
+    assert.deepEqual((await dispatch(registry)).result, { ok: true, value: account });
+    assert.deepEqual(domainCalls, [domain]);
+    assert.deepEqual(registryCalls, [registry]);
 });
 
-test('queued fetchBatch submitted before cancel must not restart after the in-flight batch drains', async () => {
-    const { clearAllAborts, setSlotAborted } = require('../src/background/abortManager.js');
-    clearAllAborts();
-    let detailCalls = 0;
-    let releaseFirstDetail: any = null;
-    tabResponder = (msg: any, cb: any) => {
-        if (msg.action === 'getConversationDetail') {
-            detailCalls++;
-            if (detailCalls === 1) releaseFirstDetail = () => cb({ success: false, error: 'cancelled' });
-            else cb({ success: true, data: { id: msg.conversationId, messages: [] } });
-        } else cb(tabReply);
-    };
-    const listener = lastListener();
-    const responses: any[] = [];
-    try {
-        listener({ action: 'fetchBatch', accountSlot: 'u0', ids: ['first'] }, {}, (r: any) => responses.push(r));
-        while (detailCalls === 0) await new Promise(r => setTimeout(r, 5));
-        listener({ action: 'fetchBatch', accountSlot: 'u0', ids: ['queued'] }, {}, (r: any) => responses.push(r));
-        listener({ action: 'cancelExport', accountSlot: 'u0' }, {}, () => {});
-        const deadline = Date.now() + 1000;
-        while (responses.length < 2 && Date.now() < deadline) await new Promise(r => setTimeout(r, 5));
-        assert.strictEqual(detailCalls, 1, 'queued pre-cancel batch must never contact the tab');
-        assert.strictEqual(responses.length, 2);
-        assert.ok(responses.every(r => r.aborted), 'both responses should report cancellation');
-    } finally {
-        if (releaseFirstDetail) releaseFirstDetail();
-        tabResponder = null;
-        await setSlotAborted('u0', false);
-        clearAllAborts();
+test('Readiness blocks business actions until completed migration and fails explicitly', async t => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const { dispatch, indexQueries } = setup(t, { ready: () => gate });
+    let replied = false;
+    const pending = dispatch({ action: 'getLocalIndexCount', accountId: A }).then(value => { replied = true; return value; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(replied, false);
+    assert.deepEqual(indexQueries, []);
+    release();
+    assert.deepEqual((await pending).result, { ok: true, count: 2 });
+});
+
+test('Background Count reads only verified current Account after readiness', async t => {
+    const { dispatch, changeAccount, indexQueries } = setup(t);
+    assert.deepEqual((await dispatch({ action: 'getLocalIndexCount', accountId: A })).result, { ok: true, count: 2 });
+    assert.deepEqual(indexQueries, [A]);
+    changeAccount(B);
+    assert.match((await dispatch({ action: 'getLocalIndexCount', accountId: A })).result.error, /sending Tab/);
+    assert.deepEqual(indexQueries, [A]);
+});
+
+test('Live Save sends the trusted ConversationKey to the unified Application layer only once', async t => {
+    const received: unknown[] = [];
+    const exportResult = { exported: 1, skipped: 0, partial: 0, failed: [], aborted: false };
+    const { dispatch, changeAccount } = setup(t, { export: async value => { received.push(value); return exportResult; } });
+    assert.deepEqual((await dispatch({ action: 'runLiveSave', key })).result, { ok: true, result: exportResult });
+    assert.deepEqual(received, [key]);
+    changeAccount(B);
+    assert.match((await dispatch({ action: 'runLiveSave', key })).result.error, /sending Tab/);
+    assert.deepEqual(received, [key]);
+    const malformed = await dispatch({ action: 'runLiveSave', key: { accountId: 'u0', conversationId: 'abc' } });
+    assert.equal(malformed.result.ok, false);
+    assert.deepEqual(received, [key]);
+});
+
+test('Badge location IPC accepts only finite left/top and commits through Application Settings', async t => {
+    const patch: unknown[] = [];
+    const { dispatch } = setup(t, { settings: async value => { patch.push(value); } });
+    const update = { action: 'updateBadgePosition', position: { left: 14, top: 28 } };
+    assert.deepEqual((await dispatch(update)).result, { ok: true });
+    assert.deepEqual(patch, [{ badgePosition: { left: 14, top: 28 } }]);
+    for (const position of [{ left: '14', top: 28 }, { left: 1, top: Infinity }, { left: NaN, top: 2 },
+        { left: 1, top: 2, enabledDisk: true }, null]) {
+        assert.equal((await dispatch({ action: 'updateBadgePosition', position })).result.ok, false);
     }
+    assert.equal((await dispatch(update, { ...sender, url: 'https://evil.example/' })).result.ok, false);
+    assert.equal(patch.length, 1);
 });
 
-test('same-slot batches do not overlap the shared abort controller in production routing', async () => {
-    const { clearAllAborts } = require('../src/background/abortManager.js');
-    clearAllAborts();
-    let detailCalls = 0;
-    let releaseFirst: any = null;
-    tabResponder = (msg: any, cb: any) => {
-        if (msg.action === 'getConversationDetail') {
-            detailCalls++;
-            if (detailCalls === 1) releaseFirst = () => cb({ success: true, data: { id: 'first', messages: [] } });
-            else cb({ success: true, data: { id: 'second', messages: [] } });
-        } else cb(tabReply);
-    };
-    const listener = lastListener();
-    const responses: any[] = [];
-    try {
-        listener({ action: 'fetchBatch', accountSlot: 'u0', ids: ['first'] }, {}, (r: any) => responses.push(r));
-        while (detailCalls === 0) await new Promise(r => setTimeout(r, 5));
-        listener({ action: 'fetchBatch', accountSlot: 'u0', ids: ['second'] }, {}, (r: any) => responses.push(r));
-        await new Promise(resolve => setImmediate(resolve));
-        assert.strictEqual(detailCalls, 1);
-        releaseFirst();
-        const deadline = Date.now() + 1000;
-        while (responses.length < 2 && Date.now() < deadline) await new Promise(r => setTimeout(r, 5));
-        assert.strictEqual(detailCalls, 2);
-        assert.strictEqual(responses.length, 2);
-        assert.ok(responses.every(r => r.success));
-    } finally {
-        if (releaseFirst) releaseFirst();
-        tabResponder = null;
-        clearAllAborts();
-    }
+test('Explicit user navigation never starts Sync/Export or reloads unrelated pages', async t => {
+    const { dispatch, effects } = setup(t);
+    assert.deepEqual((await dispatch({ action: 'openOptions' })).result, { ok: true });
+    assert.deepEqual((await dispatch({ action: 'openGeminiPage' })).result, { ok: true, tabId: 80 });
+    assert.match((await dispatch({ action: 'reloadGeminiTab', tabId: 7 })).result.error, /Not a Gemini Tab/);
+    assert.deepEqual((await dispatch({ action: 'reloadGeminiTab', tabId: 80 })).result, { ok: true });
+    assert.deepEqual(effects.slice(4), ['handoff:none', 'openOptions', 'openGemini', 'reload:80']);
 });
 
-test('back-to-back batches submitted before the first starts both run without cancellation', async () => {
-    const { clearAllAborts } = require('../src/background/abortManager.js');
-    clearAllAborts();
-    const sent: string[] = [];
-    tabResponder = (msg: any, cb: any) => {
-        if (msg.action === 'getConversationDetail') {
-            sent.push(msg.conversationId);
-            cb({ success: true, data: { id: msg.conversationId, messages: [] } });
-        } else cb(tabReply);
-    };
-    const listener = lastListener();
-    const responses: any[] = [];
-    try {
-        listener({ action: 'fetchBatch', accountSlot: 'u0', ids: ['first'] }, {}, (r: any) => responses.push(r));
-        listener({ action: 'fetchBatch', accountSlot: 'u0', ids: ['second'] }, {}, (r: any) => responses.push(r));
-        const deadline = Date.now() + 1000;
-        while (responses.length < 2 && Date.now() < deadline) await new Promise(r => setTimeout(r, 5));
-        assert.deepStrictEqual(sent, ['first', 'second']);
-        assert.ok(responses.every(r => r.success));
-    } finally {
-        tabResponder = null;
-        clearAllAborts();
-    }
+test('Options navigation hands off only a verified current source account', async t => {
+    const { dispatch, changeAccount, effects } = setup(t);
+    assert.deepEqual((await dispatch({ action: 'openOptions', accountId: A })).result, { ok: true });
+    assert.deepEqual(effects.slice(-2), ['handoff:' + A, 'openOptions']);
+    changeAccount(B);
+    // A changed source opens Options normally, without selecting the stale account.
+    assert.deepEqual((await dispatch({ action: 'openOptions', accountId: A })).result, { ok: true });
+    assert.deepEqual(effects.slice(-2), ['handoff:none', 'openOptions']);
+    const popup = { id: 'ext', url: 'chrome-extension://ext/src/ui/popup/popup.html' };
+    assert.deepEqual((await dispatch({ action: 'openOptions', accountId: A }, popup)).result, { ok: true });
+    assert.deepEqual(effects.slice(-2), ['handoff:' + A, 'openOptions']);
+    assert.deepEqual((await dispatch({ action: 'openOptions', accountId: B }, popup)).result, { ok: true });
+    assert.deepEqual(effects.slice(-2), ['handoff:none', 'openOptions']);
+    assert.equal((await dispatch({ action: 'openOptions', accountId: 'not-a-uuid' }, popup)).result.ok, false);
 });
 
-test('S2 - scanProgress broadcast stays fire-and-forget (no response)', async () => {
-    const { responses, returned } = await dispatch({ action: 'scanProgress', percent: 50 }, 300);
-    assert.strictEqual(responses.length, 0, 'broadcasts must not produce a response');
-    assert.ok(!returned, 'no async response expected');
+test('Unexpected/foreign callers fail closed without touching data', async t => {
+    const { dispatch, indexQueries } = setup(t);
+    assert.equal((await dispatch({ action: 'getLocalIndexCount', accountId: A }, { ...sender, id: 'foreign' })).result.ok, false);
+    assert.equal((await dispatch({ action: 'getLocalIndexCount', accountId: A }, { ...sender, tab: undefined })).result.ok, false);
+    assert.deepEqual(indexQueries, []);
 });

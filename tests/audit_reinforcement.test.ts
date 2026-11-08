@@ -1,3 +1,5 @@
+import { listFixture } from './helpers/listFixture.js';
+import { indexFixture } from './helpers/indexFixture.js';
 export {};
 
 /**
@@ -13,155 +15,53 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-// 1. Two-Tier Storage Atomic Abort Verification
-test('storageService: IDB failure aborts write and prevents chrome.storage.local corruption', async () => {
-    const StorageService = require('../src/core/storage/storageService.js');
-    const DetailStore = require('../src/core/storage/conversationDetailStore.js');
-
-    // Setup mock chrome.storage.local
-    const mockStorage: Record<string, any> = {};
-    (globalThis as any).chrome = {
-        storage: {
-            local: {
-                get: async (keys: string[]) => {
-                    const out: Record<string, any> = {};
-                    for (const k of keys) if (mockStorage[k]) out[k] = mockStorage[k];
-                    return out;
-                },
-                set: async (items: Record<string, any>) => {
-                    Object.assign(mockStorage, items);
-                }
-            }
-        }
-    };
-
-    // Save original method
-    const origSaveBatch = DetailStore.saveConversationDetailsBatch;
+// L2 admission rejects fat Index data before passive Storage receives a write decision.
+test('L2 rejects fat metadata without changing stored indexes', async () => {
+    const { indexStorage } = require('./helpers/indexStorage.js');
+    const env = indexStorage();
     try {
-        // Mock saveConversationDetailsBatch to throw an error (simulating quota exceeded or DB failure)
-        DetailStore.saveConversationDetailsBatch = async () => {
-            throw new Error('IndexedDB quota exceeded');
-        };
-
-        const testConversations = [
-            {
-                id: 'conv_1',
-                title: 'Test Chat 1',
-                messages: [{ id: 'm1', text: 'hello' }],
-                turns: [{ role: 'user', text: 'hello' }]
-            }
-        ];
-
-        // setConversations must throw, and chrome.storage.local must NOT receive the stripped list
-        await assert.rejects(
-            async () => {
-                await StorageService.setConversations('u0', testConversations);
-            },
-            /IndexedDB quota exceeded/
-        );
-
-        // Verify that gemini_conversations in chrome.storage.local is still empty (never written)
-        assert.strictEqual(mockStorage['gemini_conversations'], undefined);
-    } finally {
-        DetailStore.saveConversationDetailsBatch = origSaveBatch;
-    }
+        const { ingestIndexes } = require('../src/l2/ingestion.js');
+        await assert.rejects(ingestIndexes('10000000-0000-4000-8000-000000000001', [{ conversationId: 'chat', fields: { title: 'Research', titleSource: 'provider', messages: [] } }]), /index schema/);
+        assert.equal(env.writes(), 0);
+    } finally { env.restore(); }
 });
 
-// 2. Takeout MediaIndex Strict Slot Isolation Verification
-test('mediaIndex: strict slot isolation prevents cross-account data corruption', () => {
-    const MediaIndex = require('../src/core/engine/takeout/mediaIndex.js');
-
-    // Commit takeout data for Slot u0
-    MediaIndex.commitTakeoutData('u0', {
-        mediaMap: { chat_u0: [{ filename: 'image_u0.png' }] },
-        globalMedia: { 'image_u0.png': {} },
-        convCache: { chat_u0: { title: 'Slot 0 Chat' } }
-    });
-
-    // Commit takeout data for Slot u1
-    MediaIndex.commitTakeoutData('u1', {
-        mediaMap: { chat_u1: [{ filename: 'image_u1.png' }] },
-        globalMedia: { 'image_u1.png': {} },
-        convCache: { chat_u1: { title: 'Slot 1 Chat' } }
-    });
-
-    // Verify Slot u0 has only Slot u0 data
-    const storeU0 = MediaIndex.getStore('u0');
-    assert.ok(storeU0.mediaMap['chat_u0'], 'Slot u0 must have chat_u0');
-    assert.strictEqual(storeU0.mediaMap['chat_u1'], undefined, 'Slot u0 must NOT contain chat_u1');
-    assert.strictEqual(MediaIndex.getTakeoutOfflineChat('chat_u0', 'u0')?.title, 'Slot 0 Chat');
-    assert.strictEqual(MediaIndex.getTakeoutOfflineChat('chat_u1', 'u0'), null);
-
-    // Verify Slot u1 has only Slot u1 data
-    const storeU1 = MediaIndex.getStore('u1');
-    assert.ok(storeU1.mediaMap['chat_u1'], 'Slot u1 must have chat_u1');
-    assert.strictEqual(storeU1.mediaMap['chat_u0'], undefined, 'Slot u1 must NOT contain chat_u0');
-    assert.strictEqual(MediaIndex.getTakeoutOfflineChat('chat_u1', 'u1')?.title, 'Slot 1 Chat');
-    assert.strictEqual(MediaIndex.getTakeoutOfflineChat('chat_u0', 'u1'), null);
-
-    // Verify clearing Slot u1 does NOT affect Slot u0
-    MediaIndex.clearTakeoutData('u1');
-    assert.strictEqual(MediaIndex.getTakeoutOfflineChat('chat_u1', 'u1'), null);
-    assert.strictEqual(MediaIndex.getTakeoutOfflineChat('chat_u0', 'u0')?.title, 'Slot 0 Chat');
-
-    // Clean up
-    MediaIndex.clearTakeoutData('u0');
+// V2 resources are task-scoped, keyed by Account UUID + conversation + asset.
+test('task resource isolation prevents cross-account corruption and release preserves other accounts', async () => {
+    const { createSourceResourceContext } = require('../src/l1/resources/sourceResources.js');
+    const context = createSourceResourceContext();
+    const first = { accountId: '10000000-0000-4000-8000-000000000001', conversationId: 'same_chat' };
+    const second = { ...first, accountId: '10000000-0000-4000-8000-000000000002' };
+    const asset = { id: 'same_asset', kind: 'image' };
+    try {
+        context.retain(first, asset.id, async () => ({ bytes: new Uint8Array([1]) }));
+        context.retain(second, asset.id, async () => ({ bytes: new Uint8Array([2]) }));
+        assert.deepStrictEqual((await context.acquire(first, asset)).bytes, new Uint8Array([1]));
+        assert.deepStrictEqual((await context.acquire(second, asset)).bytes, new Uint8Array([2]));
+        await assert.rejects(context.acquire({ ...first, conversationId: 'other_chat' }, asset), /locator/);
+        context.releaseConversation(second);
+        await assert.rejects(context.acquire(second, asset), /locator/);
+        assert.deepStrictEqual((await context.acquire(first, asset)).bytes, new Uint8Array([1]));
+    } finally { context.release(); }
+    await assert.rejects(context.acquire(first, asset), /released/);
 });
 
-// 3. Pagination Token Loop Guard Verification
-test('pagination: getAllConversations detects token loop and terminates safely', async () => {
-    const Pagination = require('../src/core/api/client/pagination.js');
-
-    // Create a mock client that returns a repeating nextPageToken
-    let callCount = 0;
-    const mockClient = {
-        getConversationList: async (token: string | null) => {
-            callCount++;
-            return {
-                conversations: [
-                    { id: `c_${callCount}`, title: `Chat ${callCount}` }
-                ],
-                // Return a repeating cursor
-                nextPageToken: 'repeating_token_xyz'
-            };
-        }
-    };
-
-    const result = await Pagination.getAllConversations(mockClient, 2000);
-
-    // The first call gets 'repeating_token_xyz'.
-    // The second call passes 'repeating_token_xyz' and receives 'repeating_token_xyz' again,
-    // which hits seenTokens.has('repeating_token_xyz') and breaks!
-    assert.strictEqual(callCount, 2, 'Should terminate immediately upon repeating token (call count = 2)');
-    assert.strictEqual(result.conversations.length, 2);
-    assert.ok(result.diagnostics.stopReason.includes('Token Loop'), 'stopReason must mention Token Loop');
-    assert.strictEqual(result.stoppedEarly, true, 'Token loop must set stoppedEarly to true');
-    assert.strictEqual(result.exhaustive, false, 'Token loop must set exhaustive to false');
-});
-
-test('pagination D1: non-exhaustive token-loop result prevents reconcileConversations and preserves missing local chats', async () => {
-    const Pagination = require('../src/core/api/client/pagination.js');
-
-    let callCount = 0;
-    const mockClient = {
-        getConversationList: async () => {
-            callCount++;
-            return {
-                conversations: [{ id: `c_${callCount}`, title: `Chat ${callCount}` }],
-                nextPageToken: 'looping_token'
-            };
-        }
-    };
-
-    const paginationResult = await Pagination.getAllConversations(mockClient, 2000);
-    assert.strictEqual(paginationResult.stoppedEarly, true);
-    assert.strictEqual(paginationResult.exhaustive, false);
-
-    // Simulate syncEngine's isFullExhaustive gate
-    const effectiveForceFull = true;
-    const hitLimit = !!(paginationResult.hitGoogleLimit || paginationResult.diagnostics?.hitGoogleLimit);
-    const isAborted = false;
-    const isFullExhaustive = effectiveForceFull && !paginationResult.stoppedEarly && !isAborted && !hitLimit && (paginationResult.exhaustive !== false);
-
-    assert.strictEqual(isFullExhaustive, false, 'isFullExhaustive must be false when pagination loop stopped early');
+test('Gemini pagination detects token loops, retains committed rows and never certifies complete coverage', async () => {
+    const { indexStorage } = require('./helpers/indexStorage.js');
+    const { ACCOUNT_UUID } = require('./helpers/accountRuntime.js');
+    const { sourceDetail, sourceList } = require('./helpers/l1SourceFixture.js');
+    const { GeminiProvider } = require('../src/l1/client/gemini/geminiProvider.js');
+    const { listIndexes, getCoverage } = require('../src/l3a/storageService.js');
+    const env = indexStorage();
+    let calls = 0;
+    const provider = new GeminiProvider({
+        getConversationList: async () => sourceList(`G_SOURCE_AUDIT_LOOP_PAGE_${++calls}`),
+        getConversationDetail: async () => sourceDetail(),
+    }, async () => 'u0');
+    try {
+        await assert.rejects(provider.listConversations({ accountId: ACCOUNT_UUID, streamId: 'recent' }), /loop/i);
+        assert.equal(calls, 2);
+        assert.equal((await listIndexes(ACCOUNT_UUID)).length, 2);
+        assert.equal((await getCoverage(ACCOUNT_UUID, 'recent'))?.range ?? null, null);
+    } finally { env.restore(); }
 });

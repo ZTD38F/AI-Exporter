@@ -1,0 +1,42 @@
+{
+  "suites": [
+    "tests/ast-composer.test.ts",
+    "tests/document-ast-contract.test.ts",
+    "tests/domain-ast-projection.test.ts"
+  ],
+  "integrationSuites": [
+    "tests/asset-presentation.test.ts",
+    "tests/document-ast-integration.test.ts",
+    "tests/document-feature-matrix.test.ts",
+    "tests/document-file-badge.test.ts",
+    "tests/document-freeze.test.ts",
+    "tests/document-generated-image-consistency.test.ts",
+    "tests/document-html-features.test.ts",
+    "tests/document-html-math-policy.test.ts",
+    "tests/document-html-parity.test.ts",
+    "tests/document-html.test.ts",
+    "tests/document-markdown-contract.test.ts",
+    "tests/document-markdown.test.ts",
+    "tests/document-model.test.ts",
+    "tests/document-neutral.test.ts",
+    "tests/document-pdf.test.ts",
+    "tests/document-renderer-contract.test.ts",
+    "tests/document-rich-pdf.test.ts",
+    "tests/document-typst-contract.test.ts",
+    "tests/domain_document_direct.test.ts",
+    "tests/html-document-migration.test.ts",
+    "tests/provider-conversation-parser.test.ts",
+    "tests/conversation-representation.test.ts",
+    "tests/domain_closure.test.ts",
+    "tests/domain_conversation_detail.test.ts",
+    "tests/domain_timestamp_contract.test.ts",
+    "tests/renderer-strings-locale.test.ts",
+    "tests/arch/semantic-layer-boundary.test.ts",
+    "tests/pdf-format.test.ts",
+    "tests/pdf-image-resource-matrix.test.ts"
+  ],
+  "typeTests": [
+    "tests/ast-composer.types.ts",
+    "scripts/framework/v2_probe.ts"
+  ]
+}

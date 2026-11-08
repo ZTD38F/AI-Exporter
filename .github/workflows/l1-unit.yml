@@ -1,0 +1,28 @@
+name: L1 Frozen Design Unit Tests
+
+on:
+  pull_request:
+    branches: [dev/v2]
+    paths:
+      - 'src/l1/**'
+      - 'tests/**'
+      - 'scripts/test-l1-units.cjs'
+      - '.github/workflows/l1-unit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  l1-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Run isolated L1 units (v2 L2/Runtime mocks)
+        run: node scripts/test-l1-units.cjs

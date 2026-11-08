@@ -1,501 +1,269 @@
-import { test, expect } from './fixtures';
-import * as fs from 'fs';
-import * as path from 'path';
+import { test, expect, seedRegistryAccounts } from './fixtures';
+import { openOptions, seedConversations, accountId, exposeUIStorage } from './uiFixture';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
-test.describe('Visual Inspection & Physical Hit-Testing Suite (Phase 1 & 2)', () => {
-  const outputDir = path.resolve(__dirname, '../../tests/output/visual_audit');
+/**
+ * Visual integration exercises the shipped Options UI, real L2 admission and
+ * L3a IndexedDB. It does not re-create retired v1 storage or Tour controls.
+ * Screenshots remain diagnostic; the assertions use geometry/hit testing.
+ */
+test.beforeEach(async ({ context }) => { await seedRegistryAccounts(context); });
+const outputDir = path.resolve(__dirname, '../../tests/output/visual_audit');
+const steps = [
+    ['Authorize AI platforms', 'header h1'],
+    ['Switch platforms and accounts', '#accountIdSelect'],
+    ['Scan conversations', '#btnSyncAll'],
+    ['Select conversations', '#list .item'],
+    ['Choose a format', '#format'],
+    ['Export selected conversations', '#btnExport'],
+    ['Live Save', '#liveSaveControls'],
+    ['Optional feedback', '#feedbackBox'],
+] as const;
+test.beforeAll(() => { fs.mkdirSync(outputDir, { recursive: true }); });
 
-  test.beforeAll(() => {
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
+async function workbench(context: import('@playwright/test').BrowserContext, extensionId: string) {
+    const page = await openOptions(context, extensionId);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    return page;
+}
+async function refresh(page: import('@playwright/test').Page) {
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+}
+async function index(page: import('@playwright/test').Page, id: string) {
+    return page.evaluate(async ({ accountId, id }) =>
+        Reflect.get(globalThis, 'uiFixture').getIndex({ accountId, conversationId: id }), { accountId, id });
+}
+async function ingestIndex(page: import('@playwright/test').Page, id: string,
+    title: string, source: 'derived' | 'provider' | 'user', updatedAt: number) {
+    await page.evaluate(async ({ accountId, id, title, source, updatedAt }) =>
+        Reflect.get(globalThis, 'uiFixture').ingestIndexes(accountId, [
+            { conversationId: id, fields: { title, titleSource: source, updatedAt } },
+        ]), { accountId, id, title, source, updatedAt });
+    await refresh(page);
+}
+async function screenshot(page: import('@playwright/test').Page, name: string) {
+    const dest = path.join(outputDir, name);
+    await page.screenshot({ path: dest });
+    expect(fs.existsSync(dest)).toBe(true);
+}
+/** Gemini is authorized in the real fixture, so the tour never requests it again. */
+async function connectTourGemini(page: import('@playwright/test').Page, finishAccounts = true) {
+    // Geometry fixtures have stored accounts but no provider tab. Supply the
+    // Content identity response that the connection lesson now verifies.
+    await page.evaluate(accountId => {
+        Object.defineProperty(chrome.tabs, 'query', { configurable: true, value: async () => [
+            { id: 999, url: 'https://gemini.google.com/app/fixture' },
+        ] });
+        Object.defineProperty(chrome.tabs, 'sendMessage', { configurable: true,
+            value: (_tabId: number, _message: unknown, callback: (reply: { ok: boolean; accountContext: { accountId: string; providerId: string } }) => void) => {
+                callback({ ok: true, accountContext: { accountId, providerId: 'gemini' } });
+            } });
+    }, accountId);
+    await expect(page.locator('.platform-permission-row[data-platform="gemini"]')).toBeHidden();
+    await expect(page.locator('#tourNextBtn')).toBeEnabled();
+    await page.locator('#tourNextBtn').click();
+    await page.locator('#btnDetectAccount:enabled').click();
+    await expect(page.locator('.tour-popover h2')).toHaveText('Switch platforms and accounts');
+    if (finishAccounts) {
+        await page.locator('#tourNextBtn').click();
+        await expect(page.locator('.tour-popover h2')).toHaveText('Scan conversations');
     }
-  });
+}
 
-  test('should execute 7-step tour with 100% zero-occlusion and physical mouse hit-testing', async ({ context, extensionId }) => {
-    // Seven screenshot + animation cycles need more than the default 30s on loaded CI workers.
-    test.setTimeout(90000);
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
+async function verifyPopoverGeometry(page: import('@playwright/test').Page, target: string, action: string) {
+    // Restored Tour cards animate after footer/status relayout. Assert the
+    // eventual geometry rather than sampling a button mid-transition offscreen.
+    await expect.poll(async () => page.evaluate(({ target, action }) => {
+        const popover = document.querySelector('.tour-popover') as HTMLElement | null;
+        const anchor = document.querySelector(target) as HTMLElement | null;
+        const button = [...(popover?.querySelectorAll('button') ?? [])].find(b => b.textContent?.trim() === action);
+        if (!popover || !anchor || !button) return { present: false, clear: false, hittable: false };
+        const p = popover.getBoundingClientRect(), a = anchor.getBoundingClientRect();
+        const clear = p.right <= a.left || p.left >= a.right || p.bottom <= a.top || p.top >= a.bottom;
+        const b = button.getBoundingClientRect(), hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        const hittable = hit === button || !!button.contains(hit);
+        return { present: true, clear, hittable };
+    }, { target, action })).toEqual({ present: true, clear: true, hittable: true });
+}
 
-    // Open options page for new user onboarding
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
-    await page.waitForLoadState('domcontentloaded');
-
-    const popover = page.locator('.tour-popover');
-    await expect(popover).toBeVisible({ timeout: 5000 });
-
-    for (let stepIdx = 0; stepIdx < 7; stepIdx++) {
-      const stepBadge = await page.locator('.tour-step-badge').innerText();
-      expect(stepBadge).toBe(`${stepIdx + 1} / 7`);
-      if (stepIdx === 3) {
-        await expect(popover).toContainText('HTML');
-        await expect(popover).toContainText('PDF');
-        await expect(popover).toContainText(/local font|本地字体/);
-      }
-      if (stepIdx === 5) {
-        await expect(popover).toContainText('Markdown');
-        await expect(popover).toContainText(/only supports Markdown|只支持 Markdown/);
-      }
-
-      // 1. Capture visual snapshot
-      const screenshotPath = path.join(outputDir, `tour_step_${stepIdx + 1}.png`);
-      await page.screenshot({ path: screenshotPath });
-      expect(fs.existsSync(screenshotPath)).toBe(true);
-
-      // 2. Visual Collision Audit: verify popover does NOT overlap highlighted target
-      const collisionResult = await page.evaluate(() => {
-        const popEl = document.querySelector('.tour-popover');
-        const TG = (window as any).TourGuide;
-        if (!popEl || !TG) return { ok: false, reason: 'popover or TourGuide missing' };
-        const step = TG.STEPS[TG.getCurrentStep()];
-        const target = step.getTarget ? step.getTarget() : null;
-        if (!target) return { ok: true, note: 'no target element on this step' };
-
-        const pRect = popEl.getBoundingClientRect();
-        const tRect = target.getBoundingClientRect();
-
-        const overlaps = !(
-          pRect.right <= tRect.left ||
-          pRect.left >= tRect.right ||
-          pRect.bottom <= tRect.top ||
-          pRect.top >= tRect.bottom
-        );
-
-        return {
-          ok: !overlaps,
-          overlaps,
-          popoverRect: { left: pRect.left, top: pRect.top, right: pRect.right, bottom: pRect.bottom },
-          targetRect: { left: tRect.left, top: tRect.top, right: tRect.right, bottom: tRect.bottom }
-        };
-      });
-      expect(collisionResult.ok).toBe(true);
-
-      // 3. Physical Hit-Testing on next button: verify no element is blocking the click target
-      const nextBtn = page.locator('#tourNextBtn');
-      await expect(nextBtn).toBeVisible();
-      const nextBtnBox = await nextBtn.boundingBox();
-      expect(nextBtnBox).not.toBeNull();
-
-      if (nextBtnBox) {
-        const hitTestTag = await page.evaluate(() => {
-          const btn = document.querySelector('#tourNextBtn');
-          if (!btn) return null;
-          const r = btn.getBoundingClientRect();
-          const clickX = r.left + r.width / 2;
-          const clickY = r.top + r.height / 2;
-          const hit = document.elementFromPoint(clickX, clickY);
-          return hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : null;
-        });
-
-        // Must hit the button itself or text/span inside it
-        expect(hitTestTag).toMatch(/^(button#tournextbtn|span|div)/i);
-
-        // Advance to next step
-        if (stepIdx < 6) {
-          await nextBtn.click();
-          await expect(page.locator('.tour-step-badge')).toHaveText(`${stepIdx + 2} / 7`);
-          await page.locator('.tour-popover').evaluate((el) => {
-            return Promise.all(el.getAnimations().map(a => a.finished));
-          });
-        } else {
-          await nextBtn.click();
-        }
-      }
+for (const theme of ['dark', 'light']) {
+ test(`the real eight-step v2 Tour has rounded cutouts without target collisions in ${theme} theme`, async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    await page.evaluate(async theme => Reflect.get(globalThis, 'uiFixture').updateSettings({ theme }), theme);
+    await seedConversations(page, [
+        { id: 'tour-a', title: 'Conversation selected for export', updatedAt: 200 },
+        { id: 'tour-b', title: 'Another conversation', updatedAt: 100 },
+    ]);
+    await page.locator('#btnTourGuide').click();
+    for (const [i, [title, target]] of steps.entries()) {
+        await expect(page.locator('.tour-popover h2')).toHaveText(title);
+        const action = i === 0 ? 'Authorize' : i === steps.length - 1 ? 'Start using' : 'Next';
+        await verifyPopoverGeometry(page, target, action);
+        if (i === steps.length - 1) await expect(page.locator('#tourSkipBtn')).toHaveCount(0);
+        await screenshot(page, 'v2_tour_' + theme + '_step_' + (i + 1) + '.png');
+        if (i === 0) {
+            await expect(page.locator('#tourNextBtn')).toBeEnabled();
+            await connectTourGemini(page, false);
+        } else await page.getByRole('button', { name: action, exact: true }).click();
     }
-
-    // Tour should be finished and destroyed
-    await expect(popover).toBeHidden();
-  });
-
-  test('choosing PDF in onboarding advances without requesting local font permission', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.evaluate(() => {
-      (window as any).__fontQueries = 0;
-      (window as any).queryLocalFonts = async () => {
-        (window as any).__fontQueries++;
-        return [];
-      };
-    });
-    await page.click('#btnTourGuide');
-    for (let step = 1; step <= 3; step++) {
-      await expect(page.locator('.tour-step-badge')).toHaveText(`${step} / 7`);
-      await page.click('#tourNextBtn');
-    }
-    await expect(page.locator('.tour-step-badge')).toHaveText('4 / 7');
-    await page.selectOption('#format', 'pdf');
-    await expect(page.locator('.tour-step-badge')).toHaveText('5 / 7');
-    await expect(page.locator('#format')).toHaveValue('pdf');
-    expect(await page.evaluate(() => (window as any).__fontQueries)).toBe(0);
-    await page.click('#tourSkipBtn');
-  });
-
-  test('should launch tour on clicking header button and dismiss cleanly', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForFunction(() => typeof (window as any).__workbenchLoadStore === 'function');
-
-    // Verify #btnTourGuide has exactly one lightbulb emoji
-    const btnText = await page.locator('#btnTourGuide').innerText();
-    expect((btnText.match(/💡/g) || []).length).toBe(1);
-    expect(['💡 新手引导', '💡 Tour Guide']).toContain(btnText.replace(/\s+/g, ' ').trim());
-
-    // Click #btnTourGuide in header
-    await page.click('#btnTourGuide');
-
-    const popover = page.locator('.tour-popover');
-    await expect(popover).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('.tour-step-badge')).toHaveText('1 / 7');
-
-    // Click close/skip
-    await page.click('#tourSkipBtn');
-    await expect(popover).toBeHidden();
-  });
-
-  test('should display major feature spotlight overlay for returning users and record seen version', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
-
-    // 1. Simulate returning user who finished onboarding in v1.4.0
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html`);
-    await page.waitForLoadState('domcontentloaded');
-    await page.evaluate(async () => {
-      await chrome.storage.local.set({
-        has_completed_tour: true,
-        last_seen_feature_version: '1.4.0'
-      });
-    });
-
-    // 2. Reload options page to trigger spotlight for returning user
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-
-    // 3. Feature spotlight popover should appear
-    const popover = page.locator('.tour-popover');
-    await expect(popover).toBeVisible({ timeout: 5000 });
-
-    // 4. Verify feature badge
-    const badge = page.locator('.tour-step-badge');
-    await expect(badge).toBeVisible();
-    const badgeText = await badge.innerText();
-    expect(badgeText).toContain('1.7.0');
-
-    await expect(popover).toContainText('PDF');
-    await expect(popover).toContainText('HTML');
-    await expect(popover).toContainText(/Local fonts for PDF|PDF 本地字体权限/);
-    await expect(popover).toContainText(/English-only PDFs still export|仍可导出纯英文 PDF/);
-    await expect(popover).not.toContainText(/Gemini-style|保留 Gemini 风格/);
-
-    // 5. Verify action buttons exist
-    const dismissBtn = page.locator('#tourSpotlightDismissBtn');
-    const actionBtn = page.locator('#tourSpotlightActionBtn');
-    await expect(dismissBtn).toBeVisible();
-    await expect(actionBtn).toBeVisible();
-
-    // 6. Dismiss spotlight
-    await actionBtn.click();
-    await expect(popover).toBeHidden();
-    await expect(page.locator('#format')).toBeFocused();
-
-    // 7. Verify storage updated to 1.7.0
-    const storedVer = await page.evaluate(async () => {
-      const data = await chrome.storage.local.get(['last_seen_feature_version']);
-      return data.last_seen_feature_version;
-    });
-    expect(storedVer).toBe('1.7.0');
-
-    // 8. Reload page - spotlight should NOT appear again
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#btnSelectAll')).toBeVisible();
-    await expect(popover).toBeHidden();
-  });
-
-  test('should verify modal backdrop provides complete visual shielding against accidental background clicks', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
-
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // Trigger takeout limit modal for visual inspection
-    await page.evaluate(() => {
-      const modal = document.getElementById('takeoutLimitModal');
-      if (modal) {
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
-      }
-    });
-
-    const modal = page.locator('#takeoutLimitModal');
-    await expect(modal).toBeVisible();
-
-    // Verify modal overlay covers the entire viewport
-    const overlayBounds = await modal.boundingBox();
-    expect(overlayBounds).not.toBeNull();
-    if (overlayBounds) {
-      expect(overlayBounds.width).toBeGreaterThanOrEqual(1280);
-      expect(overlayBounds.height).toBeGreaterThanOrEqual(800);
-    }
-
-    // Hit-test on background area (e.g. at 50, 50 where header/sidebar would normally be)
-    const backgroundHit = await page.evaluate(() => {
-      const hit = document.elementFromPoint(50, 50);
-      return hit ? hit.id || hit.className : 'null';
-    });
-    // Click must hit modal container/overlay, NOT underlying buttons
-    expect(backgroundHit).toMatch(/modal|overlay|container/i);
-
-    // Capture modal snapshot
-    const modalPic = path.join(outputDir, 'modal_visual_backdrop.png');
-    await page.screenshot({ path: modalPic });
-    expect(fs.existsSync(modalPic)).toBe(true);
-
-    // Dismiss modal cleanly
-    await page.evaluate(() => {
-      const modal = document.getElementById('takeoutLimitModal');
-      if (modal) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-      }
-    });
-    await expect(modal).toBeHidden();
-  });
-
-  test('should audit layout integrity, preventing text truncation on buttons and key controls', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
-
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('#btnSelectAll')).toBeVisible();
-    await expect(page.locator('#btnExport')).toBeVisible();
-
-    // Check all primary action buttons for unintentional text overflow
-    const truncationAudit = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, .btn, .item .title, .badge'));
-      const truncated: { tag: string; id: string; text: string; scrollW: number; clientW: number }[] = [];
-
-      buttons.forEach(el => {
-        // Allow intentional ellipsis on long conversation titles, but action buttons must never be truncated
-        if (el.tagName.toLowerCase() === 'button' || el.classList.contains('btn')) {
-          if (el.scrollWidth > el.clientWidth + 2) {
-            truncated.push({
-              tag: el.tagName.toLowerCase(),
-              id: el.id,
-              text: el.textContent?.trim().slice(0, 30) || '',
-              scrollW: el.scrollWidth,
-              clientW: el.clientWidth
-            });
-          }
-        }
-      });
-
-      return truncated;
-    });
-
-    expect(truncationAudit).toEqual([]);
-
-    const fullPagePic = path.join(outputDir, 'workbench_layout_clean.png');
-    await page.screenshot({ path: fullPagePic });
-    expect(fs.existsSync(fullPagePic)).toBe(true);
-  });
-
-  test('should visually audit real-time conversation promotion to list top upon continuation with physical hit-testing', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
-
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    const now = Date.now();
-    const initialConvs = [
-      { id: 'top_active_999', title: '首位活跃新对话', timestamp: now - 5000, updatedAt: now - 5000, createdAt: now - 50000, sidebarIndex: 0 },
-      { id: 'historical_old_111', title: '待追加对话的老会话', timestamp: now - 80000, updatedAt: now - 80000, createdAt: now - 120000, sidebarIndex: 1 },
-      { id: 'historical_old_222', title: '末尾静止老会话', timestamp: now - 180000, updatedAt: now - 180000, createdAt: now - 220000, sidebarIndex: 2 }
-    ];
-
-    await page.evaluate(async (convs) => {
-      await chrome.storage.local.set({ gemini_conversations: convs });
-      if (typeof (window as any).__workbenchLoadStore === 'function') {
-        await (window as any).__workbenchLoadStore(true);
-      }
-    }, initialConvs);
-
-    await expect(page.locator('#list .item')).toHaveCount(3);
-    await expect(page.locator('#list .item').nth(0)).toContainText('首位活跃新对话');
-    await expect(page.locator('#list .item').nth(1)).toContainText('待追加对话的老会话');
-
-    // 模拟老会话 historical_old_111 发帖并收到 STREAM_COMPLETE，时间戳跃升置顶
-    await page.evaluate(async () => {
-      return new Promise((resolve) => {
-        chrome.storage.local.get(['gemini_conversations'], async (data: any) => {
-          const convs = data.gemini_conversations || [];
-          const target = convs.find((c: any) => c.id === 'historical_old_111');
-          if (target) {
-            const bumpedTime = Date.now() + 50000;
-            target.updatedAt = bumpedTime;
-            target.timestamp = bumpedTime;
-            convs.sort((a: any, b: any) => ((b.updatedAt || b.timestamp || 0) - (a.updatedAt || a.timestamp || 0)));
-            await chrome.storage.local.set({ gemini_conversations: convs });
-            chrome.runtime.sendMessage({ action: 'syncUpdate', slot: 'u0', from: 'stream-complete' });
-            if (typeof (window as any).__workbenchLoadStore === 'function') {
-              await (window as any).__workbenchLoadStore(true);
-            }
-          }
-          resolve(true);
-        });
-      });
-    });
-
-    // 视觉审计：无需页面刷新，historical_old_111 跃升至列表首位 (index 0)
-    await expect(page.locator('#list .item').nth(0)).toContainText('待追加对话的老会话', { timeout: 4000 });
-    await expect(page.locator('#list .item').nth(1)).toContainText('首位活跃新对话');
-
-    // 物理 Hit-Testing：检验新晋首位元素的交互穿透性
-    const topItem = page.locator('#list .item').nth(0);
-    const box = await topItem.boundingBox();
-    expect(box).not.toBeNull();
-    if (box) {
-      const cx = box.x + box.width / 2;
-      const cy = box.y + box.height / 2;
-      const hitElementTag = await page.evaluate(({ x, y }) => {
-        const hit = document.elementFromPoint(x, y);
-        return hit ? hit.tagName.toLowerCase() + (hit.className ? '.' + String(hit.className).split(' ')[0] : '') : null;
-      }, { x: cx, y: cy });
-
-      expect(hitElementTag).not.toBeNull();
-      expect(hitElementTag).toMatch(/^(div|label|span|input)/i);
-    }
-
-    const screenshotPath = path.join(outputDir, 'continued_chat_promoted.png');
-    await page.screenshot({ path: screenshotPath });
-    expect(fs.existsSync(screenshotPath)).toBe(true);
-  });
-
-  test('should visually audit real-time ephemeral conversation deletion and DOM pruning without layout breakage', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
-
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    const now = Date.now();
-    const initialConvs = [
-      { id: 'del_eph_9999', title: '瞬态自毁测试会话 (待删除)', timestamp: now + 5000, updatedAt: now + 5000, createdAt: now - 10000 },
-      { id: 'keep_chat_111', title: '留存会话 1 (有效)', timestamp: now - 10000, updatedAt: now - 10000, createdAt: now - 30000 },
-      { id: 'keep_chat_222', title: '留存会话 2 (有效)', timestamp: now - 20000, updatedAt: now - 20000, createdAt: now - 50000 }
-    ];
-
-    await page.evaluate(async (convs) => {
-      await chrome.storage.local.set({ gemini_conversations: convs });
-      if (typeof (window as any).__workbenchLoadStore === 'function') {
-        await (window as any).__workbenchLoadStore(true);
-      }
-    }, initialConvs);
-
-    // 初始渲染校验
-    await expect(page.locator('#list .item')).toHaveCount(3);
-    await expect(page.locator('#list .item[data-chat-id="del_eph_9999"]')).toBeVisible();
-
-    const renderScreenshot = path.join(outputDir, 'ephemeral_chat_rendered.png');
-    await page.screenshot({ path: renderScreenshot });
-    expect(fs.existsSync(renderScreenshot)).toBe(true);
-
-    // 模拟触发实时删除广播
-    await page.evaluate(async () => {
-      return new Promise((resolve) => {
-        chrome.storage.local.get(['gemini_conversations'], async (data: any) => {
-          let convs = data.gemini_conversations || [];
-          convs = convs.filter((c: any) => c.id !== 'del_eph_9999');
-          await chrome.storage.local.set({ gemini_conversations: convs });
-          chrome.runtime.sendMessage({ action: 'syncUpdate', slot: 'u0', from: 'delete-event' });
-          if (typeof (window as any).__workbenchLoadStore === 'function') {
-            await (window as any).__workbenchLoadStore(true);
-          }
-          resolve(true);
-        });
-      });
-    });
-
-    // 视觉审计：DOM 列表从 3 项平滑剥离为 2 项，目标项 0 残留
-    await expect(page.locator('#list .item')).toHaveCount(2);
-    await expect(page.locator('#list .item[data-chat-id="del_eph_9999"]')).toHaveCount(0);
-    await expect(page.locator('#list .item[data-chat-id="keep_chat_111"]')).toBeVisible();
-
-    // 布局完整性审查：确保相邻卡片垂直间距规整紧凑，无异常空洞与布局撕裂
-    const layoutIntegrity = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('#list .item'));
-      if (items.length < 2) return { ok: true };
-      const r1 = items[0].getBoundingClientRect();
-      const r2 = items[1].getBoundingClientRect();
-      const gap = r2.top - r1.bottom;
-      return { ok: gap >= 0 && gap <= 16, gap };
-    });
-    expect(layoutIntegrity.ok).toBe(true);
-
-    const pruneScreenshot = path.join(outputDir, 'ephemeral_chat_pruned.png');
-    await page.screenshot({ path: pruneScreenshot });
-    expect(fs.existsSync(pruneScreenshot)).toBe(true);
-  });
-
-  test('should visually audit Takeout import initial prefix and authoritative RPC title upgrade', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
-
-    await page.goto(`chrome-extension://${extensionId}/src/ui/options/options.html?notour=1`);
-    await page.waitForLoadState('domcontentloaded');
-
-    const takeoutChat = {
-      id: '1bd028d5c5b0c0e2',
-      title: '火星宇航员猫咪（离线提问前缀）',
-      titleSource: 'takeout',
-      titles: { takeout: '火星宇航员猫咪（离线提问前缀）' },
-      timestamp: 1680000000000,
-      updatedAt: 1680000000000
-    };
-
-    await page.evaluate(async (c) => {
-      await chrome.storage.local.set({ gemini_conversations: [c] });
-      if (typeof (window as any).__workbenchLoadStore === 'function') {
-        await (window as any).__workbenchLoadStore(true);
-      }
-    }, takeoutChat);
-
-    await expect(page.locator('#list .item[data-chat-id="1bd028d5c5b0c0e2"]')).toContainText('火星宇航员猫咪（离线提问前缀）');
-
-    // 模拟在线 RPC 权威晋级升级
-    await page.evaluate(async () => {
-      return new Promise((resolve) => {
-        chrome.storage.local.get(['gemini_conversations'], async (data: any) => {
-          const convs = data.gemini_conversations || [];
-          const chat = convs.find((c: any) => c.id === '1bd028d5c5b0c0e2');
-          if (chat) {
-            chat.title = '火星宇航员猫咪（AI 生成图片 Imagen）';
-            chat.titleSource = 'rpc';
-            chat.titles = {
-              takeout: '火星宇航员猫咪（离线提问前缀）',
-              rpc: '火星宇航员猫咪（AI 生成图片 Imagen）'
-            };
-            await chrome.storage.local.set({ gemini_conversations: convs });
-            chrome.runtime.sendMessage({ action: 'syncUpdate', slot: 'u0', from: 'rpc-deep-scan' });
-            if (typeof (window as any).__workbenchLoadStore === 'function') {
-              await (window as any).__workbenchLoadStore(true);
-            }
-          }
-          resolve(true);
-        });
-      });
-    });
-
-    // 视觉审计：DOM 列表中标题无缝升级为权威标题
-    await expect(page.locator('#list .item[data-chat-id="1bd028d5c5b0c0e2"]')).toContainText('火星宇航员猫咪（AI 生成图片 Imagen）');
-
-    const upgradedPic = path.join(outputDir, 'takeout_title_upgraded.png');
-    await page.screenshot({ path: upgradedPic });
-    expect(fs.existsSync(upgradedPic)).toBe(true);
-  });
+    await expect(page.locator('.tour-overlay-container')).toHaveCount(0);
 });
 
+}
+
+test('choosing PDF in the v2 Tour advances without querying local fonts', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    await page.evaluate(() => {
+        (window as any).__fontQueries = 0;
+        (window as any).queryLocalFonts = async () => {
+            (window as any).__fontQueries++;
+            return [];
+        };
+    });
+    await page.locator('#btnTourGuide').click();
+    await connectTourGemini(page);
+    for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.locator('.tour-popover h2')).toHaveText('Choose a format');
+    await page.locator('#format').selectOption('pdf');
+    await expect(page.locator('.tour-popover h2')).toHaveText('Export selected conversations');
+    await expect(page.locator('#format')).toHaveValue('pdf');
+    expect(await page.evaluate(() => (window as any).__fontQueries)).toBe(0);
+    await page.getByRole('button', { name: 'Skip', exact: true }).click();
+});
+
+test('manual Tour opens and closes without obsolete v1 tour-state persistence', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    const original = await page.evaluate(async () => Reflect.get(globalThis, 'uiFixture').getSettings());
+    await page.locator('#btnTourGuide').click();
+    await expect(page.locator('.tour-popover h2')).toHaveText('Authorize AI platforms');
+    await page.locator('#tourCloseBtn').click();
+    await expect(page.locator('.tour-overlay-container')).toHaveCount(0);
+    expect(await page.evaluate(async () => Reflect.get(globalThis, 'uiFixture').getSettings())).toEqual(original);
+    await page.locator('#btnTourGuide').click();
+    await expect(page.locator('.tour-popover')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.tour-popover')).toHaveCount(0);
+});
+
+test('approved 2.1 upgrade highlights shows once without resurrecting retired v1 feature tips', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    await page.evaluate(async () => Reflect.get(globalThis, 'uiFixture').updateSettings({ lastSeenFeatureVersion: '1.4.0' }));
+    await page.reload(); await exposeUIStorage(page);
+    await expect(page.locator('body')).toHaveAttribute('data-busy', 'false');
+    await expect(page.locator('.tour-popover h2')).toHaveText('Multi-platform support (Beta)');
+    await expect.poll(async () => (await page.evaluate(async () =>
+        Reflect.get(globalThis, 'uiFixture').getSettings())).lastSeenFeatureVersion).toBe('2.1.0');
+    await page.locator('#tourNextBtn').click();
+    await page.locator('#tourNextBtn').click();
+    await page.getByRole('button', { name: 'Start using', exact: true }).click();
+    await page.reload(); await exposeUIStorage(page);
+    await expect(page.locator('.tour-popover')).toHaveCount(0);
+    await page.locator('#btnTourGuide').click();
+    await expect(page.locator('.tour-popover h2')).toHaveText('Authorize AI platforms');
+    await page.locator('#tourCloseBtn').click();
+});
+
+test('Tour backdrop actually intercepts off-target clicks and does not click through to the workbench', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    await page.locator('#btnTourGuide').click();
+    const area = await page.evaluate(() => {
+        const panels = [...document.querySelectorAll<HTMLElement>('.tour-backdrop')];
+        for (const panel of panels) {
+            const r = panel.getBoundingClientRect();
+            if (r.width <= 50 || r.height <= 50) continue;
+            // The initial connection step centers its card over a full-screen backdrop.
+            // Sample the edges as well as the center so we click the exposed backdrop.
+            for (const [px, py] of [[0.5, 0.5], [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) {
+                const x = r.left + r.width * px, y = r.top + r.height * py;
+                const hit = document.elementFromPoint(x, y);
+                if (hit === panel || panel.contains(hit)) return { x, y, visible: true };
+            }
+        }
+        return { x: 0, y: 0, visible: false };
+    });
+    expect(area.visible).toBe(true);
+    await screenshot(page, 'v2_tour_backdrop.png');
+    await page.mouse.click(area.x, area.y);
+    await expect(page.locator('.tour-popover')).toHaveCount(1);
+    await page.locator('#tourCloseBtn').click();
+    await expect(page.locator('.tour-popover')).toHaveCount(0);
+    await expect(page.locator('#btnTourGuide')).toBeVisible();
+    expect(await page.evaluate(async () =>
+        Object.keys(await Reflect.get(globalThis, 'uiFixture').listExportRecords('10000000-0000-4000-8000-000000000001')).length)).toBe(0);
+});
+
+test('real v2 workbench action controls are visible without clipped button text', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    for (const id of ['btnSelectAll', 'btnExport', 'btnSyncAll']) await expect(page.locator('#' + id)).toBeVisible();
+    const overflow = await page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>('button')]
+        .filter(button => button.getClientRects().length && button.clientWidth > 0 && button.scrollWidth > button.clientWidth + 2)
+        .map(button => ({ id: button.id, text: button.textContent?.trim(), width: button.clientWidth, scroll: button.scrollWidth })));
+    expect(overflow).toEqual([]);
+    await screenshot(page, 'v2_workbench_layout.png');
+});
+
+test('v2 L2 Index advancement reorders visible conversations and promoted row remains physically clickable', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    const now = Date.now();
+    await seedConversations(page, [
+        { id: 'top_active_999', title: '首位活跃新对话', updatedAt: now - 5000 },
+        { id: 'historical_old_111', title: '待追加对话的老会话', updatedAt: now - 80000 },
+        { id: 'historical_old_222', title: '末尾静止老会话', updatedAt: now - 180000 },
+    ]);
+    await expect(page.locator('#list .item').nth(0)).toContainText('首位活跃新对话');
+    await ingestIndex(page, 'historical_old_111', '待追加对话的老会话', 'provider', now + 50000);
+    await expect(page.locator('#list .item').nth(0)).toContainText('待追加对话的老会话');
+    await expect(page.locator('#list .item').nth(1)).toContainText('首位活跃新对话');
+    expect((await index(page, 'historical_old_111'))?.updatedAt).toBe(now + 50000);
+    const first = page.locator('#list .item').first();
+    const rect = await first.boundingBox();
+    expect(rect).not.toBeNull();
+    const hit = await page.evaluate(({ x, y }) => {
+        const firstRow = document.querySelector('#list .item');
+        const top = document.elementFromPoint(x, y);
+        return !!firstRow && !!top && (firstRow === top || firstRow.contains(top));
+    }, { x: rect!.x + rect!.width / 2, y: rect!.y + rect!.height / 2 });
+    expect(hit).toBe(true);
+    await screenshot(page, 'v2_chat_promoted.png');
+});
+
+test('confirmed v2 deletion removes only the selected row and keeps remaining layout contiguous', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    await seedConversations(page, [
+        { id: 'del_eph_9999', title: 'Delete target', updatedAt: 300 },
+        { id: 'keep_chat_111', title: '留存会话 1', updatedAt: 200 },
+        { id: 'keep_chat_222', title: '留存会话 2', updatedAt: 100 },
+    ], { del_eph_9999: { format: 'markdown', status: 'ok', exportedAt: 400 } });
+    await expect(page.locator('#list .item')).toHaveCount(3);
+    await page.evaluate(async accountId => Reflect.get(globalThis, 'uiFixture').ingestDeletedConversation(accountId, 'del_eph_9999'), accountId);
+    await refresh(page);
+    await expect(page.locator('#list .item')).toHaveCount(2);
+    await expect(page.locator('[data-chat-id="del_eph_9999"], .cloud-status, #archiveNotice')).toHaveCount(0);
+    expect(await page.evaluate(async accountId => Reflect.get(globalThis, 'uiFixture').getExportRecord({
+        accountId, conversationId: 'del_eph_9999',
+    }), accountId)).toBeNull();
+    await expect(page.locator('[data-chat-id="keep_chat_111"]')).toBeVisible();
+    const gap = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('#list .item')];
+        if (rows.length !== 2) return NaN;
+        const top = rows[0].getBoundingClientRect(), next = rows[1].getBoundingClientRect();
+        return next.top - top.bottom;
+    });
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(16);
+    await screenshot(page, 'v2_deleted_chat_pruned.png');
+});
+
+test('v2 provider title upgrades a derived offline title in the real workbench without a legacy title history', async ({ context, extensionId }) => {
+    const page = await workbench(context, extensionId);
+    const id = '1bd028d5c5b0c0e2';
+    await seedConversations(page, [{ id, title: '火星宇航员猫咪（离线提问前缀）', titleSource: 'derived', updatedAt: 1680000000000 }]);
+    await expect(page.locator('[data-chat-id="' + id + '"]')).toContainText('火星宇航员猫咪（离线提问前缀）');
+    await ingestIndex(page, id, '火星宇航员猫咪（AI 生成图片 Imagen）', 'provider', 1700000000000);
+    await expect(page.locator('[data-chat-id="' + id + '"]')).toContainText('火星宇航员猫咪（AI 生成图片 Imagen）');
+    const stored = await index(page, id);
+    expect(stored?.titleSource).toBe('provider');
+    expect(stored).not.toHaveProperty('titles');
+    await screenshot(page, 'v2_offline_title_upgraded.png');
+});

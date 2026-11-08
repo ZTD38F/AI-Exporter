@@ -1,4 +1,3 @@
-# scripts/framework/gateway.py
 """
 Safe Interaction Gateway for AI Chat Automation.
 Provides:
@@ -140,7 +139,6 @@ class SafeInteractionGateway:
             self.record_audit("NAVIGATE", url, "SUCCESS", time.time() - t0)
             return True
         except Exception as e:
-            # 降级尝试 JS 跳转
             try:
                 cdp.eval(f"window.location.href = '{url}'")
                 self.record_audit("NAVIGATE_FALLBACK", url, "SUCCESS", time.time() - t0)
@@ -193,10 +191,8 @@ class SafeInteractionGateway:
         t0 = time.time()
         p_preview = (str(prompt)[:50] + "...") if len(str(prompt)) > 50 else str(prompt)
 
-        # 1. 页面风控熔断检测
         self.check_circuit_breaker(cdp)
 
-        # 2. 发帖轮次上限保护
         if self._turn_count >= self.max_turns_per_run:
             err_msg = f"单次测试累计发帖轮次达到安全上限 ({self.max_turns_per_run})，网关主动熔断停机以保护账号安全"
             self.record_audit("SEND_TURN", p_preview, "BLOCKED", error=err_msg)
@@ -216,7 +212,6 @@ class SafeInteractionGateway:
             self._last_action_ts = time.time()
             self._turn_count += 1
 
-            # 检查返回结果是否有 429 或 quota exceeded
             err_text = ""
             if isinstance(res, tuple) and len(res) >= 2 and not res[0]:
                 err_text = str(res[1])
@@ -293,7 +288,6 @@ class SafeInteractionGateway:
         }
 
 
-# 全局单例网关实例
 _GLOBAL_GATEWAY: Optional[SafeInteractionGateway] = None
 
 

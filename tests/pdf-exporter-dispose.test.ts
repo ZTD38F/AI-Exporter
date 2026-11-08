@@ -1,214 +1,68 @@
-/**
- * tests/pdf-exporter-dispose.test.ts
- *
- * Tier 1 tests for the #592 P1 fix: the production-owned Typst sandbox
- * compiler must be disposed at run end, and an injected/shared compiler
- * must never be disposed by the exporter.
- *
- * Background: every production export built a fresh TypstSandboxCompiler
- * (hidden iframe + window message listener capturing `this` + WASM state +
- * cached font bytes), but nothing ever called its dispose() — exportController
- * only nulled the reference and PdfExporter.abort() only aborts. One export
- * leaked one sandbox; repeated exports accumulated them.
- *
- * Ownership rule under test:
- * - `new PdfExporter()` (no compiler) owns its compiler -> dispose() must
- *   tear it down. The production controller calls dispose() in its
- *   run-finally on every path (success / failure / abort).
- * - `new PdfExporter(injected)` never owns it -> dispose() must not touch
- *   the caller's compiler. Same for a per-run `options.compiler`.
- * - abort() is cancel-only and never disposes.
- */
-export {};
-const test = require('node:test');
-const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { TypstSandboxCompiler } from '../src/l4/format/pdf/typst/typstSandboxCompiler.js';
+import { compileDocumentPdf } from '../src/l4/format/pdf/compileDocumentPdf.js';
+import { runExport } from '../src/application/export/runExport.js';
+import { v2ExportHost, seedExportConversation, exportRequest } from './helpers/v2ExportHost.js';
+import { buildMinimalValidPdf } from './helpers/stubPdfCompiler.js';
+import type { DocumentAst } from '../src/l3b/ast/ast.js';
 
-const { PdfExporter } = require('../src/core/export/pdf/index.js');
-const { buildMinimalValidPdf } = require('./helpers/stubPdfCompiler.js');
-const { TypstSandboxCompiler } = require('../src/core/export/typst/typstSandboxCompiler.js');
-
-const fixtureDir = path.join(__dirname, 'fixtures', 'canonical');
-const sample = JSON.parse(fs.readFileSync(path.join(fixtureDir, 'gemini-normalizer-sample.json'), 'utf8'));
-
-/** Fake an extension page context so `new PdfExporter()` builds the real default compiler. */
-function fakeExtensionPageContext() {
-    const g = globalThis as any;
-    const prevDocument = g.document;
-    const prevChrome = g.chrome;
-    g.document = {};
-    g.chrome = { runtime: { getURL: (p: string) => `chrome-extension://fake/${p}` } };
-    return () => {
-        if (prevDocument === undefined) delete g.document;
-        else g.document = prevDocument;
-        if (prevChrome === undefined) delete g.chrome;
-        else g.chrome = prevChrome;
-    };
-}
-
-/** Spy on TypstSandboxCompiler.prototype.dispose; restores on cleanup. */
-function spyOnSandboxDispose() {
-    const proto = TypstSandboxCompiler.prototype;
-    const original = proto.dispose;
-    let calls = 0;
-    proto.dispose = function (this: any, ...args: any[]) {
-        calls += 1;
-        return original.apply(this, args);
-    };
-    return {
-        get calls() {
-            return calls;
-        },
-        restore() {
-            proto.dispose = original;
-        },
-    };
-}
-
-function makeFakeWriter() {
-    const files: Array<{ name: string; bytes: Uint8Array }> = [];
-    const writer = {
-        files,
-        async writeFile(relativePath: string, content: any) {
-            const bytes = content instanceof Uint8Array ? content : new TextEncoder().encode(String(content));
-            files.push({ name: relativePath, bytes });
-            return relativePath;
-        },
-        async generateBlob() {
-            return new Blob(files.map((f) => f.bytes as any), { type: 'application/zip' });
-        },
-    };
-    return writer;
-}
-
-/** A per-run injected compiler the exporter must never dispose. */
-function makeFakeCompiler(opts: { throws?: boolean } = {}) {
-    const calls = { dispose: 0, compile: 0 };
-    return {
-        calls,
-        name: 'fake-test-compiler',
-        async compile() {
-            calls.compile += 1;
-            if (opts.throws) throw new Error('fake compile boom');
+// Compiler lifetime moved from PdfExporter/UI controller into unified Export.
+const document: DocumentAst = { title: 'Owned compiler', metadata: { id: 'dispose', provider: 'gemini' }, messages: [] };
+const context = () => ({ signal: new AbortController().signal, reportProgress() {} });
+test('pure PDF format leaves an injected compiler owned by its caller on success and failure', async () => {
+    let disposed = 0, fail = false;
+    const compiler = { name: 'caller-owned', dispose() { disposed++; }, async compile() {
+        if (fail) throw new Error('compile failed'); return { pdfBytes: buildMinimalValidPdf(), diagnostics: [] };
+    } };
+    await compileDocumentPdf(document, {}, new Map(), compiler, context());
+    fail = true;
+    await assert.rejects(compileDocumentPdf(document, {}, new Map(), compiler, context()), /compile failed/);
+    assert.equal(disposed, 0);
+});
+for (const mode of ['success', 'failure', 'abort'] as const) {
+    test(`unified Export disposes its owned compiler exactly once after ${mode}`, async t => {
+        const host = v2ExportHost(t);
+        await seedExportConversation('dispose');
+        const controller = new AbortController();
+        const compile = t.mock.method(TypstSandboxCompiler.prototype, 'compile', async () => {
+            if (mode === 'failure') throw new Error('compile failed');
+            if (mode === 'abort') { controller.abort(); controller.signal.throwIfAborted(); }
             return { pdfBytes: buildMinimalValidPdf(), diagnostics: [] };
-        },
-        dispose() {
-            calls.dispose += 1;
-        },
-    };
+        });
+        const dispose = t.mock.method(TypstSandboxCompiler.prototype, 'dispose');
+        const result = await runExport(exportRequest(['dispose'], { format: 'pdf' }), { signal: controller.signal });
+        assert.equal(compile.mock.callCount(), 1);
+        assert.equal(dispose.mock.callCount(), 1);
+        assert.equal(host.clicks(), mode === 'success' ? 1 : 0);
+        assert.equal(result.exported, mode === 'success' ? 1 : 0);
+        assert.equal(result.aborted, mode === 'abort');
+        assert.equal(result.failed.length, mode === 'failure' ? 1 : 0);
+    });
 }
-
-function baseOptions(writer: any, extra: any = {}) {
-    return {
-        selected: [{ id: sample.id, title: sample.title }],
-        conversations: [sample],
-        useZip: false,
-        writer,
-        ...extra,
-    };
-}
-
-/**
- * Mirror of the production controller's run-finally
- * (exportController.runExport): dispose the owned compiler on every path,
- * then drop the reference.
- */
-async function runLikeController(exporter: any, options: any) {
-    try {
-        return await exporter.run(options, { onLog: () => {} });
-    } finally {
-        try {
-            exporter?.dispose?.();
-        } finally {
-            /* controller nulls its activeEngine ref here */
-        }
-    }
-}
-
-test('dispose: production-owned compiler (constructor default) is disposed', () => {
-    const restoreCtx = fakeExtensionPageContext();
-    const spy = spyOnSandboxDispose();
-    try {
-        const exporter = new PdfExporter();
-        exporter.dispose();
-        assert.strictEqual(spy.calls, 1, 'the owned TypstSandboxCompiler must be disposed');
-    } finally {
-        spy.restore();
-        restoreCtx();
-    }
+test('cancellation before compiler initialization allocates no sandbox', async t => {
+    v2ExportHost(t);
+    const dispose = t.mock.method(TypstSandboxCompiler.prototype, 'dispose');
+    const controller = new AbortController(); controller.abort();
+    assert.equal((await runExport(exportRequest(['unstarted'], { format: 'pdf' }), { signal: controller.signal })).aborted, true);
+    assert.equal(dispose.mock.callCount(), 0);
 });
-
-test('dispose: an injected/shared compiler is never disposed', async () => {
-    const fake = makeFakeCompiler();
-    const writer = makeFakeWriter();
-    const exporter = new PdfExporter(fake as any);
-    const result = await runLikeController(exporter, baseOptions(writer, { compiler: fake }));
-    assert.strictEqual(result.succeeded, 1);
-    assert.strictEqual(fake.calls.dispose, 0, 'injected compilers belong to their caller');
+test('batch conversations share one compiler and dispose it once at task end', async t => {
+    v2ExportHost(t);
+    await seedExportConversation('one'); await seedExportConversation('two');
+    const { __setZipConstructor, __getZipConstructor } = require('../src/l4/packaging/writers/zipWriter.js');
+    const previous = __getZipConstructor(); __setZipConstructor(require('../lib/jszip.min.js'));
+    t.after(() => __setZipConstructor(previous));
+    const instances = new Set<TypstSandboxCompiler>();
+    t.mock.method(TypstSandboxCompiler.prototype, 'compile', async function(this: TypstSandboxCompiler) {
+        instances.add(this); return { pdfBytes: buildMinimalValidPdf(), diagnostics: [] };
+    });
+    const dispose = t.mock.method(TypstSandboxCompiler.prototype, 'dispose');
+    assert.equal((await runExport(exportRequest(['one', 'two'], { format: 'pdf' }))).exported, 2);
+    assert.equal(instances.size, 1); assert.equal(dispose.mock.callCount(), 1);
 });
-
-test('dispose: owned compiler disposed after a successful run; per-run injected compiler untouched', async () => {
-    const restoreCtx = fakeExtensionPageContext();
-    const spy = spyOnSandboxDispose();
-    try {
-        const fake = makeFakeCompiler();
-        const writer = makeFakeWriter();
-        const exporter = new PdfExporter();
-        const result = await runLikeController(exporter, baseOptions(writer, { compiler: fake }));
-        assert.strictEqual(result.succeeded, 1, 'run itself must succeed');
-        assert.strictEqual(spy.calls, 1, 'owned constructor compiler disposed at run end');
-        assert.strictEqual(fake.calls.dispose, 0, 'per-run injected compiler must not be disposed');
-    } finally {
-        spy.restore();
-        restoreCtx();
-    }
-});
-
-test('dispose: owned compiler disposed after a failed run; per-run injected compiler untouched', async () => {
-    const restoreCtx = fakeExtensionPageContext();
-    const spy = spyOnSandboxDispose();
-    try {
-        const fake = makeFakeCompiler({ throws: true });
-        const writer = makeFakeWriter();
-        const exporter = new PdfExporter();
-        const result = await runLikeController(exporter, baseOptions(writer, { compiler: fake }));
-        assert.strictEqual(result.succeeded, 0);
-        assert.strictEqual(result.failed.length, 1, 'the throwing compile must surface as a failed item');
-        assert.strictEqual(spy.calls, 1, 'owned constructor compiler disposed even on the failure path');
-        assert.strictEqual(fake.calls.dispose, 0, 'per-run injected compiler must not be disposed');
-    } finally {
-        spy.restore();
-        restoreCtx();
-    }
-});
-
-test('dispose: abort() is cancel-only and never disposes', () => {
-    const restoreCtx = fakeExtensionPageContext();
-    const spy = spyOnSandboxDispose();
-    try {
-        const exporter = new PdfExporter();
-        exporter.abort();
-        assert.strictEqual(exporter.aborted, true);
-        assert.strictEqual(spy.calls, 0, 'abort must not dispose; disposal happens at run end');
-        exporter.dispose();
-        assert.strictEqual(spy.calls, 1);
-    } finally {
-        spy.restore();
-        restoreCtx();
-    }
-});
-
-test('dispose: idempotent, safe to call twice', () => {
-    const restoreCtx = fakeExtensionPageContext();
-    const spy = spyOnSandboxDispose();
-    try {
-        const exporter = new PdfExporter();
-        exporter.dispose();
-        exporter.dispose();
-        assert.strictEqual(spy.calls, 2, 'double dispose must not throw; underlying dispose is idempotent');
-    } finally {
-        spy.restore();
-        restoreCtx();
-    }
+test('sandbox disposal itself is idempotent before and after initialization', () => {
+    const compiler = new TypstSandboxCompiler();
+    assert.doesNotThrow(() => compiler.dispose());
+    assert.doesNotThrow(() => compiler.dispose());
 });
