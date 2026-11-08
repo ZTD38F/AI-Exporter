@@ -74,7 +74,7 @@ test('format Spotlight dismissal restores focus without initiating PDF/HTML expo
 
 for (const language of ['en', 'zh']) test(`2.1 highlights authorize sites and resume at the account switcher (${language})`, async () => {
     page = await browser.newPage();
-    await mount(page, 'options', { manifestVersion: '2.1.0', settings: { language, lastSeenFeatureVersion: '2.0.0' } });
+    await mount(page, 'options', { manifestVersion: '2.1.0', geminiAccess: false, settings: { language, lastSeenFeatureVersion: '2.0.0' } });
     const heading = language === 'en' ? 'Multi-platform support (Beta)' : '多平台支持（测试版）';
     await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     assert.deepEqual((await read(page, 'patches')).filter((patch: { lastSeenFeatureVersion?: string }) =>
